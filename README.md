@@ -1,6 +1,8 @@
 # blackcat-darkmesh-ao
 [![Project: Blackcat Mesh Nexus](https://img.shields.io/badge/Project-Blackcat%20Mesh%20Nexus-000?logo=github)](https://github.com/users/Vito416/projects/2) [![CI](https://github.com/Vito416/blackcat-darkmesh-ao/actions/workflows/ci.yml/badge.svg)](https://github.com/Vito416/blackcat-darkmesh-ao/actions/workflows/ci.yml)
 
+![AO Banner](.github/blackcat-darkmesh-ao-banner.jpg)
+
 AO-first backend layer for Blackcat Darkmesh. This repository hosts the AO processes, message contracts, schemas, Arweave manifests, and runbooks that power the permaweb runtime. Code is commercially restricted; non-commercial use is allowed for transparency.
 
 ## Scope
