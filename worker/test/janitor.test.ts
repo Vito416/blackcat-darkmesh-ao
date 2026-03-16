@@ -16,6 +16,10 @@ beforeAll(async () => {
   })
 })
 
+afterAll(async () => {
+  await worker?.stop()
+})
+
 describe('janitor expires items', () => {
   it('deletes expired envelopes on scheduled', async () => {
     // store with short ttl

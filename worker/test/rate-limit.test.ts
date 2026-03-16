@@ -18,9 +18,14 @@ beforeAll(async () => {
       SUBJECT_MAX_ENVELOPES: '5',
       PAYLOAD_MAX_BYTES: '10240',
       INBOX_HMAC_SECRET: '',
+      TEST_IN_MEMORY_KV: '1',
       MINIFLARE_KV_PERSIST: 'false',
     },
   })
+})
+
+afterAll(async () => {
+  await worker?.stop()
 })
 
 describe('Rate limit', () => {

@@ -18,10 +18,15 @@ beforeAll(async () => {
       SUBJECT_MAX_ENVELOPES: '5',
       PAYLOAD_MAX_BYTES: '10240',
       INBOX_HMAC_SECRET: '', // disable HMAC for tests
+      TEST_IN_MEMORY_KV: '1',
       // use in-memory kv to avoid sqlite locks in miniflare
       MINIFLARE_KV_PERSIST: 'false',
     },
   })
+})
+
+afterAll(async () => {
+  await worker?.stop()
 })
 
 describe('Inbox flow', () => {

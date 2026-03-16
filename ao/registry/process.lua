@@ -215,21 +215,18 @@ function handlers.BindDomain(msg)
   if not ok then
     return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
   end
-  local ok_extra, extras = validation.require_no_extras(
-    msg,
-    {
-      "Action",
-      "Request-Id",
-      "Nonce",
-      "ts",
-      "Timestamp",
-      "Site-Id",
-      "Host",
-      "Actor-Role",
-      "Schema-Version",
-      "Signature",
-    }
-  )
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end

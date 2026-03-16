@@ -17,6 +17,10 @@ beforeAll(async () => {
   })
 })
 
+afterAll(async () => {
+  await worker?.stop()
+})
+
 describe('/metrics auth (worker)', () => {
   it('rejects when missing', async () => {
     const res = await worker.fetch('http://localhost/metrics')
