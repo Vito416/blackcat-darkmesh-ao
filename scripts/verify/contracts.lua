@@ -105,6 +105,8 @@ end
 
 local function with_req(fields)
   fields["Request-Id"] = fields["Request-Id"] or tostring(math.random())
+  fields.Nonce = fields.Nonce or tostring(math.random(1, 1e9))
+  fields.ts = fields.ts or os.time()
   if SIG_SECRET then
     local sig = hmac_sign(fields.Action, fields["Site-Id"], fields["Request-Id"])
     if sig then
