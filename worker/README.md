@@ -65,3 +65,4 @@ Local testing
 
 Env vars (extra)
 - `TEST_IN_MEMORY_KV` — dev/test only; ignored in production.
+- Metrics exposed (examples): `worker_inbox_put_total`, `worker_inbox_replay_total`, `worker_rate_limit_blocked_total`, `worker_inbox_expired_total`, `worker_forget_deleted_total`, `worker_notify_rate_blocked_total`, `worker_metrics_auth_blocked_total`.
