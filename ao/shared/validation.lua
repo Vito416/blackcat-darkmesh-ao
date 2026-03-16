@@ -79,7 +79,22 @@ function Validation.require_no_extras(tbl, allowed_fields)
   if not allowed_fields then
     return true
   end
-  local allowed = {}
+  local allowed = {
+    -- Cross-cutting auth/telemetry fields that every handler should tolerate.
+    Nonce = true,
+    nonce = true,
+    ts = true,
+    timestamp = true,
+    ["Timestamp"] = true,
+    Signature = true,
+    signature = true,
+    ["Signature-Ref"] = true,
+    Authorization = true,
+    authorization = true,
+    auth = true,
+    JWT = true,
+    jwt = true,
+  }
   for _, f in ipairs(allowed_fields) do
     allowed[f] = true
   end

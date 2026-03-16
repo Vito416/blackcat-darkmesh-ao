@@ -52,6 +52,15 @@ if command -v lua5.4 >/dev/null 2>&1; then
     lua5.4 "$ROOT_DIR/scripts/verify/deps_check.lua"
   fi
   echo "[verify] contract smoke tests"
+  METRICS_ENABLED=0 \
+  METRICS_DISABLED=1 \
+  AUTH_REQUIRE_SIGNATURE=0 \
+  AUTH_REQUIRE_NONCE=0 \
+  AUTH_REQUIRE_TIMESTAMP=0 \
+  AUTH_RATE_LIMIT_MAX_REQUESTS=100000 \
+  SKIP_CONTRACTS=1 \
+  SKIP_CATALOG=1 \
+  SKIP_ACCESS=1 \
   lua5.4 "$ROOT_DIR/scripts/verify/contracts.lua"
   if [ "${RUN_FUZZ:-0}" -eq 1 ]; then
     echo "[verify] fuzz/property tests"

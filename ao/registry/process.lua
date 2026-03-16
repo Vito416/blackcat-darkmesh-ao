@@ -83,10 +83,17 @@ function handlers.GetSiteByHost(msg)
   if not ok then
     return codec.error("INVALID_INPUT", "Host is required", { missing = missing })
   end
-  local ok_extra, extras = validation.require_no_extras(
-    msg,
-    { "Action", "Request-Id", "Host", "Actor-Role", "Schema-Version", "Signature" }
-  )
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
@@ -109,10 +116,17 @@ function handlers.GetSiteConfig(msg)
   if not ok then
     return codec.error("INVALID_INPUT", "Site-Id is required", { missing = missing })
   end
-  local ok_extra, extras = validation.require_no_extras(
-    msg,
-    { "Action", "Request-Id", "Site-Id", "Actor-Role", "Schema-Version", "Signature" }
-  )
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
@@ -236,6 +250,9 @@ function handlers.SetActiveVersion(msg)
   local ok_extra, extras = validation.require_no_extras(msg, {
     "Action",
     "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
     "Site-Id",
     "Version",
     "ExpectedVersion",
@@ -289,6 +306,9 @@ function handlers.GrantRole(msg)
   local ok_extra, extras = validation.require_no_extras(msg, {
     "Action",
     "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
     "Site-Id",
     "Subject",
     "Role",
@@ -328,6 +348,9 @@ function handlers.UpdateTrustResolvers(msg)
   local ok_extra, extras = validation.require_no_extras(msg, {
     "Action",
     "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
     "Manifest-Tx",
     "Resolvers",
     "Actor-Role",
@@ -353,10 +376,16 @@ function handlers.UpdateTrustResolvers(msg)
 end
 
 function handlers.GetTrustedResolvers(msg)
-  local ok_extra, extras = validation.require_no_extras(
-    msg,
-    { "Action", "Request-Id", "Actor-Role", "Schema-Version", "Signature" }
-  )
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
@@ -384,6 +413,9 @@ function handlers.FlagResolver(msg)
   local ok_extra, extras = validation.require_no_extras(msg, {
     "Action",
     "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
     "Resolver-Id",
     "Flag",
     "Reason",
@@ -430,10 +462,17 @@ function handlers.UnflagResolver(msg)
   if not ok then
     return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
   end
-  local ok_extra, extras = validation.require_no_extras(
-    msg,
-    { "Action", "Request-Id", "Resolver-Id", "Actor-Role", "Schema-Version", "Signature" }
-  )
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Resolver-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
@@ -453,10 +492,17 @@ function handlers.UnflagResolver(msg)
 end
 
 function handlers.GetResolverFlags(msg)
-  local ok_extra, extras = validation.require_no_extras(
-    msg,
-    { "Action", "Request-Id", "Resolver-Id", "Actor-Role", "Schema-Version", "Signature" }
-  )
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Resolver-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
