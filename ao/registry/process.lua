@@ -139,6 +139,9 @@ function handlers.RegisterSite(msg)
   local ok_extra, extras = validation.require_no_extras(msg, {
     "Action",
     "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
     "Site-Id",
     "Config",
     "Version",
@@ -200,7 +203,7 @@ function handlers.BindDomain(msg)
   end
   local ok_extra, extras = validation.require_no_extras(
     msg,
-    { "Action", "Request-Id", "Site-Id", "Host", "Actor-Role", "Schema-Version", "Signature" }
+    { "Action", "Request-Id", "Nonce", "ts", "Timestamp", "Site-Id", "Host", "Actor-Role", "Schema-Version", "Signature" }
   )
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
