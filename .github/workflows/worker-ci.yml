@@ -1,0 +1,27 @@
+name: Worker CI
+
+on:
+  push:
+    paths:
+      - "worker/**"
+  pull_request:
+    paths:
+      - "worker/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test
