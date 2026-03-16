@@ -8,8 +8,10 @@ local os_time = os.time
 
 local NONCE_TTL = tonumber(os.getenv "AUTH_NONCE_TTL_SECONDS" or "300")
 local NONCE_MAX = tonumber(os.getenv "AUTH_NONCE_MAX_ENTRIES" or "2048")
-local REQUIRE_NONCE = os.getenv "AUTH_REQUIRE_NONCE" == "1"
-local REQUIRE_SIGNATURE = os.getenv "AUTH_REQUIRE_SIGNATURE" == "1"
+local REQUIRE_NONCE = os.getenv "AUTH_REQUIRE_NONCE" ~= "0" -- default ON
+local REQUIRE_SIGNATURE = os.getenv "AUTH_REQUIRE_SIGNATURE" ~= "0" -- default ON
+local REQUIRE_TS = os.getenv "AUTH_REQUIRE_TIMESTAMP" ~= "0"
+local TS_DRIFT = tonumber(os.getenv "AUTH_MAX_CLOCK_SKEW" or "300")
 local RL_WINDOW = tonumber(os.getenv "AUTH_RATE_LIMIT_WINDOW_SECONDS" or "60")
 local RL_MAX = tonumber(os.getenv "AUTH_RATE_LIMIT_MAX_REQUESTS" or "200")
 local RL_SITE_MAX = tonumber(os.getenv "AUTH_RATE_LIMIT_MAX_PER_SITE" or "200")
@@ -171,6 +173,25 @@ function Auth.require_nonce(msg)
   end
   nonce_store[nonce] = os_time() + NONCE_TTL
   prune_nonces()
+  return true
+end
+
+local function require_timestamp(msg)
+  if not REQUIRE_TS then
+    return true
+  end
+  local ts = msg.ts or msg.timestamp or msg["X-Timestamp"]
+  if not ts then
+    return false, "missing_timestamp"
+  end
+  ts = tonumber(ts)
+  if not ts then
+    return false, "invalid_timestamp"
+  end
+  local now = os_time()
+  if math.abs(now - ts) > TS_DRIFT then
+    return false, "timestamp_skew"
+  end
   return true
 end
 
@@ -502,6 +523,10 @@ function Auth.enforce(msg)
   local ok_nonce, err_nonce = Auth.require_nonce(msg)
   if not ok_nonce then
     return false, err_nonce
+  end
+  local ok_ts, err_ts = require_timestamp(msg)
+  if not ok_ts then
+    return false, err_ts
   end
   local ok_sig, err_sig = Auth.require_signature(msg)
   if not ok_sig then
