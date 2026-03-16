@@ -3,6 +3,16 @@ import { unstable_dev } from 'wrangler'
 
 let worker: any
 
+async function fetchWithTimeout(input: any, init: any = {}, ms = 5000) {
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort('timeout'), ms)
+  try {
+    return await worker.fetch(input, { ...init, signal: ac.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 beforeAll(async () => {
   worker = await unstable_dev('src/index.ts', {
     experimental: { disableExperimentalWarning: true },
@@ -23,7 +33,7 @@ afterAll(async () => {
 describe('janitor expires items', () => {
   it('deletes expired envelopes on scheduled', async () => {
     // store with short ttl
-    await worker.fetch('http://localhost/inbox', {
+    await fetchWithTimeout('http://localhost/inbox', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ subject: 'jan', nonce: 'x1', payload: 'p', ttlSeconds: 1 }),
@@ -51,7 +61,7 @@ describe('janitor expires items', () => {
     if (mod.default && typeof mod.default.scheduled === 'function') {
       await mod.default.scheduled({ cron: '' } as any, env, ctx)
     }
-    const res = await worker.fetch('http://localhost/inbox/jan/x1')
+    const res = await fetchWithTimeout('http://localhost/inbox/jan/x1')
     expect(res.status).toBe(404)
   })
 })

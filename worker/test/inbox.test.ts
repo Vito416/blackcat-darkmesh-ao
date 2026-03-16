@@ -3,6 +3,16 @@ import { unstable_dev } from 'wrangler'
 
 let worker: any
 
+async function fetchWithTimeout(input: any, init: any = {}, ms = 5000) {
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort('timeout'), ms)
+  try {
+    return await worker.fetch(input, { ...init, signal: ac.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 beforeAll(async () => {
   worker = await unstable_dev('src/index.ts', {
     experimental: { disableExperimentalWarning: true },
@@ -31,29 +41,29 @@ afterAll(async () => {
 
 describe('Inbox flow', () => {
   it('stores and fetches then deletes', async () => {
-    const res = await worker.fetch('http://localhost/inbox', {
+    const res = await fetchWithTimeout('http://localhost/inbox', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ subject: 'subj', nonce: 'n1', payload: 'cipher' }),
     })
     expect([201, 409]).toContain(res.status)
-    const getRes = await worker.fetch('http://localhost/inbox/subj/n1')
+    const getRes = await fetchWithTimeout('http://localhost/inbox/subj/n1')
     expect([200, 404]).toContain(getRes.status) // if replay caused overwrite/clean
     if (getRes.status === 200) {
       const body = await getRes.json()
       expect(body.payload).toBe('cipher')
-      const notFound = await worker.fetch('http://localhost/inbox/subj/n1')
+      const notFound = await fetchWithTimeout('http://localhost/inbox/subj/n1')
       expect(notFound.status).toBe(404)
     }
   })
 
   it('supports forget', async () => {
-    await worker.fetch('http://localhost/inbox', {
+    await fetchWithTimeout('http://localhost/inbox', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ subject: 'subj2', nonce: 'n2', payload: 'cipher' }),
     })
-    const res = await worker.fetch('http://localhost/forget', {
+    const res = await fetchWithTimeout('http://localhost/forget', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -62,7 +72,7 @@ describe('Inbox flow', () => {
       body: JSON.stringify({ subject: 'subj2' }),
     })
     expect(res.status).toBe(200)
-    const getRes = await worker.fetch('http://localhost/inbox/subj2/n2')
+    const getRes = await fetchWithTimeout('http://localhost/inbox/subj2/n2')
     expect(getRes.status).toBe(404)
   })
 })

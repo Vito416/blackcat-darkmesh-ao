@@ -3,6 +3,16 @@ import { unstable_dev } from 'wrangler'
 
 let worker: any
 
+async function fetchWithTimeout(input: any, init: any = {}, ms = 5000) {
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort('timeout'), ms)
+  try {
+    return await worker.fetch(input, { ...init, signal: ac.signal })
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 beforeAll(async () => {
   worker = await unstable_dev('src/index.ts', {
     experimental: { disableExperimentalWarning: true },
@@ -31,9 +41,9 @@ afterAll(async () => {
 describe('Rate limit', () => {
   it('blocks after limit', async () => {
     const common = { subject: 'rlsubj', payload: 'cipher' }
-    await worker.fetch('http://localhost/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...common, nonce: 'n1' }) })
-    await worker.fetch('http://localhost/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...common, nonce: 'n2' }) })
-    const res = await worker.fetch('http://localhost/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...common, nonce: 'n3' }) })
+    await fetchWithTimeout('http://localhost/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...common, nonce: 'n1' }) })
+    await fetchWithTimeout('http://localhost/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...common, nonce: 'n2' }) })
+    const res = await fetchWithTimeout('http://localhost/inbox', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...common, nonce: 'n3' }) })
     expect(res.status).toBe(429)
   })
 })
