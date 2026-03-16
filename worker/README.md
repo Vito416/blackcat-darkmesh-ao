@@ -30,6 +30,7 @@ API (baseline)
 - `GET /inbox/:subject/:nonce` → 200 `{ payload, exp }`; deletes after read.
 - `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <FORGET_TOKEN>`.
 - `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
+- `GET /metrics` — Prometheus text; protect via `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN`.
 - `scheduled` (cron) – deletes expired items, cleans malformed entries.
 
 Secrets to keep here (examples)
@@ -42,6 +43,7 @@ Env/config
 - `INBOX_TTL_DEFAULT`, `INBOX_TTL_MAX`
 - `INBOX_KV` (KV binding)
 - `FORGET_TOKEN` (Bearer guard for forget)
+- `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN` (protect /metrics)
 - `SENDGRID_KEY` / `NOTIFY_WEBHOOK` (optional)
 - `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` (per-IP for inbox/notify)
 - `SUBJECT_MAX_ENVELOPES` (max live envelopes per subject)

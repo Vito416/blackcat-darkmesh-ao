@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Env } from './types'
+import { inc, toProm } from './metrics'
+import { Buffer } from 'buffer'
 
 type InboxItem = {
   payload: string
@@ -125,6 +127,7 @@ async function rateLimit(c: any) {
       if (raw) {
         const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
         if (reset && now < reset && count >= max) {
+          inc('worker_rate_limit_blocked')
           throw new HTTPException(429, { message: 'rate_limited' })
         }
         const next = {
@@ -156,6 +159,7 @@ async function notifyRateLimit(c: any) {
   if (raw) {
     const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
     if (reset && now < reset && count >= max) {
+      inc('worker_notify_rate_blocked')
       throw new HTTPException(429, { message: 'notify_rate_limited' })
     }
     const next = {
@@ -194,7 +198,7 @@ async function checkReplay(c: any, subj: string, nonce: string) {
 
 // simple token check for forget/notify
 function requireToken(c: any) {
-  const token = c.req.header('Authorization') || ''
+  const token = c.req.header('Authorization') || c.req.header('authorization') || ''
   if (c.env.FORGET_TOKEN && token !== `Bearer ${c.env.FORGET_TOKEN}`) {
     throw new HTTPException(401, { message: 'unauthorized' })
   }
@@ -276,7 +280,12 @@ app.post('/inbox', async (c) => {
   }
   const kv = kvFor(c)
   await rateLimit(c)
-  await checkReplay(c, body.subject, body.nonce)
+  try {
+    await checkReplay(c, body.subject, body.nonce)
+  } catch (e) {
+    inc('worker_inbox_replay')
+    throw e
+  }
   validatePayloadSize(c, body.payload)
   const subjCount = await currentSubjectCount(c, body.subject)
   subjectLimit(c, subjCount)
@@ -284,6 +293,7 @@ app.post('/inbox', async (c) => {
   const item: InboxItem = { payload: body.payload, exp }
   await kv.put(key(body.subject, body.nonce), JSON.stringify(item), { expiration: exp })
   logEvent('inbox_put', { subject: body.subject })
+  inc('worker_inbox_put')
   return c.json({ status: 'OK', exp }, 201)
 })
 
@@ -296,6 +306,7 @@ app.get('/inbox/:subject/:nonce', async (c) => {
   const item = JSON.parse(raw) as InboxItem
   await kv.delete(key(subj, nonce))
   logEvent('inbox_get', { subject: subj })
+  inc('worker_inbox_get')
   return c.json({ status: 'OK', payload: item.payload, exp: item.exp })
 })
 
@@ -309,7 +320,35 @@ app.post('/forget', async (c) => {
   const deletes = list.keys.map((k) => kv.delete(k.name))
   await Promise.all(deletes)
   logEvent('forget', { subject: body.subject, deleted: deletes.length })
+  inc('worker_forget_deleted', deletes.length)
   return c.json({ status: 'OK', deleted: deletes.length })
+})
+
+app.get('/metrics', async (c) => {
+  const needBasic = !!(c.env.METRICS_BASIC_USER && c.env.METRICS_BASIC_PASS)
+  const needBearer = !!c.env.METRICS_BEARER_TOKEN
+  if (needBasic || needBearer) {
+    const auth = c.req.header('authorization') || ''
+    const alt = c.req.header('x-metrics-token') || ''
+    let ok = false
+    if (needBearer && alt === c.env.METRICS_BEARER_TOKEN) ok = true
+    if (!ok && needBearer && /^Bearer\\s+/i.test(auth)) {
+      ok = auth.replace(/^Bearer\\s+/i, '').trim() === c.env.METRICS_BEARER_TOKEN
+    }
+    if (!ok && needBasic && /^Basic\\s+/i.test(auth)) {
+      const b64 = auth.replace(/^Basic\\s+/i, '')
+      try {
+        const decoded = Buffer.from(b64, 'base64').toString()
+        const [u, p] = decoded.split(':')
+        if (u === c.env.METRICS_BASIC_USER && p === c.env.METRICS_BASIC_PASS) ok = true
+      } catch (_) {}
+    }
+    if (!ok) {
+      inc('worker_metrics_auth_blocked')
+      throw new HTTPException(401, { message: 'unauthorized' })
+    }
+  }
+  return c.text(toProm(), 200, { 'content-type': 'text/plain; version=0.0.4' })
 })
 
 app.post('/notify', async (c) => {
@@ -337,6 +376,7 @@ app.post('/notify', async (c) => {
       throw new HTTPException(502, { message: 'notify_webhook_failed' })
     }
     logEvent('notify', { via: 'webhook' })
+    inc('worker_notify_sent')
     return c.json({ status: 'OK', delivered: 'webhook' })
   }
   // SendGrid fallback
@@ -358,6 +398,7 @@ app.post('/notify', async (c) => {
       throw new HTTPException(502, { message: 'notify_sendgrid_failed' })
     }
     logEvent('notify', { via: 'sendgrid' })
+    inc('worker_notify_sent')
     return c.json({ status: 'OK', delivered: 'sendgrid' })
   }
   throw new HTTPException(400, { message: 'notify_unconfigured' })
@@ -388,6 +429,7 @@ export default {
         }
       }
     }
+    if (deleted > 0) inc('worker_inbox_expired', deleted)
     logEvent('janitor', { ts: now, deleted })
   },
 }
