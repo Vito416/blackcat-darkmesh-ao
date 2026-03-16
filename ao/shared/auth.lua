@@ -2,6 +2,7 @@
 -- AO environment is expected to verify signatures; here we keep role/allowlist helpers.
 
 local jwt_ok, jwt = pcall(require, "ao.shared.jwt")
+local metrics_ok, metrics = pcall(require, "ao.shared.metrics")
 
 local Auth = {}
 local os_time = os.time
@@ -378,6 +379,7 @@ function Auth.check_rate_limit(msg)
   end
   rate_store[key] = bucket
   if bucket.count > RL_MAX then
+    if metrics_ok and metrics.counter then metrics.counter("ao.auth.rate_global_block", 1) end
     return false, "rate_limited"
   end
 
@@ -392,6 +394,7 @@ function Auth.check_rate_limit(msg)
     s.count = s.count + 1
     rate_store[site_key] = s
     if s.count > RL_SITE_MAX then
+      if metrics_ok and metrics.counter then metrics.counter("ao.auth.rate_site_block", 1) end
       return false, "rate_limited_site"
     end
   end
@@ -407,8 +410,12 @@ function Auth.check_rate_limit(msg)
     c.count = c.count + 1
     rate_store[caller_key] = c
     if c.count > RL_CALLER_MAX then
+      if metrics_ok and metrics.counter then metrics.counter("ao.auth.rate_caller_block", 1) end
       return false, "rate_limited_caller"
     end
+  end
+  if metrics_ok and metrics.gauge then
+    metrics.gauge("ao.auth.rate_buckets", (function() local n=0 for _ in pairs(rate_store) do n=n+1 end return n end)())
   end
   if RL_SQLITE and sqlite_ok then
     if not Auth._db then
