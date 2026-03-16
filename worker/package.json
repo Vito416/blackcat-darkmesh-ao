@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler publish",
     "lint": "echo \"(add eslint if needed)\"",
-    "test": "vitest run"
+    "test": "npx vitest run"
   },
   "dependencies": {
     "hono": "^4.3.0"
