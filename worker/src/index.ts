@@ -1,0 +1,393 @@
+import { Hono } from 'hono'
+import { HTTPException } from 'hono/http-exception'
+import type { Env } from './types'
+
+type InboxItem = {
+  payload: string
+  exp: number
+}
+
+const encoder = new TextEncoder()
+
+const app = new Hono<{ Bindings: Env }>()
+
+// Simple in-memory KV shim for tests to avoid SQLite locks in Miniflare
+type KvEntry = { value: string; exp?: number }
+const memoryKv = new Map<string, KvEntry>()
+
+function nowSeconds() {
+  return Math.floor(Date.now() / 1000)
+}
+
+function kvFor(c: any) {
+  const testFlag =
+    (c.env && c.env.TEST_IN_MEMORY_KV) ||
+    (typeof process !== 'undefined' && process.env && process.env.TEST_IN_MEMORY_KV)
+  if (testFlag) {
+    const cleanExpired = (key: string) => {
+      const entry = memoryKv.get(key)
+      if (entry && entry.exp && entry.exp < nowSeconds()) {
+        memoryKv.delete(key)
+        return null
+      }
+      return entry
+    }
+    return {
+      async get(key: string) {
+        return cleanExpired(key)?.value ?? null
+      },
+      async put(key: string, value: string, opts?: { expiration?: number; expirationTtl?: number }) {
+        let exp = opts?.expiration
+        if (!exp && opts?.expirationTtl) {
+          exp = nowSeconds() + opts.expirationTtl
+        }
+        memoryKv.set(key, { value, exp })
+      },
+      async delete(key: string) {
+        memoryKv.delete(key)
+      },
+      async list(params?: { prefix?: string; limit?: number }) {
+        const prefix = params?.prefix || ''
+        const limit = params?.limit ?? memoryKv.size
+        const keys = []
+        for (const key of memoryKv.keys()) {
+          if (!key.startsWith(prefix)) continue
+          const entry = cleanExpired(key)
+          if (!entry) continue
+          keys.push({ name: key })
+          if (keys.length >= limit) break
+        }
+        return { keys }
+      },
+    }
+  }
+  return c.env.INBOX_KV
+}
+
+// Basic CORS (tighten origin in production)
+app.use('*', async (c, next) => {
+  c.header('Access-Control-Allow-Origin', '*')
+  c.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Signature')
+  if (c.req.method === 'OPTIONS') {
+    return c.text('', 204)
+  }
+  await next()
+})
+
+function logEvent(name: string, extra?: Record<string, any>) {
+  const payload = { ts: new Date().toISOString(), event: name, ...extra }
+  try {
+    console.log(JSON.stringify(payload))
+  } catch (_e) {
+    console.log(name)
+  }
+}
+
+function ttlSeconds(env: Env, reqTtl?: number) {
+  const defTtl = parseInt(env.INBOX_TTL_DEFAULT || '3600', 10)
+  const maxTtl = parseInt(env.INBOX_TTL_MAX || '86400', 10)
+  let ttl = reqTtl || defTtl
+  if (ttl < 60) ttl = 60
+  if (ttl > maxTtl) ttl = maxTtl
+  return ttl
+}
+
+function key(subject: string, nonce: string) {
+  return `${subject}:${nonce}`
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isSqliteBusy(err: any) {
+  const msg = typeof err === 'string' ? err : err?.message || ''
+  return msg.toLowerCase().includes('database is locked') || msg.toLowerCase().includes('sqlite_busy')
+}
+
+function clientIp(c: any) {
+  return c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown'
+}
+
+async function rateLimit(c: any) {
+  const max = parseInt(c.env.RATE_LIMIT_MAX || '50', 10)
+  const windowSec = parseInt(c.env.RATE_LIMIT_WINDOW || '60', 10)
+  if (max <= 0) return
+  const ip = clientIp(c)
+  const rk = `rl:${ip}`
+  const kv = kvFor(c)
+  const ttl = windowSec + 5
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const raw = await kv.get(rk)
+      const now = nowSeconds()
+      if (raw) {
+        const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
+        if (reset && now < reset && count >= max) {
+          throw new HTTPException(429, { message: 'rate_limited' })
+        }
+        const next = {
+          count: reset && now < reset ? count + 1 : 1,
+          reset: reset && now < reset ? reset : now + ttl,
+        }
+        await kv.put(rk, JSON.stringify(next), { expirationTtl: ttl })
+      } else {
+        await kv.put(rk, JSON.stringify({ count: 1, reset: now + ttl }), { expirationTtl: ttl })
+      }
+      return
+    } catch (e) {
+      if (!isSqliteBusy(e) || attempt === 2) throw e
+      await sleep(5 * (attempt + 1))
+    }
+  }
+}
+
+async function notifyRateLimit(c: any) {
+  const max = parseInt(c.env.NOTIFY_RATE_MAX || c.env.RATE_LIMIT_MAX || '50', 10)
+  const windowSec = parseInt(c.env.NOTIFY_RATE_WINDOW || c.env.RATE_LIMIT_WINDOW || '60', 10)
+  if (max <= 0) return
+  const ip = clientIp(c)
+  const rk = `rl:notify:${ip}`
+  const kv = kvFor(c)
+  const raw = await kv.get(rk)
+  const now = nowSeconds()
+  const ttl = windowSec + 5
+  if (raw) {
+    const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
+    if (reset && now < reset && count >= max) {
+      throw new HTTPException(429, { message: 'notify_rate_limited' })
+    }
+    const next = {
+      count: reset && now < reset ? count + 1 : 1,
+      reset: reset && now < reset ? reset : now + ttl,
+    }
+    await kv.put(rk, JSON.stringify(next), { expirationTtl: ttl })
+  } else {
+    await kv.put(rk, JSON.stringify({ count: 1, reset: now + ttl }), { expirationTtl: ttl })
+  }
+}
+
+function replayWindow(c: any) {
+  return parseInt(c.env.REPLAY_TTL || '600', 10)
+}
+
+async function checkReplay(c: any, subj: string, nonce: string) {
+  const ttl = replayWindow(c)
+  if (ttl <= 0) return
+  const replayKey = `replay:${subj}:${nonce}`
+  const kv = kvFor(c)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const existing = await kv.get(replayKey)
+      if (existing) {
+        throw new HTTPException(409, { message: 'replay' })
+      }
+      await kv.put(replayKey, '1', { expirationTtl: ttl })
+      return
+    } catch (e) {
+      if (!isSqliteBusy(e) || attempt === 2) throw e
+      await sleep(5 * (attempt + 1))
+    }
+  }
+}
+
+// simple token check for forget/notify
+function requireToken(c: any) {
+  const token = c.req.header('Authorization') || ''
+  if (c.env.FORGET_TOKEN && token !== `Bearer ${c.env.FORGET_TOKEN}`) {
+    throw new HTTPException(401, { message: 'unauthorized' })
+  }
+}
+
+function subjectLimit(c: any, count: number) {
+  const max = parseInt(c.env.SUBJECT_MAX_ENVELOPES || '10', 10)
+  if (max > 0 && count >= max) {
+    throw new HTTPException(429, { message: 'subject_limit' })
+  }
+}
+
+async function currentSubjectCount(c: any, subj: string) {
+  const kv = kvFor(c)
+  const list = await kv.list({ prefix: `${subj}:`, limit: 50 })
+  return list.keys.length
+}
+
+function validatePayloadSize(c: any, payload: string) {
+  const maxBytes = parseInt(c.env.PAYLOAD_MAX_BYTES || '65536', 10)
+  if (maxBytes > 0 && new TextEncoder().encode(payload).length > maxBytes) {
+    throw new HTTPException(413, { message: 'payload_too_large' })
+  }
+}
+
+function validateEmail(email?: string) {
+  if (!email) return false
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+}
+
+function validateUrl(url?: string) {
+  if (!url) return false
+  try {
+    const u = new URL(url)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  if (!hex || hex.length % 2 !== 0) {
+    throw new HTTPException(401, { message: 'invalid_signature' })
+  }
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16)
+  }
+  return bytes
+}
+
+async function verifyInboxSignature(c: any, body: string) {
+  const secret = c.env.INBOX_HMAC_SECRET
+  if (!secret) return
+  const sig = c.req.header('x-signature') || c.req.header('X-Signature')
+  if (!sig) {
+    throw new HTTPException(401, { message: 'missing_signature' })
+  }
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const signatureBytes = hexToBytes(sig.trim().toLowerCase())
+  const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
+  if (!ok) {
+    throw new HTTPException(401, { message: 'invalid_signature' })
+  }
+}
+
+app.post('/inbox', async (c) => {
+  const raw = await c.req.text()
+  await verifyInboxSignature(c, raw)
+  const body = JSON.parse(raw) as { subject: string; nonce: string; payload: string; ttlSeconds?: number }
+  if (!body.subject || !body.nonce || !body.payload) {
+    throw new HTTPException(400, { message: 'missing_fields' })
+  }
+  const kv = kvFor(c)
+  await rateLimit(c)
+  await checkReplay(c, body.subject, body.nonce)
+  validatePayloadSize(c, body.payload)
+  const subjCount = await currentSubjectCount(c, body.subject)
+  subjectLimit(c, subjCount)
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds(c.env, body.ttlSeconds)
+  const item: InboxItem = { payload: body.payload, exp }
+  await kv.put(key(body.subject, body.nonce), JSON.stringify(item), { expiration: exp })
+  logEvent('inbox_put', { subject: body.subject })
+  return c.json({ status: 'OK', exp }, 201)
+})
+
+app.get('/inbox/:subject/:nonce', async (c) => {
+  const subj = c.req.param('subject')
+  const nonce = c.req.param('nonce')
+  const kv = kvFor(c)
+  const raw = await kv.get(key(subj, nonce))
+  if (!raw) throw new HTTPException(404, { message: 'not_found' })
+  const item = JSON.parse(raw) as InboxItem
+  await kv.delete(key(subj, nonce))
+  logEvent('inbox_get', { subject: subj })
+  return c.json({ status: 'OK', payload: item.payload, exp: item.exp })
+})
+
+app.post('/forget', async (c) => {
+  requireToken(c)
+  const body = await c.req.json<{ subject: string }>()
+  if (!body.subject) throw new HTTPException(400, { message: 'missing_subject' })
+  const prefix = `${body.subject}:`
+  const kv = kvFor(c)
+  const list = await kv.list({ prefix })
+  const deletes = list.keys.map((k) => kv.delete(k.name))
+  await Promise.all(deletes)
+  logEvent('forget', { subject: body.subject, deleted: deletes.length })
+  return c.json({ status: 'OK', deleted: deletes.length })
+})
+
+app.post('/notify', async (c) => {
+  requireToken(c)
+  const body = await c.req.json<{ to?: string; subject?: string; text?: string; html?: string; data?: any; webhookUrl?: string }>()
+  if (!body.to && !body.webhookUrl && !c.env.NOTIFY_WEBHOOK) {
+    throw new HTTPException(400, { message: 'missing_destination' })
+  }
+  await notifyRateLimit(c)
+  if (body.to && !validateEmail(body.to)) {
+    throw new HTTPException(400, { message: 'invalid_email' })
+  }
+  const webhook = body.webhookUrl || c.env.NOTIFY_WEBHOOK
+  if (webhook && !validateUrl(webhook)) {
+    throw new HTTPException(400, { message: 'invalid_webhook_url' })
+  }
+  // webhook first (either body.webhookUrl or env NOTIFY_WEBHOOK)
+  if (webhook) {
+    const resp = await fetch(webhook, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: body.to, subject: body.subject, text: body.text, html: body.html, data: body.data }),
+    })
+    if (!resp.ok) {
+      throw new HTTPException(502, { message: 'notify_webhook_failed' })
+    }
+    logEvent('notify', { via: 'webhook' })
+    return c.json({ status: 'OK', delivered: 'webhook' })
+  }
+  // SendGrid fallback
+  if (c.env.SENDGRID_KEY && body.to) {
+    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${c.env.SENDGRID_KEY}`,
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: body.to }] }],
+        from: { email: 'no-reply@example.com' },
+        subject: body.subject || 'Notification',
+        content: [{ type: body.html ? 'text/html' : 'text/plain', value: body.html || body.text || '' }],
+      }),
+    })
+    if (!resp.ok) {
+      throw new HTTPException(502, { message: 'notify_sendgrid_failed' })
+    }
+    logEvent('notify', { via: 'sendgrid' })
+    return c.json({ status: 'OK', delivered: 'sendgrid' })
+  }
+  throw new HTTPException(400, { message: 'notify_unconfigured' })
+})
+
+// Cron/cleanup: bind route for Cloudflare scheduled event
+export default {
+  fetch: app.fetch,
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const now = Math.floor(Date.now() / 1000)
+    const kv = env.TEST_IN_MEMORY_KV ? kvFor({ env }) : env.INBOX_KV
+    const prefixes = ['', 'replay:']
+    let deleted = 0
+    for (const prefix of prefixes) {
+      const list = await kv.list({ prefix })
+      for (const k of list.keys) {
+        const raw = await kv.get(k.name)
+        if (!raw) continue
+        try {
+          const item = JSON.parse(raw) as InboxItem
+          if (item.exp && item.exp < now) {
+            ctx.waitUntil(kv.delete(k.name))
+            deleted++
+          }
+        } catch (_e) {
+          ctx.waitUntil(kv.delete(k.name))
+          deleted++
+        }
+      }
+    }
+    logEvent('janitor', { ts: now, deleted })
+  },
+}

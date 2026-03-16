@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Lua 5.4
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4 lua5.4-dev luarocks libsodium-dev
+
+      - name: "Install required rocks (Lua 5.4: lua-cjson/luv/lsqlite3/luaossl/luasodium)"
+        run: |
+          rocks=(lua-cjson luv lsqlite3 luaossl luasodium)
+          for rock in "${rocks[@]}"; do
+            luarocks --lua-version=5.4 install --local "$rock" || exit 1
+          done
+          echo "$HOME/.luarocks/bin" >> $GITHUB_PATH
+
+      - name: Export LuaRocks paths (Lua 5.4)
+        run: |
+          eval "$(luarocks --lua-version=5.4 path)"
+          {
+            echo "LUA_PATH=$LUA_PATH"
+            echo "LUA_CPATH=$LUA_CPATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Install luacheck (Lua 5.4)
+        run: |
+          if command -v luarocks >/dev/null 2>&1; then
+            luarocks --lua-version=5.4 install --local luacheck || true
+            echo "$HOME/.luarocks/bin" >> $GITHUB_PATH
+          else
+            echo "luarocks not installed; failing luacheck install" && exit 1
+          fi
+
+      - name: Install stylua binary
+        run: |
+          STYLUA_VERSION=2.4.0
+          curl -sSfL https://github.com/JohnnyMorganz/StyLua/releases/download/v${STYLUA_VERSION}/stylua-linux-x86_64.zip -o /tmp/stylua.zip
+          unzip -o /tmp/stylua.zip -d /tmp
+          sudo mv /tmp/stylua /usr/local/bin/stylua
+          stylua --version
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION=8.30.0
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+
+      - name: Preflight (schemas + Lua syntax + deps)
+        env:
+          RUN_DEPS_CHECK: 1
+          AUTH_REQUIRE_SIGNATURE: 1  # fail-closed: require libsodium/openssl present
+          AUTH_SIGNATURE_SECRET: test-ci-secret
+        run: scripts/verify/preflight.sh
+
+      - name: Enforce libsodium/ed25519
+        run: scripts/verify/libsodium_strict.sh
+
+      - name: Checksum alert (audit/queue/wal)
+        env:
+          AUDIT_LOG_DIR: arweave/manifests
+        run: scripts/verify/checksum_alert.sh
+
+      - name: Secret scan (gitleaks)
+        run: gitleaks detect --no-git -v
+
+      - name: Arweave hash verify (optional)
+        if: env.ARWEAVE_VERIFY_FILE != '' && env.ARWEAVE_VERIFY_TX != ''
+        env:
+          ARWEAVE_VERIFY_FILE: ${{ env.ARWEAVE_VERIFY_FILE }}
+          ARWEAVE_VERIFY_TX: ${{ env.ARWEAVE_VERIFY_TX }}
+        run: scripts/verify/verify_arweave_hash.sh "$ARWEAVE_VERIFY_FILE" "$ARWEAVE_VERIFY_TX"
+
+      - name: Arweave hash verify (main branch)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main')
+        env:
+          ARWEAVE_VERIFY_FILE: ${{ env.ARWEAVE_VERIFY_FILE }}
+          ARWEAVE_VERIFY_TX: ${{ env.ARWEAVE_VERIFY_TX }}
+        run: |
+          if [ -z "${ARWEAVE_VERIFY_FILE:-}" ] || [ -z "${ARWEAVE_VERIFY_TX:-}" ]; then
+            echo "ARWEAVE_VERIFY_* not set; skipping enforced hash check on main"
+            exit 0
+          fi
+          scripts/verify/verify_arweave_hash.sh "$ARWEAVE_VERIFY_FILE" "$ARWEAVE_VERIFY_TX"
+
+      - name: Luacheck (informational)
+        continue-on-error: true
+        run: |
+          luacheck ao scripts || true
+
+      - name: Stylua
+        run: stylua --check ao scripts
+
+      - name: Export audit logs (mock)
+        if: always()
+        run: scripts/export/audit_ci.sh
+
+      - name: Upload audit logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-logs
+          path: artifacts/audit.ndjson
+          if-no-files-found: ignore
+
+      - name: Arweave health (optional)
+        if: env.ARWEAVE_HTTP_ENDPOINT != ''
+        env:
+          ARWEAVE_HTTP_ENDPOINT: ${{ env.ARWEAVE_HTTP_ENDPOINT }}
+          ARWEAVE_HTTP_TIMEOUT: 5
+        run: bash scripts/verify/arweave_health.sh
+
+      - name: Signer check (optional)
+        if: env.ARWEAVE_HTTP_REAL == '1'
+        env:
+          ARWEAVE_HTTP_SIGNER: ${{ env.ARWEAVE_HTTP_SIGNER }}
+          ARWEAVE_HTTP_REAL: ${{ env.ARWEAVE_HTTP_REAL }}
+        run: bash scripts/verify/signer_check.sh

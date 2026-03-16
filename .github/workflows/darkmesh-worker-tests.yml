@@ -1,0 +1,34 @@
+name: darkmesh-worker-tests
+
+on:
+  push:
+    paths:
+      - "blackcat-darkmesh-ao/worker/**"
+      - "docker-compose.test.yml"
+  pull_request:
+    paths:
+      - "blackcat-darkmesh-ao/worker/**"
+      - "docker-compose.test.yml"
+  workflow_dispatch:
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: blackcat-darkmesh-ao/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: |
+          npm ci --ignore-scripts
+          npm install workerd@1.20241205.0 @cloudflare/workerd-linux-64@1.20241205.0 --no-save --progress=false
+      - name: Run worker tests (in-memory KV)
+        run: |
+          TEST_IN_MEMORY_KV=1 \
+          MINIFLARE_KV_PERSIST=false \
+          MINIFLARE_D1_PERSIST=:memory: \
+          npm test -- --testTimeout=30000 --reporter=basic --pool=forks --maxConcurrency=1

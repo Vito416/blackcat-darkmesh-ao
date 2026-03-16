@@ -1,0 +1,40 @@
+name = "blackcat-inbox"
+main = "src/index.ts"
+compatibility_date = "2024-08-01"
+workers_dev = true
+
+[vars]
+INBOX_TTL_DEFAULT = "3600"
+INBOX_TTL_MAX = "86400"
+RATE_LIMIT_MAX = "50"
+RATE_LIMIT_WINDOW = "60"
+REPLAY_TTL = "600"
+SUBJECT_MAX_ENVELOPES = "10"
+PAYLOAD_MAX_BYTES = "65536"
+NOTIFY_RATE_MAX = "20"
+NOTIFY_RATE_WINDOW = "60"
+INBOX_HMAC_SECRET = ""
+NOTIFY_FROM = "no-reply@example.com"
+TEST_IN_MEMORY_KV = "1"
+
+[[kv_namespaces]]
+binding = "INBOX_KV"
+id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+[env.production.vars]
+INBOX_TTL_DEFAULT = "3600"
+INBOX_TTL_MAX = "86400"
+RATE_LIMIT_MAX = "50"
+RATE_LIMIT_WINDOW = "60"
+REPLAY_TTL = "600"
+SUBJECT_MAX_ENVELOPES = "10"
+PAYLOAD_MAX_BYTES = "65536"
+NOTIFY_RATE_MAX = "20"
+NOTIFY_RATE_WINDOW = "60"
+INBOX_HMAC_SECRET = ""
+NOTIFY_FROM = "no-reply@example.com"
+
+[env.production]
+  [[env.production.kv_namespaces]]
+  binding = "INBOX_KV"
+  id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
