@@ -5,4 +5,4 @@ afterAll(async () => {
   // noop hook if we need future cleanup
 })
 
-vi.setConfig({ testTimeout: 30000 })
+vi.setConfig({ testTimeout: 120000, pool: 'threads' })

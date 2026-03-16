@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Lua 5.4
         run: |
@@ -65,7 +65,9 @@ jobs:
           RUN_DEPS_CHECK: 1
           AUTH_REQUIRE_SIGNATURE: 1  # fail-closed: require libsodium/openssl present
           AUTH_SIGNATURE_SECRET: test-ci-secret
-        run: scripts/verify/preflight.sh
+        run: |
+          chmod +x scripts/verify/preflight.sh
+          scripts/verify/preflight.sh
 
       - name: Enforce libsodium/ed25519
         run: scripts/verify/libsodium_strict.sh
@@ -73,7 +75,9 @@ jobs:
       - name: Checksum alert (audit/queue/wal)
         env:
           AUDIT_LOG_DIR: arweave/manifests
-        run: scripts/verify/checksum_alert.sh
+        run: |
+          chmod +x scripts/verify/checksum_alert.sh
+          scripts/verify/checksum_alert.sh
 
       - name: Secret scan (gitleaks)
         run: gitleaks detect --no-git -v
@@ -107,7 +111,9 @@ jobs:
 
       - name: Export audit logs (mock)
         if: always()
-        run: scripts/export/audit_ci.sh
+        run: |
+          chmod +x scripts/export/audit_ci.sh
+          scripts/export/audit_ci.sh
 
       - name: Upload audit logs artifact
         if: always()
