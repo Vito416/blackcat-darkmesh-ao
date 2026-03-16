@@ -19,7 +19,7 @@ jobs:
   ao-write:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build ao-write-test image
         run: docker build -f Dockerfile.ao-write-test -t ao-write-ci .
       - name: Run luacheck + ingest_smoke + bundler
