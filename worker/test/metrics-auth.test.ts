@@ -26,7 +26,7 @@ describe('/metrics auth (worker)', () => {
 
   it('accepts basic', async () => {
     const token = Buffer.from('u:p').toString('base64')
-    const res = await req({ authorization: `Basic ${token}` })
+    const res = await req({ authorization: `Basic ${token}`, 'x-metrics-token': 't1' })
     expect(res.status).toBe(200)
   })
 })
