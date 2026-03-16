@@ -1,40 +1,32 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { unstable_dev } from 'wrangler'
+import { describe, it, expect } from 'vitest'
+import mod from '../src/index'
 
-let worker: any
+const env = {
+  METRICS_BASIC_USER: 'u',
+  METRICS_BASIC_PASS: 'p',
+  METRICS_BEARER_TOKEN: 't1',
+  TEST_IN_MEMORY_KV: 1,
+}
 
-beforeAll(async () => {
-  worker = await unstable_dev('src/index.ts', {
-    experimental: { disableExperimentalWarning: true },
-    kvNamespaces: ['INBOX_KV'],
-    kvPersist: false,
-    vars: {
-      METRICS_BASIC_USER: 'u',
-      METRICS_BASIC_PASS: 'p',
-      METRICS_BEARER_TOKEN: 't1',
-      TEST_IN_MEMORY_KV: '1',
-    },
-  })
-})
-
-afterAll(async () => {
-  await worker?.stop()
-})
+async function req(headers: Record<string, string> = {}) {
+  const r = new Request('http://localhost/metrics', { headers })
+  return mod.fetch(r, env as any, {} as any)
+}
 
 describe('/metrics auth (worker)', () => {
   it('rejects when missing', async () => {
-    const res = await worker.fetch('http://localhost/metrics')
+    const res = await req()
     expect(res.status).toBe(401)
   })
 
   it('accepts bearer', async () => {
-    const res = await worker.fetch('http://localhost/metrics', { headers: { authorization: 'Bearer t1' } })
+    const res = await req({ authorization: 'Bearer t1' })
     expect(res.status).toBe(200)
   })
 
   it('accepts basic', async () => {
     const token = Buffer.from('u:p').toString('base64')
-    const res = await worker.fetch('http://localhost/metrics', { headers: { authorization: `Basic ${token}` } })
+    const res = await req({ authorization: `Basic ${token}` })
     expect(res.status).toBe(200)
   })
 })
