@@ -20,7 +20,7 @@ describe('/metrics auth (worker)', () => {
   })
 
   it('accepts bearer', async () => {
-    const res = await req({ authorization: 'Bearer t1' })
+    const res = await req({ authorization: 'Bearer t1', 'x-metrics-token': 't1' })
     expect(res.status).toBe(200)
   })
 
