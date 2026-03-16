@@ -708,8 +708,8 @@ if not os.getenv "SKIP_CATALOG" then
     for _, item in ipairs(resp.payload.items) do
       assert_falsy(seen[item.sku], "pagination duplicate sku")
       seen[item.sku] = true
+    end
   end
-end
 
   -- search miss
   local search_miss =

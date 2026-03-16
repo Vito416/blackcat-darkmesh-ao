@@ -9,10 +9,10 @@
 -- - Output is a compact JSON array of event objects; WeaveDB is immutable so
 --   do not include PII here.
 
-local path = os.getenv("AO_WEAVEDB_EXPORT_PATH") or "public-export.ndjson"
+local path = os.getenv "AO_WEAVEDB_EXPORT_PATH" or "public-export.ndjson"
 local json_ok, cjson = pcall(require, "cjson.safe")
 if not json_ok then
-  io.stderr:write("cjson.safe not available\n")
+  io.stderr:write "cjson.safe not available\n"
   os.exit(1)
 end
 
@@ -24,9 +24,11 @@ end
 
 local rows = {}
 for line in f:lines() do
-  if line and line:match("%S") then
+  if line and line:match "%S" then
     local obj = cjson.decode(line)
-    if obj then table.insert(rows, obj) end
+    if obj then
+      table.insert(rows, obj)
+    end
   end
 end
 f:close()

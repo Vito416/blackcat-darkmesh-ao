@@ -212,10 +212,10 @@ function Validation.validate_envelope(cmd)
   cmd.siteId = cmd.siteId or cmd["Site-Id"] or cmd.SiteId
   cmd.gatewayId = cmd.gatewayId or cmd["Gateway-Id"] or cmd.gateway
 
-  local ok_tags, missing = Validation.require_tags({
+  local ok_tags, missing = Validation.require_tags {
     Action = cmd.action,
     ["Request-Id"] = cmd.requestId,
-  })
+  }
   if not ok_tags then
     return false, missing
   end

@@ -357,16 +357,17 @@ function handlers.ResolveRoute(msg)
       and state.edge_cache[msg["Site-Id"]][route.path or msg.Path]
     metrics.inc "site.ResolveRoute.count"
     metrics.tick()
-    return true, {
-      siteId = msg["Site-Id"],
-      path = msg.Path,
-      locale = locale,
-      pageId = route.pageId,
-      layoutId = route.layoutId,
-      type = route.type or "page",
-      cache = cache_policy,
-      warnings = route.warnings,
-    }
+    return true,
+      {
+        siteId = msg["Site-Id"],
+        path = msg.Path,
+        locale = locale,
+        pageId = route.pageId,
+        layoutId = route.layoutId,
+        type = route.type or "page",
+        cache = cache_policy,
+        warnings = route.warnings,
+      }
   end)
 end
 
@@ -424,14 +425,15 @@ function handlers.GetPage(msg)
         end
       end
     end
-    return true, {
-      siteId = msg["Site-Id"],
-      pageId = msg["Page-Id"],
-      version = version,
-      locale = locale,
-      content = content,
-      warnings = page.warnings,
-    }
+    return true,
+      {
+        siteId = msg["Site-Id"],
+        pageId = msg["Page-Id"],
+        version = version,
+        locale = locale,
+        content = content,
+        warnings = page.warnings,
+      }
   end)
 end
 
@@ -486,13 +488,14 @@ function handlers.GetLayout(msg)
         end
       end
     end
-    return true, {
-      layoutId = msg["Layout-Id"],
-      version = version,
-      locale = locale or nil,
-      content = layout.content,
-      warnings = layout.warnings,
-    }
+    return true,
+      {
+        layoutId = msg["Layout-Id"],
+        version = version,
+        locale = locale or nil,
+        content = layout.content,
+        warnings = layout.warnings,
+      }
   end)
 end
 
@@ -552,14 +555,15 @@ function handlers.GetNavigation(msg)
         end
       end
     end
-    return true, {
-      siteId = msg["Site-Id"],
-      menuId = msg["Menu-Id"],
-      version = version,
-      locale = locale,
-      items = menu.items,
-      warnings = menu.warnings,
-    }
+    return true,
+      {
+        siteId = msg["Site-Id"],
+        menuId = msg["Menu-Id"],
+        version = version,
+        locale = locale,
+        items = menu.items,
+        warnings = menu.warnings,
+      }
   end)
 end
 
@@ -1345,7 +1349,7 @@ function handlers.RunPublishScheduler(msg)
 
       if entry.status == "failed" then
         table.insert(pending, entry)
-      break
+        break
       end
 
       if should_publish then
@@ -1512,7 +1516,9 @@ function handlers.GetPublishLog(msg)
   local total_site = 0
   if msg["Site-Id"] then
     for _, e in ipairs(list) do
-      if e.siteId == msg["Site-Id"] then total_site = total_site + 1 end
+      if e.siteId == msg["Site-Id"] then
+        total_site = total_site + 1
+      end
     end
   else
     total_site = #list

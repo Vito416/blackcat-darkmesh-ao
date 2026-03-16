@@ -1,5 +1,6 @@
 -- Minimal smoke for AO: load key processes to ensure they parse under Lua 5.4.
-package.path = table.concat({ "?.lua", "?/init.lua", "ao/?.lua", "ao/?/init.lua", package.path }, ";")
+package.path =
+  table.concat({ "?.lua", "?/init.lua", "ao/?.lua", "ao/?/init.lua", package.path }, ";")
 
 local ok, catalog = pcall(require, "ao.catalog.process")
 if not ok then
@@ -17,9 +18,14 @@ if not ok3 then
   os.exit(1)
 end
 -- minimal replay-like sanity: apply a shipment update twice
-local ev = { type = "ShipmentUpdated", shipmentId = "smoke-ship", status = "shipped", orderId = "order-smoke" }
+local ev = {
+  type = "ShipmentUpdated",
+  shipmentId = "smoke-ship",
+  status = "shipped",
+  orderId = "order-smoke",
+}
 if apply and apply.handle and apply.handle.ShipmentUpdated then
   apply.handle.ShipmentUpdated(ev)
   apply.handle.ShipmentUpdated(ev) -- second pass should not error
 end
-print("ingest_smoke: OK")
+print "ingest_smoke: OK"

@@ -1492,7 +1492,7 @@ function handlers.SearchCatalog(msg)
             end
           end
           if not all_on then
-        break
+            break
           end
         end
         if segments and segment then
@@ -1503,7 +1503,7 @@ function handlers.SearchCatalog(msg)
             end
           end
           if not ok_seg then
-        break
+            break
           end
         end
         if not available and state.inventory[msg["Site-Id"]] then
@@ -1638,7 +1638,7 @@ function handlers.SearchCatalog(msg)
         end
       end
     end
--- continue removed
+    -- continue removed
   end
   table.sort(results, function(a, b)
     if sort == "price" or sort == "price_asc" then
@@ -4834,7 +4834,7 @@ function handlers.ForgetSubject(msg)
   end
   local count = forget_subject(msg["Site-Id"], msg.Subject)
   if WORKER_FORGET_URL then
-    local body = string.format('{\"subject\":\"%s\"}', msg.Subject)
+    local body = string.format('{"subject":"%s"}', msg.Subject)
     local cmd = string.format(
       "curl -sS -X POST %q -H 'Content-Type: application/json'%s -d %q >/dev/null 2>&1",
       WORKER_FORGET_URL,

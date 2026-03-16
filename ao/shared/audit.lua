@@ -91,7 +91,7 @@ local function rotate_if_needed(path)
 end
 
 function Audit.append(entry)
-  if os.getenv("AUDIT_DISABLE") == "1" then
+  if os.getenv "AUDIT_DISABLE" == "1" then
     return true
   end
   if not entry.ts then

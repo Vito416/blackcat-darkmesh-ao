@@ -42,7 +42,9 @@ local function log(event)
 end
 
 function Metrics.inc(name, value)
-  if os.getenv("METRICS_DISABLED") == "1" then return end
+  if os.getenv "METRICS_DISABLED" == "1" then
+    return
+  end
   value = value or 1
   counters[name] = (counters[name] or 0) + value
   log { name = name, value = counters[name] }
@@ -56,7 +58,9 @@ function Metrics.inc(name, value)
 end
 
 function Metrics.tick()
-  if os.getenv("METRICS_DISABLED") == "1" then return end
+  if os.getenv "METRICS_DISABLED" == "1" then
+    return
+  end
   local now = os.time()
   if FLUSH_INTERVAL > 0 and (now - last_flush) >= FLUSH_INTERVAL then
     Metrics.flush_prom()
@@ -99,7 +103,9 @@ function Metrics.counter(name, value)
 end
 
 function Metrics.gauge(name, value)
-  if os.getenv("METRICS_DISABLED") == "1" then return end
+  if os.getenv "METRICS_DISABLED" == "1" then
+    return
+  end
   gauges[name] = value
   log { name = name, value = value }
 end
