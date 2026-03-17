@@ -76,6 +76,41 @@ function Metrics.flush_prom()
   if not PROM_PATH then
     return
   end
+  -- optional gauges sourced from queue files so gateway can scrape them
+  local function file_lines(path)
+    if not path or path == "" then
+      return nil
+    end
+    local f = io.open(path, "r")
+    if not f then
+      return nil
+    end
+    local n = 0
+    for _ in f:lines() do
+      n = n + 1
+    end
+    f:close()
+    return n
+  end
+  local queue_path = os.getenv "AO_QUEUE_PATH"
+  local retry_path = os.getenv "AO_WEBHOOK_RETRY_PATH" or os.getenv "AO_RETRY_QUEUE_PATH"
+  local breaker_flag = os.getenv "AO_PSP_BREAKER_FLAG"
+  local outbox_size = file_lines(queue_path)
+  local retry_size = file_lines(retry_path)
+  if outbox_size then
+    gauges.ao_outbox_queue_size = outbox_size
+  end
+  if retry_size then
+    gauges.ao_webhook_retry_queue_size = retry_size
+  end
+  if breaker_flag then
+    local bf = io.open(breaker_flag, "r")
+    if bf then
+      local val = bf:read "*l"
+      bf:close()
+      gauges.ao_psp_breaker_open = tonumber(val) or 0
+    end
+  end
   ensure_dir(PROM_PATH)
   local f = io.open(PROM_PATH, "w")
   if not f then

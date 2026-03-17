@@ -109,6 +109,24 @@ jobs:
       - name: Stylua
         run: stylua --check ao scripts
 
+      - name: Ingest smoke
+        run: lua5.4 scripts/verify/ingest_smoke.lua
+
+      - name: PII scrub regression
+        run: lua5.4 scripts/verify/pii_scrub.lua
+
+      - name: Bundle export (if export file present)
+        env:
+          AO_WEAVEDB_EXPORT_PATH: ${{ env.AO_WEAVEDB_EXPORT_PATH }}
+        run: |
+          mkdir -p artifacts
+          EXPORT=${AO_WEAVEDB_EXPORT_PATH:-dev/public-export.ndjson}
+          if [ -f "${EXPORT}" ]; then
+            AO_WEAVEDB_EXPORT_PATH="$EXPORT" lua5.4 scripts/export/bundle_export.lua > artifacts/bundle.json
+          else
+            echo "AO_WEAVEDB_EXPORT_PATH not found, skipping bundle export"
+          fi
+
       - name: Export audit logs (mock)
         if: always()
         run: |
@@ -121,6 +139,14 @@ jobs:
         with:
           name: audit-logs
           path: artifacts/audit.ndjson
+          if-no-files-found: ignore
+
+      - name: Upload bundle artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ao-bundle
+          path: artifacts/bundle.json
           if-no-files-found: ignore
 
       - name: Arweave health (optional)

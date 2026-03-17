@@ -62,4 +62,7 @@ function Export.write(ev)
   f:close()
 end
 
+-- expose for tests
+Export._scrub = scrub
+
 return Export
