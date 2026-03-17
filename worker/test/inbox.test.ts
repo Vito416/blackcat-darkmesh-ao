@@ -52,6 +52,9 @@ describe('Inbox flow', () => {
       body: JSON.stringify({ subject: 'subj2' }),
     })
     expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.deleted).toBeGreaterThanOrEqual(1)
+    expect(body.replayDeleted).toBeGreaterThanOrEqual(1)
     const getRes = await req('/inbox/subj2/n2')
     expect(getRes.status).toBe(404)
   })

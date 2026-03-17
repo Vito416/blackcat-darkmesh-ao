@@ -315,13 +315,18 @@ app.post('/forget', async (c) => {
   const body = await c.req.json<{ subject: string }>()
   if (!body.subject) throw new HTTPException(400, { message: 'missing_subject' })
   const prefix = `${body.subject}:`
+  const replayPrefix = `replay:${body.subject}:`
   const kv = kvFor(c)
   const list = await kv.list({ prefix })
-  const deletes = list.keys.map((k) => kv.delete(k.name))
-  await Promise.all(deletes)
-  logEvent('forget', { subject: body.subject, deleted: deletes.length })
-  inc('worker_forget_deleted', deletes.length)
-  return c.json({ status: 'OK', deleted: deletes.length })
+  const replayList = await kv.list({ prefix: replayPrefix })
+  const deleted = list.keys.length
+  const replayDeleted = replayList.keys.length
+  await Promise.all(list.keys.map((k) => kv.delete(k.name)))
+  await Promise.all(replayList.keys.map((k) => kv.delete(k.name)))
+  logEvent('forget', { subject: body.subject, deleted, replayDeleted })
+  inc('worker_forget_deleted', deleted)
+  inc('worker_forget_replay_deleted', replayDeleted)
+  return c.json({ status: 'OK', deleted, replayDeleted })
 })
 
 app.get('/metrics', async (c) => {

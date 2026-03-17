@@ -10,6 +10,7 @@ const help: Record<string, string> = {
   worker_inbox_replay_total: 'Inbox replay attempts blocked',
   worker_inbox_expired_total: 'Inbox items expired by janitor',
   worker_forget_deleted_total: 'Inbox entries deleted via forget',
+  worker_forget_replay_deleted_total: 'Replay keys deleted via forget',
   worker_rate_limit_blocked_total: 'Requests blocked by inbox rate-limit',
   worker_notify_rate_blocked_total: 'Notify requests blocked',
   worker_notify_sent_total: 'Notify deliveries accepted',
