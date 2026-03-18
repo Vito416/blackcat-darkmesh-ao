@@ -1,7 +1,7 @@
 version: '3.9'
 services:
   write:
-    image: lua:5.4
+    image: alpine:3.19
     working_dir: /app
     volumes:
       - ../blackcat-darkmesh-write:/app:ro
@@ -10,7 +10,7 @@ services:
       WRITE_REQUIRE_SIGNATURE: '0'
       WRITE_REQUIRE_NONCE: '0'
       METRICS_PROM_PATH: /tmp/metrics.prom
-    command: ["lua", "scripts/verify/publish_outbox_mock_ao.lua"]
+    command: ["/bin/sh", "-c", "apk add --no-cache lua5.4 lua5.4-dev luarocks && lua5.4 scripts/verify/publish_outbox_mock_ao.lua"]
 
   gateway:
     build: ../blackcat-darkmesh-gateway
@@ -23,7 +23,7 @@ services:
     command: ["npm", "test", "--", "--run", "tests/metrics-auth.test.ts"]
 
   worker:
-    build: ../blackcat-darkmesh-ao/worker
+    build: ./worker
     working_dir: /app
     environment:
       TEST_IN_MEMORY_KV: '1'
