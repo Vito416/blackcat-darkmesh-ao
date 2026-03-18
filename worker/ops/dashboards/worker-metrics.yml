@@ -53,3 +53,9 @@ dashboard:
       targets:
         - expr: worker_notify_hmac_optional
           legendFormat: hmac_optional
+    - title: "Notify HMAC invalid"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(worker_notify_hmac_invalid_total[5m])
+          legendFormat: hmac_invalid/s
