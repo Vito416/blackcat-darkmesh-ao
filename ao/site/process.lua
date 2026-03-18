@@ -171,6 +171,7 @@ end
 local function with_cache(action, key, fetch_fn)
   local cached, stale = cache_get(action, key)
   if cached then
+    metrics.inc(stale and "ao_cache_stale_hit" or "ao_cache_hit")
     cached.cache = cached.cache or {}
     cached.cache.hit = true
     cached.cache.stale = stale
@@ -191,6 +192,7 @@ local function with_cache(action, key, fetch_fn)
   if inflight[cache_key(action, key)] then
     local inflight_cached = cache_get(action, key)
     if inflight_cached then
+      metrics.inc "ao_cache_stale_hit"
       inflight_cached.cache = inflight_cached.cache or {}
       inflight_cached.cache.hit = true
       inflight_cached.cache.stale = true
@@ -207,6 +209,7 @@ local function with_cache(action, key, fetch_fn)
   if not ok then
     local stale_val = cache_get(action, key)
     if stale_val then
+      metrics.inc "ao_cache_stale_fallback"
       stale_val.cache = stale_val.cache or {}
       stale_val.cache.hit = true
       stale_val.cache.stale = true
@@ -219,6 +222,7 @@ local function with_cache(action, key, fetch_fn)
     return result
   end
   cache_put(action, key, result)
+  metrics.inc "ao_cache_miss"
   result.cache = result.cache or {}
   result.cache.hit = false
   result.cache.stale = false
@@ -987,6 +991,7 @@ function handlers.GenerateSitemap(msg)
   if not ok then
     return codec.error("INVALID_INPUT", "Missing field", { missing = missing })
   end
+  local started = os.clock()
   cache_purge_site(msg["Site-Id"]) -- safety noop for sitemap cache consumers
   local base = msg["Base-Url"]:gsub("/+$", "")
   local urls = {}
@@ -1002,6 +1007,8 @@ function handlers.GenerateSitemap(msg)
       table.insert(urls, { loc = loc, lastmod = page.updatedAt or os.date "!%Y-%m-%d" })
     end
   end
+  metrics.inc "ao_sitemap_export_total"
+  metrics.gauge("ao_sitemap_export_duration_seconds", os.clock() - started)
   return codec.ok { siteId = msg["Site-Id"], urls = urls, count = #urls }
 end
 

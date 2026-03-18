@@ -13,9 +13,11 @@ SUBJECT_MAX_ENVELOPES = "10"
 PAYLOAD_MAX_BYTES = "65536"
 NOTIFY_RATE_MAX = "20"
 NOTIFY_RATE_WINDOW = "60"
-INBOX_HMAC_SECRET = ""
 NOTIFY_FROM = "no-reply@example.com"
 TEST_IN_MEMORY_KV = "1"
+
+[triggers]
+crons = ["*/5 * * * *"]
 
 [[kv_namespaces]]
 binding = "INBOX_KV"
@@ -31,8 +33,10 @@ SUBJECT_MAX_ENVELOPES = "10"
 PAYLOAD_MAX_BYTES = "65536"
 NOTIFY_RATE_MAX = "20"
 NOTIFY_RATE_WINDOW = "60"
-INBOX_HMAC_SECRET = ""
 NOTIFY_FROM = "no-reply@example.com"
+TEST_IN_MEMORY_KV = "0"
+REQUIRE_SECRETS = "1"
+REQUIRE_METRICS_AUTH = "1"
 
 [env.production]
   [[env.production.kv_namespaces]]

@@ -9,6 +9,16 @@
 -- - BASE_URL must be set (no trailing slash).
 -- - Reads in-process catalog state (including persisted AO_STATE_DIR if set).
 
+local metrics_ok, metrics = pcall(require, "ao.shared.metrics")
+if metrics_ok and metrics.register then
+  metrics.register("ao_sitemap_export_total", "counter", "Sitemap exports executed")
+  metrics.register(
+    "ao_sitemap_export_duration_seconds",
+    "gauge",
+    "Duration of last sitemap export in seconds"
+  )
+end
+
 local base_url = os.getenv "BASE_URL"
 if not base_url or base_url == "" then
   io.stderr:write "BASE_URL is required (e.g., https://example.com)\n"
@@ -20,6 +30,7 @@ local path = os.getenv "SITEMAP_PATH" or "sitemap.xml"
 
 local catalog = require "ao.catalog.process"
 local state = catalog._state or {}
+local started = os.clock()
 
 local function xml_escape(s)
   s = tostring(s or "")
@@ -49,5 +60,11 @@ local f = assert(io.open(path, "w"))
 f:write(table.concat(lines, "\n"))
 f:write "\n"
 f:close()
+
+if metrics_ok then
+  metrics.inc "ao_sitemap_export_total"
+  metrics.gauge("ao_sitemap_export_duration_seconds", os.clock() - started)
+  metrics.flush_prom()
+end
 
 print("sitemap written to " .. path)

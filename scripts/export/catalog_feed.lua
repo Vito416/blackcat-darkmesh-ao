@@ -7,6 +7,17 @@
 -- Reads in-process catalog state (including persisted AO_STATE_DIR if set).
 -- Each line: {sku, siteId, payload}
 
+local metrics_ok, metrics = pcall(require, "ao.shared.metrics")
+if metrics_ok and metrics.register then
+  metrics.register("ao_feed_export_total", "counter", "Catalog feed exports executed")
+  metrics.register("ao_feed_export_failed", "counter", "Catalog feed export failures")
+  metrics.register(
+    "ao_feed_export_duration_seconds",
+    "gauge",
+    "Duration of last catalog feed export in seconds"
+  )
+end
+
 local ok_json, cjson = pcall(require, "cjson.safe")
 if not ok_json then
   ok_json, cjson = pcall(require, "cjson")
@@ -63,6 +74,7 @@ end
 local catalog = require "ao.catalog.process"
 local state = catalog._state or {}
 local path = os.getenv "CATALOG_FEED_PATH" or "catalog.ndjson"
+local started = os.clock()
 
 local function write_line(f, obj)
   local line = encode(obj)
@@ -72,6 +84,9 @@ end
 
 local f = io.open(path, "w")
 if not f then
+  if metrics_ok then
+    metrics.inc "ao_feed_export_failed"
+  end
   io.stderr:write("cannot open feed path: " .. tostring(path) .. "\n")
   os.exit(1)
 end
@@ -87,4 +102,9 @@ for key, prod in pairs(state.products or {}) do
 end
 
 f:close()
+if metrics_ok then
+  metrics.inc "ao_feed_export_total"
+  metrics.gauge("ao_feed_export_duration_seconds", os.clock() - started)
+  metrics.flush_prom()
+end
 print("catalog_feed written to " .. path)

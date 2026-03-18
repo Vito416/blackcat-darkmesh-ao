@@ -47,7 +47,7 @@
 
 # Gateway cache health (hit ratio)
 - alert: AOGatewayCacheLowHit
-  expr: (1 - (sum(rate(gateway_cache_hits_total[5m])) / sum(rate(gateway_cache_requests_total[5m])))) > 0.4
+  expr: (1 - (sum(rate(ao_cache_hit_total[5m])) / (sum(rate(ao_cache_hit_total[5m])) + sum(rate(ao_cache_miss_total[5m]))))) > 0.4
   for: 10m
   labels:
     severity: warning

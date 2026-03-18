@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Env } from './types'
-import { inc, toProm } from './metrics'
+import { gauge, inc, toProm } from './metrics'
 import { Buffer } from 'buffer'
 
 type InboxItem = {
@@ -21,10 +21,16 @@ function nowSeconds() {
   return Math.floor(Date.now() / 1000)
 }
 
+function useMemoryKv(env: any) {
+  const flag = env?.TEST_IN_MEMORY_KV
+  if (flag === 1 || flag === '1' || flag === true) return true
+  if (flag === 0 || flag === '0' || flag === false) return false
+  return !!flag
+}
+
 function kvFor(c: any) {
   const testFlag =
-    (c.env && c.env.TEST_IN_MEMORY_KV) ||
-    (typeof process !== 'undefined' && process.env && process.env.TEST_IN_MEMORY_KV)
+    useMemoryKv(c.env) || (typeof process !== 'undefined' && process.env && useMemoryKv(process.env))
   if (testFlag) {
     const cleanExpired = (key: string) => {
       const entry = memoryKv.get(key)
@@ -66,6 +72,16 @@ function kvFor(c: any) {
   return c.env.INBOX_KV
 }
 
+function secretsEnforced(env: Env) {
+  return env.REQUIRE_SECRETS === '1'
+}
+
+function requireSecret(env: Env, key: keyof Env | string, message?: string) {
+  if (secretsEnforced(env) && !(env as any)[key]) {
+    throw new HTTPException(500, { message: message || `missing_secret:${String(key)}` })
+  }
+}
+
 // Basic CORS (tighten origin in production)
 app.use('*', async (c, next) => {
   c.header('Access-Control-Allow-Origin', '*')
@@ -76,6 +92,8 @@ app.use('*', async (c, next) => {
   }
   await next()
 })
+
+app.get('/health', (c) => c.json({ status: 'ok', now: new Date().toISOString() }))
 
 function logEvent(name: string, extra?: Record<string, any>) {
   const payload = { ts: new Date().toISOString(), event: name, ...extra }
@@ -127,7 +145,7 @@ async function rateLimit(c: any) {
       if (raw) {
         const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
         if (reset && now < reset && count >= max) {
-          inc('worker_rate_limit_blocked')
+          inc('worker_rate_limit_blocked_total')
           throw new HTTPException(429, { message: 'rate_limited' })
         }
         const next = {
@@ -159,7 +177,7 @@ async function notifyRateLimit(c: any) {
   if (raw) {
     const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
     if (reset && now < reset && count >= max) {
-      inc('worker_notify_rate_blocked')
+      inc('worker_notify_rate_blocked_total')
       throw new HTTPException(429, { message: 'notify_rate_limited' })
     }
     const next = {
@@ -198,6 +216,7 @@ async function checkReplay(c: any, subj: string, nonce: string) {
 
 // simple token check for forget/notify
 function requireToken(c: any) {
+  requireSecret(c.env, 'FORGET_TOKEN', 'missing_forget_token')
   const token = c.req.header('Authorization') || c.req.header('authorization') || ''
   if (c.env.FORGET_TOKEN && token !== `Bearer ${c.env.FORGET_TOKEN}`) {
     throw new HTTPException(401, { message: 'unauthorized' })
@@ -252,6 +271,7 @@ function hexToBytes(hex: string): Uint8Array {
 
 async function verifyInboxSignature(c: any, body: string) {
   const secret = c.env.INBOX_HMAC_SECRET
+  requireSecret(c.env, 'INBOX_HMAC_SECRET', 'missing_inbox_hmac_secret')
   if (!secret) return
   const sig = c.req.header('x-signature') || c.req.header('X-Signature')
   if (!sig) {
@@ -277,13 +297,16 @@ async function verifyInboxSignature(c: any, body: string) {
 
 async function verifyNotifySignature(c: any, body: string) {
   const secret = c.env.NOTIFY_HMAC_SECRET
+  const optional = c.env.NOTIFY_HMAC_OPTIONAL === '1'
+  requireSecret(c.env, 'NOTIFY_HMAC_SECRET', 'missing_notify_hmac_secret')
   if (!secret) {
-    if (c.env.NOTIFY_HMAC_OPTIONAL === '1') return
+    if (optional) return
     return
   }
   const sig = c.req.header('x-signature') || c.req.header('X-Signature')
   if (!sig) {
-    if (c.env.NOTIFY_HMAC_OPTIONAL === '1') return
+    if (optional) return
+    inc('worker_notify_hmac_invalid_total')
     throw new HTTPException(401, { message: 'missing_signature' })
   }
   try {
@@ -297,9 +320,11 @@ async function verifyNotifySignature(c: any, body: string) {
     const signatureBytes = hexToBytes(sig.trim().toLowerCase())
     const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
     if (!ok) {
+      inc('worker_notify_hmac_invalid_total')
       throw new HTTPException(401, { message: 'invalid_signature' })
     }
   } catch (_e) {
+    inc('worker_notify_hmac_invalid_total')
     throw new HTTPException(401, { message: 'invalid_signature' })
   }
 }
@@ -316,7 +341,7 @@ app.post('/inbox', async (c) => {
   try {
     await checkReplay(c, body.subject, body.nonce)
   } catch (e) {
-    inc('worker_inbox_replay')
+    inc('worker_inbox_replay_total')
     throw e
   }
   validatePayloadSize(c, body.payload)
@@ -326,7 +351,7 @@ app.post('/inbox', async (c) => {
   const item: InboxItem = { payload: body.payload, exp }
   await kv.put(key(body.subject, body.nonce), JSON.stringify(item), { expiration: exp })
   logEvent('inbox_put', { subject: body.subject })
-  inc('worker_inbox_put')
+  inc('worker_inbox_put_total')
   return c.json({ status: 'OK', exp }, 201)
 })
 
@@ -339,7 +364,7 @@ app.get('/inbox/:subject/:nonce', async (c) => {
   const item = JSON.parse(raw) as InboxItem
   await kv.delete(key(subj, nonce))
   logEvent('inbox_get', { subject: subj })
-  inc('worker_inbox_get')
+  inc('worker_inbox_get_total')
   return c.json({ status: 'OK', payload: item.payload, exp: item.exp })
 })
 
@@ -357,43 +382,59 @@ app.post('/forget', async (c) => {
   await Promise.all(list.keys.map((k) => kv.delete(k.name)))
   await Promise.all(replayList.keys.map((k) => kv.delete(k.name)))
   logEvent('forget', { subject: body.subject, deleted, replayDeleted })
-  inc('worker_forget_deleted', deleted)
-  inc('worker_forget_replay_deleted', replayDeleted)
+  inc('worker_forget_deleted_total', deleted)
+  inc('worker_forget_replay_deleted_total', replayDeleted)
   return c.json({ status: 'OK', deleted, replayDeleted })
 })
 
 app.get('/metrics', async (c) => {
   const needBasic = !!(c.env.METRICS_BASIC_USER && c.env.METRICS_BASIC_PASS)
   const needBearer = !!c.env.METRICS_BEARER_TOKEN
+  const mustGuard = c.env.REQUIRE_METRICS_AUTH === '1' || secretsEnforced(c.env)
+  if (!needBasic && !needBearer && mustGuard) {
+    throw new HTTPException(500, { message: 'metrics_auth_not_configured' })
+  }
   if (needBasic || needBearer) {
     const auth = c.req.header('authorization') || ''
     const alt = c.req.header('x-metrics-token') || ''
     let ok = false
-    if (needBearer && alt === c.env.METRICS_BEARER_TOKEN) ok = true
+    let method: 'basic' | 'bearer' | null = null
+    if (needBearer && alt === c.env.METRICS_BEARER_TOKEN) {
+      ok = true
+      method = 'bearer'
+    }
     if (!ok && needBearer && /^Bearer\s+/i.test(auth)) {
       ok = auth.replace(/^Bearer\s+/i, '').trim() === c.env.METRICS_BEARER_TOKEN
+      if (ok) method = 'bearer'
     }
     if (!ok && needBasic && /^Basic\s+/i.test(auth)) {
       const b64 = auth.replace(/^Basic\s+/i, '')
       try {
         const decoded = Buffer.from(b64, 'base64').toString()
         const [u, p] = decoded.split(':')
-        if (u === c.env.METRICS_BASIC_USER && p === c.env.METRICS_BASIC_PASS) ok = true
+        if (u === c.env.METRICS_BASIC_USER && p === c.env.METRICS_BASIC_PASS) {
+          ok = true
+          method = 'basic'
+        }
       } catch (_) {}
     }
     if (!ok) {
-      inc('worker_metrics_auth_blocked')
+      inc('worker_metrics_auth_blocked_total')
       throw new HTTPException(401, { message: 'unauthorized' })
     }
+    inc('worker_metrics_auth_ok_total')
+    if (method === 'bearer') inc('worker_metrics_auth_ok_bearer_total')
+    if (method === 'basic') inc('worker_metrics_auth_ok_basic_total')
   }
+  gauge('worker_notify_hmac_optional', c.env.NOTIFY_HMAC_OPTIONAL === '1' ? 1 : 0)
   return c.text(toProm(), 200, { 'content-type': 'text/plain; version=0.0.4' })
 })
 
 app.post('/notify', async (c) => {
   requireToken(c)
   const raw = await c.req.text()
+  gauge('worker_notify_hmac_optional', c.env.NOTIFY_HMAC_OPTIONAL === '1' ? 1 : 0)
   await verifyNotifySignature(c, raw)
-  if (c.env.NOTIFY_HMAC_OPTIONAL === '1') inc('worker_notify_hmac_optional', 1)
   const body = JSON.parse(raw || '{}') as {
     to?: string
     subject?: string
@@ -423,7 +464,7 @@ app.post('/notify', async (c) => {
     const kv = kvFor(c)
     const seen = await kv.get(`notify:hash:${hex}`)
     if (seen) {
-      inc('worker_notify_deduped')
+      inc('worker_notify_deduped_total')
       return c.json({ status: 'OK', deduped: true })
     }
     await kv.put(`notify:hash:${hex}`, '1', { expirationTtl: dedupeTtl })
@@ -461,10 +502,10 @@ app.post('/notify', async (c) => {
     const st = await breakerState()
     const now = Math.floor(Date.now() / 1000)
     if (st.openUntil && st.openUntil > now) {
-      inc('worker_notify_breaker_blocked')
-      if (breakerKey === 'stripe') inc('worker_notify_breaker_blocked_stripe')
-      if (breakerKey === 'paypal') inc('worker_notify_breaker_blocked_paypal')
-      if (breakerKey === 'gopay') inc('worker_notify_breaker_blocked_gopay')
+      inc('worker_notify_breaker_blocked_total')
+      if (breakerKey === 'stripe') inc('worker_notify_breaker_blocked_total_stripe')
+      if (breakerKey === 'paypal') inc('worker_notify_breaker_blocked_total_paypal')
+      if (breakerKey === 'gopay') inc('worker_notify_breaker_blocked_total_gopay')
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
     if (st.count >= breakerThreshold) {
@@ -474,10 +515,10 @@ app.post('/notify', async (c) => {
       }
       await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(updated), { expirationTtl: breakerCooldown * 2 })
       logEvent('breaker_block', { key: breakerKey, state: updated })
-      inc('worker_notify_breaker_blocked')
-      if (breakerKey === 'stripe') inc('worker_notify_breaker_blocked_stripe')
-      if (breakerKey === 'paypal') inc('worker_notify_breaker_blocked_paypal')
-      if (breakerKey === 'gopay') inc('worker_notify_breaker_blocked_gopay')
+      inc('worker_notify_breaker_blocked_total')
+      if (breakerKey === 'stripe') inc('worker_notify_breaker_blocked_total_stripe')
+      if (breakerKey === 'paypal') inc('worker_notify_breaker_blocked_total_paypal')
+      if (breakerKey === 'gopay') inc('worker_notify_breaker_blocked_total_gopay')
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
   }
@@ -499,10 +540,10 @@ app.post('/notify', async (c) => {
     await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })
     logEvent('breaker_state_save', { key: breakerKey, state: st })
     if (st.openUntil && st.openUntil > now) {
-      inc('worker_notify_breaker_open')
-      if (breakerKey === 'stripe') inc('worker_notify_breaker_open_stripe')
-      if (breakerKey === 'paypal') inc('worker_notify_breaker_open_paypal')
-      if (breakerKey === 'gopay') inc('worker_notify_breaker_open_gopay')
+      inc('worker_notify_breaker_open_total')
+      if (breakerKey === 'stripe') inc('worker_notify_breaker_open_total_stripe')
+      if (breakerKey === 'paypal') inc('worker_notify_breaker_open_total_paypal')
+      if (breakerKey === 'gopay') inc('worker_notify_breaker_open_total_gopay')
     }
   }
 
@@ -514,10 +555,10 @@ app.post('/notify', async (c) => {
       if (resp.ok) return resp
       attempt++
       if (attempt < maxRetry) {
-        inc('worker_notify_retry')
+        inc('worker_notify_retry_total')
         await sleep(backoffMs * attempt)
       } else {
-        inc('worker_notify_failed')
+        inc('worker_notify_failed_total')
         await breakerNote(false)
         throw new HTTPException(502, { message: `${label}_failed` })
       }
@@ -536,7 +577,7 @@ app.post('/notify', async (c) => {
       'notify_webhook'
     )
     logEvent('notify', { via: 'webhook' })
-    inc('worker_notify_sent')
+    inc('worker_notify_sent_total')
     await breakerNote(true)
     return c.json({ status: 'OK', delivered: 'webhook' })
   }
@@ -560,7 +601,7 @@ app.post('/notify', async (c) => {
       'notify_sendgrid'
     )
     logEvent('notify', { via: 'sendgrid' })
-    inc('worker_notify_sent')
+    inc('worker_notify_sent_total')
     await breakerNote(true)
     return c.json({ status: 'OK', delivered: 'sendgrid' })
   }
@@ -572,7 +613,7 @@ export default {
   fetch: app.fetch,
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     const now = Math.floor(Date.now() / 1000)
-    const kv = env.TEST_IN_MEMORY_KV ? kvFor({ env }) : env.INBOX_KV
+    const kv = useMemoryKv(env) ? kvFor({ env }) : env.INBOX_KV
     const prefixes = ['', 'replay:']
     let deleted = 0
     for (const prefix of prefixes) {
@@ -592,7 +633,7 @@ export default {
         }
       }
     }
-    if (deleted > 0) inc('worker_inbox_expired', deleted)
+    if (deleted > 0) inc('worker_inbox_expired_total', deleted)
     logEvent('janitor', { ts: now, deleted })
   },
 }

@@ -5,6 +5,7 @@ local catalog = require "ao.catalog.process"
 local site = require "ao.site.process"
 local registry = require "ao.registry.process"
 local access = require "ao.access.process"
+local metrics = require "ao.shared.metrics"
 
 local cstate = catalog._state
 local sstate = site._state
@@ -25,6 +26,33 @@ end
 
 local function sku_of(ev)
   return ev.sku or ev.Sku
+end
+
+local function event_ts(ev)
+  local ts = ev.Timestamp or ev.timestamp or ev.ts or ev.ts_sec or ev.ts_ms
+  if type(ts) == "string" and ts:match "^%d+$" then
+    ts = tonumber(ts)
+  end
+  if type(ts) == "number" then
+    if ts > 1000000000000 then
+      ts = ts / 1000
+    end
+    return ts
+  end
+  if type(ts) == "string" then
+    local y, m, d, h, min, s = ts:match "^(%d%d%d%d)%-(%d%d)%-(%d%d)[Tt ](%d%d):(%d%d):(%d%d)"
+    if y then
+      return os.time {
+        year = tonumber(y),
+        month = tonumber(m),
+        day = tonumber(d),
+        hour = tonumber(h),
+        min = tonumber(min),
+        sec = tonumber(s),
+        isdst = false,
+      }
+    end
+  end
 end
 
 -- Site routing / content --------------------------------------------------
@@ -287,17 +315,29 @@ end
 -- Minimal PII scrubber before writing immutable exports
 local function apply(ev)
   if not ev then
+    metrics.inc "ao_ingest_apply_failed"
     return false, "missing_event"
   end
   local key = ev.action or ev.type
   if not key then
+    metrics.inc "ao_ingest_apply_failed"
     return false, "missing_action"
   end
   local fn = handlers[key]
   if not fn then
+    metrics.inc "ao_ingest_apply_failed"
     return false, "unknown_action"
   end
-  fn(ev)
+  local ok, err = pcall(fn, ev)
+  if not ok then
+    metrics.inc "ao_ingest_apply_failed"
+    return false, err or "handler_error"
+  end
+  local ts = event_ts(ev)
+  if ts then
+    metrics.gauge("ao_outbox_lag_seconds", math.max(0, os.time() - ts))
+  end
+  metrics.inc "ao_ingest_apply_ok"
   export.write(ev)
   return true
 end

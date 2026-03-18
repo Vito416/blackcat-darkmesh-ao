@@ -32,6 +32,7 @@ mailbox payloads. Ingests signed publish/apply events from
 ## Start/stop
 - AO health: `LUA_PATH="?.lua;?/init.lua;ao/?.lua;ao/?/init.lua" lua scripts/verify/health.lua`
 - Check metrics flush: `METRICS_PROM_PATH`, `METRICS_FLUSH_INTERVAL_SEC`.
+- HTTP /health + /metrics sidecar: `ops/systemd/ao-http.service` (uses `METRICS_PROM_PATH`, optional `AO_HEALTH_CMD`).
 - Run checksum daemon under systemd: `ops/checksum-daemon.service` (set env file `/etc/blackcat/ao.env`).
 
 ## Incident: replay/rollback

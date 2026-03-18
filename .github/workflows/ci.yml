@@ -118,6 +118,19 @@ jobs:
       - name: PII scrub regression
         run: lua5.4 scripts/verify/pii_scrub.lua
 
+      - name: AO integration/security scaffolding
+        env:
+          LUA_PATH: "?.lua;?/init.lua;ao/?.lua;ao/?/init.lua"
+          METRICS_LOG: /tmp/ao-metrics.log
+          METRICS_PROM_PATH: /tmp/ao-metrics.prom
+          AUTH_RATE_LIMIT_MAX_REQUESTS: 1
+          AUTH_RATE_LIMIT_WINDOW_SECONDS: 30
+        run: |
+          lua5.4 tests/integration/ingest_apply_spec.lua
+          lua5.4 tests/integration/schema_validation_spec.lua
+          lua5.4 tests/security/rate_limit_replay_spec.lua
+          lua5.4 tests/security/pii_regression_spec.lua
+
       - name: Bundle export (if export file present)
         env:
           AO_WEAVEDB_EXPORT_PATH: ${{ env.AO_WEAVEDB_EXPORT_PATH }}

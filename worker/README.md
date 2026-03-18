@@ -30,6 +30,7 @@ API (baseline)
 - `GET /inbox/:subject/:nonce` → 200 `{ payload, exp }`; deletes after read.
 - `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <FORGET_TOKEN>`.
 - `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
+- `GET /health` — liveness check, returns `{ status: \"ok\" }`.
 - `GET /metrics` — Prometheus text; protect via `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN`.
 - `scheduled` (cron) – deletes expired items, cleans malformed entries.
 
@@ -51,7 +52,10 @@ Env/config
 - `REPLAY_TTL` (seconds; reject resubmission of same subject+nonce)
 - `NOTIFY_RATE_MAX`, `NOTIFY_RATE_WINDOW` (per-IP for /notify)
 - `INBOX_HMAC_SECRET` (optional HMAC check for /inbox; header `X-Signature`)
+- `NOTIFY_HMAC_SECRET` (HMAC check for /notify; set `NOTIFY_HMAC_OPTIONAL=1` only if unsigned allowed)
 - `NOTIFY_FROM` (default from address for SendGrid)
+- `REQUIRE_SECRETS` (prod: fail fast if FORGET_TOKEN/INBOX_HMAC_SECRET/NOTIFY_HMAC_SECRET unset)
+- `REQUIRE_METRICS_AUTH` (prod: 500 /metrics if auth secrets not configured)
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (KV id; secrets via `wrangler secret put FORGET_TOKEN` etc.)
@@ -66,5 +70,5 @@ Local testing
   - `docker run --rm -v $(pwd):/app -w /app node:20-alpine sh -c "npm ci && npm test -- --run test/metrics-auth.test.ts"`
 
 Env vars (extra)
-- `TEST_IN_MEMORY_KV` — dev/test only; ignored in production.
-- Metrics exposed (examples): `worker_inbox_put_total`, `worker_inbox_replay_total`, `worker_rate_limit_blocked_total`, `worker_inbox_expired_total`, `worker_forget_deleted_total`, `worker_notify_rate_blocked_total`, `worker_metrics_auth_blocked_total`.
+- `TEST_IN_MEMORY_KV` — dev/test only; ignored in production (only value `1` enables the in-memory shim).
+- Metrics exposed (examples): `worker_inbox_put_total`, `worker_inbox_replay_total`, `worker_rate_limit_blocked_total`, `worker_inbox_expired_total`, `worker_forget_deleted_total`, `worker_notify_rate_blocked_total`, `worker_metrics_auth_blocked_total`, `worker_metrics_auth_ok_total`, `worker_notify_hmac_invalid_total`, `worker_notify_hmac_optional` (gauge).

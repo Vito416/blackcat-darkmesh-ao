@@ -1,3 +1,4 @@
-# $d tests
+# Security regression scaffolding
 
-Placeholder for $d tests. Align with message contracts and fixtures before CI.
+Run with `LUA_PATH="?.lua;?/init.lua;ao/?.lua;ao/?/init.lua" lua5.4 tests/security/*.lua`.
+Covers rate-limit/replay protections and PII scrubbing regression.

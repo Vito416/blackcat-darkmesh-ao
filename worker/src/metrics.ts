@@ -25,12 +25,17 @@ const help: Record<string, string> = {
   worker_notify_breaker_blocked_total_gopay: 'Notify breaker blocked (gopay)',
   worker_notify_breaker_open_total_gopay: 'Notify breaker trips (gopay)',
   worker_notify_deduped_total: 'Notify deduped by hash (provider label)',
+  worker_notify_hmac_invalid_total: 'Notify HMAC validation failures',
   worker_metrics_auth_blocked_total: 'Metrics requests unauthorized',
+  worker_metrics_auth_ok_total: 'Metrics requests authorized',
+  worker_metrics_auth_ok_basic_total: 'Metrics requests authorized via Basic auth',
+  worker_metrics_auth_ok_bearer_total: 'Metrics requests authorized via Bearer token',
   worker_notify_hmac_optional: 'Notify HMAC optional flag (1 when optional)',
 }
 
 const types: Record<string, 'counter' | 'gauge'> = {}
 Object.keys(help).forEach((k) => { types[k] = 'counter' })
+types['worker_notify_hmac_optional'] = 'gauge'
 
 function norm(name: string) { return name.replace(/[^A-Za-z0-9_]/g, '_') }
 
