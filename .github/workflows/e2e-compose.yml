@@ -1,0 +1,28 @@
+name: E2E Compose Smoke
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
+    steps:
+      - name: Checkout AO repo
+        uses: actions/checkout@v6
+
+      - name: Clone gateway + write repos
+        run: |
+          git clone https://github.com/Vito416/blackcat-darkmesh-write.git write
+          git clone https://github.com/Vito416/blackcat-darkmesh-gateway.git gateway
+
+      - name: Install docker-compose
+        run: sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+
+      - name: Run compose smoke
+        run: docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit
+
+      - name: Compose logs
+        if: always()
+        run: docker compose -f docs/docker-compose-e2e.yml logs
