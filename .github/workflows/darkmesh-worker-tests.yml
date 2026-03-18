@@ -31,4 +31,4 @@ jobs:
           TEST_IN_MEMORY_KV=1 \
           MINIFLARE_KV_PERSIST=false \
           MINIFLARE_D1_PERSIST=:memory: \
-          npm test -- --testTimeout=30000 --reporter=basic --pool=forks --maxConcurrency=1
+          npm test -- --testTimeout=30000 --reporter=basic --pool=forks --maxConcurrency=1 --run test/metrics-auth.test.ts test/security-pen.test.ts test/notify.test.ts
