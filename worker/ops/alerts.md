@@ -72,6 +72,15 @@
     summary: "Notify breaker tripped"
     description: "Circuit breaker opened for notify target. Investigate webhook/SendGrid outages."
 
+- alert: WorkerInboxExpiredSpike
+  expr: increase(worker_inbox_expired_total[15m]) > 500
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Inbox TTL expirations spiking"
+    description: "High number of inbox envelopes expired by janitor; check TTL vs processing lag."
+
 ## Scrape example
 ```
 scrape_configs:
