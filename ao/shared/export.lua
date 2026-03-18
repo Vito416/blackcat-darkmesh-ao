@@ -30,6 +30,10 @@ local pii_keys = {
   ["Session-Hash"] = true,
   jwt = true,
   JWT = true,
+  taxId = true,
+  vatId = true,
+  tracking = true,
+  trackingNumber = true,
 }
 
 local function scrub(value)

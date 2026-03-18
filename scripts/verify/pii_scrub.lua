@@ -11,6 +11,8 @@ local sample = {
   address = "secret",
   email = "user@example.com",
   token = "t",
+  taxId = "CZ123",
+  tracking = "1Z999",
   nested = { phone = "123", keep = "ok" },
   keep = "yes",
 }
@@ -18,6 +20,8 @@ local scrubbed = export._scrub(sample)
 assert_ok(scrubbed.address == nil, "address not scrubbed")
 assert_ok(scrubbed.email == nil, "email not scrubbed")
 assert_ok(scrubbed.token == nil, "token not scrubbed")
+assert_ok(scrubbed.taxId == nil, "taxId not scrubbed")
+assert_ok(scrubbed.tracking == nil, "tracking not scrubbed")
 assert_ok(scrubbed.nested and scrubbed.nested.phone == nil, "nested phone not scrubbed")
 assert_ok(scrubbed.keep == "yes", "keep lost")
 assert_ok(scrubbed.nested.keep == "ok", "nested keep lost")
