@@ -16,6 +16,8 @@ What you deploy
 - Metrics/health: write Prom text to `METRICS_PROM_PATH` and expose it via the
   sidecar `ops/systemd/ao-http.service` (`/metrics`, `/health`). Configure
   scrape target to `http://<host>:${AO_HTTP_PORT:-9100}/metrics`.
+- Metrics seed: `ops/systemd/ao-metrics-seed.service` (+ timer) ensures the
+  prom file exists at boot; enable `ao-metrics-seed.timer` alongside `ao-http`.
 - Optional immutable export: set `AO_WEAVEDB_EXPORT_PATH` to append PII-scrubbed
   public snapshots/WAL for bundling to WeaveDB; local restart snapshots via
   `AO_STATE_DIR`.

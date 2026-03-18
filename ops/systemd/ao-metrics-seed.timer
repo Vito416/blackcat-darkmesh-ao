@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AO metrics seed at boot and daily
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=24h
+Unit=ao-metrics-seed.service
+
+[Install]
+WantedBy=timers.target

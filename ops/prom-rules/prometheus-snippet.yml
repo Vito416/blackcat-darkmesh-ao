@@ -1,0 +1,9 @@
+# Example Prometheus config snippet for AO scrape + rules include
+rule_files:
+  - /etc/prometheus/rules/ao.rules.yml
+
+scrape_configs:
+  - job_name: ao
+    static_configs:
+      - targets: ["ao-hostname:9100"]  # replace with your host/IP
+    metrics_path: /metrics
