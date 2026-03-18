@@ -18,6 +18,10 @@ What you deploy
   scrape target to `http://<host>:${AO_HTTP_PORT:-9100}/metrics`.
 - Metrics seed: `ops/systemd/ao-metrics-seed.service` (+ timer) ensures the
   prom file exists at boot; enable `ao-metrics-seed.timer` alongside `ao-http`.
+- Prometheus/Grafana: include `ops/prom-rules/ao.rules.yml` in your Prom
+  config (see `ops/prom-rules/prometheus-snippet.yml`) and import
+  `ops/dashboards/ao-overview.json` (provisioner example in
+  `ops/grafana/provisioning/ao-dashboards.yaml`).
 - Optional immutable export: set `AO_WEAVEDB_EXPORT_PATH` to append PII-scrubbed
   public snapshots/WAL for bundling to WeaveDB; local restart snapshots via
   `AO_STATE_DIR`.

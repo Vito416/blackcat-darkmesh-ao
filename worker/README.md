@@ -59,6 +59,7 @@ Env/config
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (KV id; secrets via `wrangler secret put FORGET_TOKEN` etc.)
+- Start from `ops/env.prod.example` for a fail-closed baseline (HMAC required, metrics auth required).
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production`
