@@ -257,16 +257,20 @@ async function verifyInboxSignature(c: any, body: string) {
   if (!sig) {
     throw new HTTPException(401, { message: 'missing_signature' })
   }
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  )
-  const signatureBytes = hexToBytes(sig.trim().toLowerCase())
-  const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
-  if (!ok) {
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    )
+    const signatureBytes = hexToBytes(sig.trim().toLowerCase())
+    const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
+    if (!ok) {
+      throw new HTTPException(401, { message: 'invalid_signature' })
+    }
+  } catch (_e) {
     throw new HTTPException(401, { message: 'invalid_signature' })
   }
 }
@@ -282,16 +286,20 @@ async function verifyNotifySignature(c: any, body: string) {
     if (c.env.NOTIFY_HMAC_OPTIONAL === '1') return
     throw new HTTPException(401, { message: 'missing_signature' })
   }
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  )
-  const signatureBytes = hexToBytes(sig.trim().toLowerCase())
-  const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
-  if (!ok) {
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    )
+    const signatureBytes = hexToBytes(sig.trim().toLowerCase())
+    const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
+    if (!ok) {
+      throw new HTTPException(401, { message: 'invalid_signature' })
+    }
+  } catch (_e) {
     throw new HTTPException(401, { message: 'invalid_signature' })
   }
 }
@@ -433,10 +441,10 @@ app.post('/notify', async (c) => {
       try {
         return JSON.parse(rawState) as { count: number; openUntil?: number }
       } catch {
-        return { count: 0 }
+        return { count: 0, openUntil: 0 }
       }
     }
-    return { count: 0 }
+    return { count: 0, openUntil: 0 }
   }
 
   async function breakerAllows() {
@@ -453,7 +461,7 @@ app.post('/notify', async (c) => {
     const now = Math.floor(Date.now() / 1000)
     if (success) {
       st.count = 0
-      st.openUntil = nil
+      st.openUntil = 0
     } else {
       st.count = (st.count || 0) + 1
       if (st.count >= breakerThreshold) {

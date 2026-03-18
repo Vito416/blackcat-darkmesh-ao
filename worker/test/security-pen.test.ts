@@ -71,6 +71,7 @@ describe('Notify HMAC hardening', () => {
 
   it('accepts valid signature', async () => {
     const sig = hmacHex(secret, body)
+    const fetchSpy = vi.spyOn(global, 'fetch' as any).mockResolvedValue(new Response('', { status: 200 }))
     const res = await call(
       '/notify',
       {
@@ -81,5 +82,6 @@ describe('Notify HMAC hardening', () => {
       { NOTIFY_HMAC_SECRET: secret }
     )
     expect([200, 202]).toContain(res.status)
+    fetchSpy.mockRestore()
   })
 })
