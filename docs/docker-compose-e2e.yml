@@ -41,7 +41,7 @@ services:
       WORKER_NOTIFY_URL: http://worker:8787/notify
       WORKER_NOTIFY_TOKEN: t-notify
       WORKER_NOTIFY_HMAC: secret-hmac
-    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts tests/forward.test.ts"]
+    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts tests/forward.test.ts && node docs/e2e-notify.js"]
 
   worker:
     image: node:20-alpine
@@ -53,6 +53,8 @@ services:
       TEST_IN_MEMORY_KV: '1'
       INBOX_HMAC_SECRET: change-me
       NOTIFY_HMAC_SECRET: change-me
+      NOTIFY_RATE_MAX: '5'
+      NOTIFY_RATE_WINDOW: '60'
       METRICS_BASIC_USER: prom
       METRICS_BASIC_PASS: prompass
     command: ["/bin/sh", "-c", "npm ci && npm test -- --run test/metrics-auth.test.ts test/security-pen.test.ts test/notify.test.ts"]
