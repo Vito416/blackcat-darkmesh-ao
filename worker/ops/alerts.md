@@ -36,6 +36,15 @@
     summary: "Many envelopes expiring in worker"
     description: "High expirations; check TTL settings vs processing latency."
 
+- alert: WorkerNotifyHmacMissing
+  expr: increase(worker_metrics_auth_blocked_total[5m]) > 3 and on() (absent_over_time(worker_notify_hmac_optional[5m]) == 0)
+  for: 2m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Notify HMAC missing but required"
+    description: "Multiple /notify requests unauthenticated; set NOTIFY_HMAC_OPTIONAL=1 if intentionally allowing unsigned."
+
 - alert: WorkerForgetDeletes
   expr: increase(worker_forget_deleted_total[5m]) > 50
   for: 5m

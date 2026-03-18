@@ -273,7 +273,10 @@ async function verifyInboxSignature(c: any, body: string) {
 
 async function verifyNotifySignature(c: any, body: string) {
   const secret = c.env.NOTIFY_HMAC_SECRET
-  if (!secret) return
+  if (!secret) {
+    if (c.env.NOTIFY_HMAC_OPTIONAL === '1') return
+    return
+  }
   const sig = c.req.header('x-signature') || c.req.header('X-Signature')
   if (!sig) {
     if (c.env.NOTIFY_HMAC_OPTIONAL === '1') return
@@ -382,6 +385,7 @@ app.post('/notify', async (c) => {
   requireToken(c)
   const raw = await c.req.text()
   await verifyNotifySignature(c, raw)
+  if (c.env.NOTIFY_HMAC_OPTIONAL === '1') inc('worker_notify_hmac_optional', 1)
   const body = JSON.parse(raw || '{}') as {
     to?: string
     subject?: string

@@ -20,6 +20,7 @@ const help: Record<string, string> = {
   worker_notify_breaker_open_total: 'Notify breaker trips',
   worker_notify_deduped_total: 'Notify deduped by hash',
   worker_metrics_auth_blocked_total: 'Metrics requests unauthorized',
+  worker_notify_hmac_optional: 'Notify HMAC optional flag (1 when optional)',
 }
 
 const types: Record<string, 'counter' | 'gauge'> = {}
