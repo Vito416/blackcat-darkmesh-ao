@@ -1,4 +1,5 @@
-package.path = table.concat({ "?.lua", "?/init.lua", "ao/?.lua", "ao/?/init.lua", package.path }, ";")
+package.path =
+  table.concat({ "?.lua", "?/init.lua", "ao/?.lua", "ao/?/init.lua", package.path }, ";")
 
 local apply = require "ao.ingest.apply"
 
@@ -44,4 +45,4 @@ for _, ev in ipairs(events) do
   handler(ev)
 end
 
-print("publish_outbox_ingest: ok")
+print "publish_outbox_ingest: ok"

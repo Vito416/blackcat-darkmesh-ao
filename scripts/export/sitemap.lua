@@ -33,7 +33,7 @@ table.insert(lines, '<?xml version="1.0" encoding="UTF-8"?>')
 table.insert(lines, '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
 
 for key, prod in pairs(state.products or {}) do
-  local site, sku = key:match "^product:([^:]+):(.+)$"
+  local _, sku = key:match "^product:([^:]+):(.+)$"
   local slug = prod.payload and (prod.payload.slug or prod.payload.url or sku) or sku
   if slug then
     local loc = base_url .. "/" .. xml_escape(slug)

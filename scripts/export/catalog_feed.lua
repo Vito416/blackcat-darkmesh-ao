@@ -29,7 +29,7 @@ local function encode_fallback(obj)
   if t == "table" then
     local is_array = true
     local idx = 0
-    for k, _ in pairs(obj) do
+    for _, _ in pairs(obj) do
       idx = idx + 1
       if obj[idx] == nil then
         is_array = false
