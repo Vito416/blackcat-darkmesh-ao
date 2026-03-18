@@ -462,6 +462,9 @@ app.post('/notify', async (c) => {
     const now = Math.floor(Date.now() / 1000)
     if (st.openUntil && st.openUntil > now) {
       inc('worker_notify_breaker_blocked')
+      if (breakerKey === 'stripe') inc('worker_notify_breaker_blocked_stripe')
+      if (breakerKey === 'paypal') inc('worker_notify_breaker_blocked_paypal')
+      if (breakerKey === 'gopay') inc('worker_notify_breaker_blocked_gopay')
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
     if (st.count >= breakerThreshold) {
@@ -472,6 +475,9 @@ app.post('/notify', async (c) => {
       await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(updated), { expirationTtl: breakerCooldown * 2 })
       logEvent('breaker_block', { key: breakerKey, state: updated })
       inc('worker_notify_breaker_blocked')
+      if (breakerKey === 'stripe') inc('worker_notify_breaker_blocked_stripe')
+      if (breakerKey === 'paypal') inc('worker_notify_breaker_blocked_paypal')
+      if (breakerKey === 'gopay') inc('worker_notify_breaker_blocked_gopay')
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
   }
@@ -494,6 +500,9 @@ app.post('/notify', async (c) => {
     logEvent('breaker_state_save', { key: breakerKey, state: st })
     if (st.openUntil && st.openUntil > now) {
       inc('worker_notify_breaker_open')
+      if (breakerKey === 'stripe') inc('worker_notify_breaker_open_stripe')
+      if (breakerKey === 'paypal') inc('worker_notify_breaker_open_paypal')
+      if (breakerKey === 'gopay') inc('worker_notify_breaker_open_gopay')
     }
   }
 
