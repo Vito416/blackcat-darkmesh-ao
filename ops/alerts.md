@@ -64,6 +64,35 @@
   annotations:
     summary: "AO ingest queue lag high"
     description: "Apply loop delayed. Investigate worker saturation or schema errors."
+
+# Outbox lag (based on queue mtime)
+- alert: AOOutboxLagHigh
+  expr: ao_outbox_lag_seconds > 300
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "AO outbox lag >5m"
+    description: "Outbox queue file has not advanced for >5 minutes; check write bridge/export."
+
+# Sitemap/feed exports
+- alert: AOSitemapExportSlow
+  expr: ao_sitemap_export_duration_seconds > 10
+  for: 5m
+  labels:
+    severity: info
+  annotations:
+    summary: "Sitemap export slow"
+    description: "Last sitemap export took >10s; investigate AO export job and storage."
+
+- alert: AOFeedExportFailed
+  expr: increase(ao_feed_export_failed_total[30m]) > 0
+  for: 0m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Catalog feed export failed"
+    description: "Feed export has reported failures in the last 30 minutes. Check logs and storage."
 ```
 
 Adjust metric names to your scrape config; checksum daemon can expose a blackbox probe or use systemd service monitor.

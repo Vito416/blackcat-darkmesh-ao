@@ -178,3 +178,23 @@ jobs:
           ARWEAVE_HTTP_SIGNER: ${{ env.ARWEAVE_HTTP_SIGNER }}
           ARWEAVE_HTTP_REAL: ${{ env.ARWEAVE_HTTP_REAL }}
         run: bash scripts/verify/signer_check.sh
+
+  worker:
+    name: Worker vitest
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install (skip lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: Run vitest
+        env:
+          TEST_IN_MEMORY_KV: "1"
+        run: npm test -- --run
