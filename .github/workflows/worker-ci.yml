@@ -24,6 +24,9 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - name: Install
         run: npm ci
-      - name: Test
+      - name: Test (vitest)
         run: |
           npm test -- --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
+      - name: Janitor TTL (miniflare)
+        run: |
+          npm test -- --run tests/janitor.test.ts --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
