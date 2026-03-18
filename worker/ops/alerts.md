@@ -45,6 +45,15 @@
     summary: "Notify HMAC missing but required"
     description: "Multiple /notify requests unauthenticated; set NOTIFY_HMAC_OPTIONAL=1 if intentionally allowing unsigned."
 
+- alert: WorkerNotifyHmacInvalid
+  expr: increase(worker_notify_hmac_invalid_total[5m]) > 0
+  for: 2m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Notify HMAC invalid"
+    description: "HMAC provided but failed verification; check shared secret rotation."
+
 - alert: WorkerForgetDeletes
   expr: increase(worker_forget_deleted_total[5m]) > 50
   for: 5m
