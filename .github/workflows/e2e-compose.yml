@@ -24,4 +24,8 @@ jobs:
 
       - name: Compose logs
         if: always()
+        env:
+          WRITE_KEEP_ALIVE: 0
+          OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST || secrets.OUTBOX_HMAC_SECRET }}
+          WRITE_WEBHOOK_HMAC_SECRET: ${{ secrets.WRITE_WEBHOOK_HMAC_SECRET_TEST || secrets.WRITE_WEBHOOK_HMAC_SECRET }}
         run: docker compose -f docs/docker-compose-e2e.yml logs
