@@ -439,7 +439,9 @@ app.post('/notify', async (c) => {
     const rawState = await kv.get(`notify:breaker:${breakerKey}`)
     if (rawState) {
       try {
-        return JSON.parse(rawState) as { count: number; openUntil?: number }
+        const parsed = JSON.parse(rawState) as { count: number; openUntil?: number }
+        logEvent('breaker_state_load', { key: breakerKey, state: parsed })
+        return parsed
       } catch {
         return { count: 0, openUntil: 0 }
       }
@@ -452,6 +454,7 @@ app.post('/notify', async (c) => {
     const now = Math.floor(Date.now() / 1000)
     if (st.count >= breakerThreshold) {
       inc('worker_notify_breaker_blocked')
+      logEvent('breaker_block', { key: breakerKey, state: st })
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
     if (st.count >= breakerThreshold && st.openUntil === 0) {
@@ -477,6 +480,7 @@ app.post('/notify', async (c) => {
       }
     }
     await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })
+    logEvent('breaker_state_save', { key: breakerKey, state: st })
     if (st.openUntil && st.openUntil > now) {
       inc('worker_notify_breaker_open')
     }
