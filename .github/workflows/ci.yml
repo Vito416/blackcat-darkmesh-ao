@@ -112,6 +112,9 @@ jobs:
       - name: Ingest smoke
         run: lua5.4 scripts/verify/ingest_smoke.lua
 
+      - name: Publish → AO ingest mock
+        run: lua5.4 scripts/verify/publish_outbox_ingest.lua
+
       - name: PII scrub regression
         run: lua5.4 scripts/verify/pii_scrub.lua
 
