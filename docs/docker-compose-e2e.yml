@@ -37,4 +37,4 @@ services:
       NOTIFY_HMAC_SECRET: change-me
       METRICS_BASIC_USER: prom
       METRICS_BASIC_PASS: prompass
-    command: ["/bin/sh", "-c", "npm ci && npm test -- --run test/metrics-auth.test.ts"]
+    command: ["/bin/sh", "-c", "npm ci && npm test -- --run test/metrics-auth.test.ts test/security-pen.test.ts"]
