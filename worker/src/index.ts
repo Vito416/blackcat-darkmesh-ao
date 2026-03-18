@@ -450,6 +450,10 @@ app.post('/notify', async (c) => {
   async function breakerAllows() {
     const st = await breakerState()
     const now = Math.floor(Date.now() / 1000)
+    if (st.count >= breakerThreshold) {
+      inc('worker_notify_breaker_blocked')
+      throw new HTTPException(429, { message: 'notify_breaker_open' })
+    }
     if (st.count >= breakerThreshold && st.openUntil === 0) {
       st.openUntil = now + breakerCooldown
       await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })
