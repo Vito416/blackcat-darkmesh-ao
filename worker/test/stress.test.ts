@@ -15,7 +15,7 @@ describe('stress smoke', () => {
         new Request('http://worker/inbox', {
           method: 'POST',
           body: JSON.stringify({ nonce: `n${i}`, subject: 'stress', payload: 'x' }),
-          headers: { 'content-type': 'application/json', Authorization: 'Bearer test-token' },
+          headers: { 'content-type': 'application/json' },
         }),
         env as any,
         {} as any,
