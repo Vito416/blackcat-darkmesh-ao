@@ -7,8 +7,8 @@
   - Uses in-memory KV/D1 (`TEST_IN_MEMORY_KV=1`) to avoid SQLite locks.
 - End-to-end compose smoke (Write → Gateway → Worker):
   - `DOCKER_CONFIG=/tmp docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit`
-  - Mountuje lokální sibling repa (write/gateway/worker) a spouští: outbox HMAC smoke, gateway /metrics auth, worker /metrics auth.
-  - Po doběhu zůstávají logy v běžném docker outputu; stopnu se automaticky při chybě některého servisu.
+  - Mountuje lokální sibling repa (write/gateway/worker) a spouští: outbox HMAC smoke, gateway /metrics auth + webhook pen-test, worker /metrics auth + HMAC pen-test + notify breaker/dedupe.
+  - Po doběhu zůstávají logy v docker outputu; stopne se automaticky při chybě některého servisu.
 
 ## CI
 - `.github/workflows/darkmesh-worker-tests.yml` — Vitest suite for the worker. Badge: `![Worker Tests](https://github.com/blackcatacademy/blackcat-darkmesh-ao/actions/workflows/darkmesh-worker-tests.yml/badge.svg)`
