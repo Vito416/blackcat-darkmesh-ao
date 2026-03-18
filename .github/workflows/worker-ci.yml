@@ -12,21 +12,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container: node:20-bullseye
     defaults:
       run:
         working-directory: worker
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-      - name: Install
-        run: npm ci
+      - name: Install (Linux container to avoid platform drift)
+        run: npm ci --ignore-scripts
       - name: Test (vitest)
-        run: |
-          npm test -- --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
+        run: npm test -- --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
       - name: Janitor TTL (miniflare)
-        run: |
-          npm test -- --run test/janitor.test.ts --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
+        run: npm test -- --run test/janitor.test.ts --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000

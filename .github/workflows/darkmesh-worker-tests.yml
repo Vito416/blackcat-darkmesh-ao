@@ -14,18 +14,15 @@ on:
 jobs:
   worker:
     runs-on: ubuntu-latest
+    container: node:20-bullseye
     defaults:
       run:
         working-directory: blackcat-darkmesh-ao/worker
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 20
       - name: Install deps
         run: |
           npm ci --ignore-scripts
-          npm install workerd@1.20241205.0 @cloudflare/workerd-linux-64@1.20241205.0 --no-save --progress=false
       - name: Run worker tests (in-memory KV)
         run: |
           TEST_IN_MEMORY_KV=1 \
