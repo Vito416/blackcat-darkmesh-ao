@@ -81,6 +81,66 @@
     summary: "Notify breaker tripped"
     description: "Circuit breaker opened for notify target. Investigate webhook/SendGrid outages."
 
+- alert: WorkerNotifyBreakerOpenStripe
+  expr: increase(worker_notify_breaker_open_total_stripe[5m]) > 0
+  for: 2m
+  labels:
+    severity: warning
+    provider: stripe
+  annotations:
+    summary: "Stripe notify breaker tripped"
+    description: "Stripe-specific notify circuit opened. Check Stripe webhook/notify target health."
+
+- alert: WorkerNotifyBreakerOpenPayPal
+  expr: increase(worker_notify_breaker_open_total_paypal[5m]) > 0
+  for: 2m
+  labels:
+    severity: warning
+    provider: paypal
+  annotations:
+    summary: "PayPal notify breaker tripped"
+    description: "PayPal-specific notify circuit opened. Check PayPal webhook/notify target health."
+
+- alert: WorkerNotifyBreakerOpenGoPay
+  expr: increase(worker_notify_breaker_open_total_gopay[5m]) > 0
+  for: 2m
+  labels:
+    severity: warning
+    provider: gopay
+  annotations:
+    summary: "GoPay notify breaker tripped"
+    description: "GoPay-specific notify circuit opened. Investigate GoPay notify target or rate limits."
+
+- alert: WorkerNotifyBreakerBlockedStripe
+  expr: increase(worker_notify_breaker_blocked_total_stripe[5m]) > 5
+  for: 5m
+  labels:
+    severity: warning
+    provider: stripe
+  annotations:
+    summary: "Stripe notify requests blocked"
+    description: "Stripe notify calls are being short-circuited by breaker. Check downstream availability."
+
+- alert: WorkerNotifyBreakerBlockedPayPal
+  expr: increase(worker_notify_breaker_blocked_total_paypal[5m]) > 5
+  for: 5m
+  labels:
+    severity: warning
+    provider: paypal
+  annotations:
+    summary: "PayPal notify requests blocked"
+    description: "PayPal notify calls are being short-circuited by breaker. Check downstream availability."
+
+- alert: WorkerNotifyBreakerBlockedGoPay
+  expr: increase(worker_notify_breaker_blocked_total_gopay[5m]) > 5
+  for: 5m
+  labels:
+    severity: warning
+    provider: gopay
+  annotations:
+    summary: "GoPay notify requests blocked"
+    description: "GoPay notify calls are being short-circuited by breaker. Check downstream availability."
+
 - alert: WorkerInboxExpiredSpike
   expr: increase(worker_inbox_expired_total[15m]) > 500
   for: 5m
