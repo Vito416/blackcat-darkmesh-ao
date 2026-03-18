@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import app from '../src/index'
 
+process.env.TEST_IN_MEMORY_KV = '1'
+process.env.INBOX_HMAC_SECRET = 'stress-secret'
+process.env.INBOX_HMAC_OPTIONAL = '1'
+
 describe('stress smoke', () => {
   it('handles concurrent inbox puts', { timeout: 10000 }, async () => {
     const reqs = Array.from({ length: 50 }).map((_, i) =>
