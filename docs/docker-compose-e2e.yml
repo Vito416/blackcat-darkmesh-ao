@@ -23,7 +23,7 @@ services:
       METRICS_BASIC_PASS: prompass
       PAYPAL_WEBHOOK_SECRET: test
       GW_CERT_PIN_SHA256: ''
-    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts"]
+    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts"]
 
   worker:
     image: node:20-alpine
