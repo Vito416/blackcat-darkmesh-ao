@@ -19,7 +19,7 @@ jobs:
   ao-write:
     runs-on: ubuntu-latest
     env:
-      OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST }}
+      OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST || secrets.OUTBOX_HMAC_SECRET }}
     steps:
       - uses: actions/checkout@v6
       - name: Build ao-write-test image

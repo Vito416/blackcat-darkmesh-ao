@@ -18,8 +18,8 @@ jobs:
       - name: Run compose smoke
         env:
           WRITE_KEEP_ALIVE: 0
-          OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST }}
-          WRITE_WEBHOOK_HMAC_SECRET: ${{ secrets.WRITE_WEBHOOK_HMAC_SECRET_TEST }}
+          OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST || secrets.OUTBOX_HMAC_SECRET }}
+          WRITE_WEBHOOK_HMAC_SECRET: ${{ secrets.WRITE_WEBHOOK_HMAC_SECRET_TEST || secrets.WRITE_WEBHOOK_HMAC_SECRET }}
         run: docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit --exit-code-from worker
 
       - name: Compose logs
