@@ -6,7 +6,7 @@
 - Worker tests: `docker compose -f docker-compose.test.yml run --rm worker-test`
   - Uses in-memory KV/D1 (`TEST_IN_MEMORY_KV=1`) to avoid SQLite locks.
 - End-to-end compose smoke (Write → Gateway → Worker):
-  - `DOCKER_CONFIG=/tmp docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit`
+  - `DOCKER_CONFIG=/tmp docker compose -f docs/docker-compose-e2e.yml up --build`
   - Mountuje lokální sibling repa (write/gateway/worker) a spouští: outbox HMAC smoke, gateway /metrics auth + webhook pen-test, worker /metrics auth + HMAC pen-test + notify breaker/dedupe.
   - Po doběhu zůstávají logy v docker outputu; stopne se automaticky při chybě některého servisu.
 - End-to-end notify smoke (volitelné, pokud chceš prověřit celý řetězec):
