@@ -1,0 +1,73 @@
+name: Worker Loadtest Smoke
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install worker deps
+        working-directory: worker
+        run: npm ci --ignore-scripts
+
+      - name: Start failing webhook stub (500s)
+        run: |
+          cat > /tmp/failhook.py <<'PY'
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          class H(BaseHTTPRequestHandler):
+              def do_POST(self):
+                  self.send_response(500)
+                  self.end_headers()
+                  self.wfile.write(b"fail")
+          HTTPServer(("0.0.0.0", 8799), H).serve_forever()
+          PY
+          python /tmp/failhook.py &
+          echo $! > /tmp/failhook.pid
+
+      - name: Start Miniflare (worker)
+        working-directory: worker
+        run: |
+          INBOX_HMAC_SECRET=ci-inbox \
+          NOTIFY_HMAC_SECRET=ci-notify \
+          FORGET_TOKEN=ci-token \
+          NOTIFY_DEDUPE_TTL=0 \
+          NOTIFY_RATE_MAX=0 \
+          NOTIFY_BREAKER_THRESHOLD=3 \
+          NOTIFY_BREAKER_COOLDOWN=30 \
+          RATE_LIMIT_MAX=20 \
+          TEST_IN_MEMORY_KV=1 \
+          npx miniflare --wrangler-config=wrangler.toml --host=0.0.0.0 --port=8787 --live-reload=false --modules >/tmp/miniflare.log 2>&1 &
+          echo $! > /tmp/miniflare.pid
+          sleep 5
+
+      - name: Run k6 harness
+        working-directory: worker
+        run: |
+          docker run --rm --network host \
+            -v "$PWD":/repo -w /repo \
+            -e WORKER_BASE_URL=http://127.0.0.1:8787 \
+            -e INBOX_HMAC_SECRET=ci-inbox \
+            -e NOTIFY_HMAC_SECRET=ci-notify \
+            -e FORGET_TOKEN=ci-token \
+            -e RATE_LIMIT_MAX=20 \
+            -e NOTIFY_BREAKER_THRESHOLD=3 \
+            -e FAILING_WEBHOOK_URL=http://127.0.0.1:8799/fail \
+            grafana/k6 run ops/loadtest/k6-worker.js
+
+      - name: Show Miniflare tail on failure
+        if: failure()
+        run: |
+          echo "::group::miniflare.log"
+          tail -n 200 /tmp/miniflare.log || true
+          echo "::endgroup::"

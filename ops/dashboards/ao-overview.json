@@ -58,6 +58,23 @@
         {"expr": "rate(ao_feed_export_total[30m])", "legendFormat": "feed export/s"},
         {"expr": "rate(ao_feed_export_failed_total[30m])", "legendFormat": "feed failed/s"}
       ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Subscription churn",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "increase(ao_subscription_churn_total[1h])", "legendFormat": "churn/1h"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Page / product view throughput",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ao_page_view_total[5m])", "legendFormat": "page views/s"},
+        {"expr": "rate(ao_product_view_total[5m])", "legendFormat": "product views/s"}
+      ]
     }
   ]
 }

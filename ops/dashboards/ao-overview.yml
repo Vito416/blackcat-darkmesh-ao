@@ -61,3 +61,17 @@ dashboard:
           legendFormat: feed export/s
         - expr: rate(ao_feed_export_failed_total[30m])
           legendFormat: feed failed/s
+    - title: "Subscription churn"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: increase(ao_subscription_churn_total[1h])
+          legendFormat: churn/1h
+    - title: "Page / product view throughput"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(ao_page_view_total[5m])
+          legendFormat: page views/s
+        - expr: rate(ao_product_view_total[5m])
+          legendFormat: product views/s

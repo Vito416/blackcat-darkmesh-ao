@@ -63,12 +63,14 @@ Build/Deploy
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production`
+- Load/perf smoke: `docker run --rm --network host -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker.js` (expects miniflare at :8787 with HMAC secrets).
 
 Local testing
 - Vitest/Miniflare run with in-memory KV/D1 (`TEST_IN_MEMORY_KV=1` in `wrangler.toml`) to avoid local SQLite locks.
 - Docker option: `docker compose -f docker-compose.test.yml run --rm worker-test` (installs workerd binaries and runs `npm test`).
 - Pen-test (webhook/auth) via Docker without local Node:
   - `docker run --rm -v $(pwd):/app -w /app node:20-alpine sh -c "npm ci && npm test -- --run test/metrics-auth.test.ts"`
+- Load test harness (k6) with HMAC + nonce: see `ops/loadtest/README.md`.
 
 Env vars (extra)
 - `TEST_IN_MEMORY_KV` — dev/test only; ignored in production (only value `1` enables the in-memory shim).
