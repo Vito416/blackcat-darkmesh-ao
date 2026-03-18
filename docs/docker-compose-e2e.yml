@@ -9,6 +9,7 @@ services:
       OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
       WRITE_REQUIRE_SIGNATURE: '0'
       WRITE_REQUIRE_NONCE: '0'
+      WRITE_WEBHOOK_REPLAY_WINDOW: '600'
       METRICS_PROM_PATH: /tmp/metrics.prom
     command: ["/bin/sh", "-c", "apk add --no-cache lua5.4 lua5.4-dev luarocks && lua5.4 scripts/verify/publish_outbox_mock_ao.lua"]
 
@@ -23,6 +24,13 @@ services:
       METRICS_BASIC_PASS: prompass
       PAYPAL_WEBHOOK_SECRET: test
       GW_CERT_PIN_SHA256: ''
+    environment:
+      METRICS_BASIC_USER: prom
+      METRICS_BASIC_PASS: prompass
+      PAYPAL_WEBHOOK_SECRET: test
+      GW_CERT_PIN_SHA256: ''
+      WRITE_WEBHOOK_TARGET: http://write:8787/mock-provider
+      WRITE_WEBHOOK_HMAC_SECRET: 0123456789abcdef0123456789abcdef
     command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts"]
 
   worker:
