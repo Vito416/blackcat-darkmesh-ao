@@ -6,8 +6,6 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    env:
-      OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
     steps:
       - name: Checkout AO repo
         uses: actions/checkout@v6
