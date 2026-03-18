@@ -15,12 +15,23 @@ mailbox payloads. Ingests signed publish/apply events from
 - HMAC secrets (e.g., OUTBOX_HMAC_SECRET used to verify incoming events) rotate
   by adding new, deploy, then deprecate old once all emitters updated.
 
+## JWT / trust HMAC rotation
+- JWT gate is enabled by default (`AUTH_REQUIRE_JWT=1`); keep `AUTH_JWT_HS_SECRET`
+  only in your secret manager and rotate by: (1) add new secret, (2) deploy AO
+  with both verifiers if your stack supports key IDs, otherwise cut over during
+  a low-traffic window, (3) smoke-test a signed request, (4) remove old secret.
+- Trust manifest verifier uses `TRUST_MANIFEST_HMAC`; rotate similarly: add new,
+  deploy, verify manifests, then retire old once all producers are issuing with
+  the new HMAC. Never commit these secrets to git or env examples.
+
 ## Checksums / WAL / queue
 - Queue/WAL paths: `AO_WAL_PATH`, `AO_QUEUE_PATH`. (Write-side WAL/outbox are
   managed in the write repo.)
 - Health: `scripts/verify/checksum_alert.sh` warns on size/hash drift.
 - Daemon: `ops/checksum-daemon.service` runs `scripts/verify/checksum_daemon.sh` with `CHECKSUM_INTERVAL_SEC`.
 - Set alerts when WAL/queue exceed thresholds (`AO_WAL_MAX_BYTES`, `AO_QUEUE_MAX_BYTES`).
+- Install `ops/logrotate/ao.conf` on hosts to rotate registry WAL + queue daily
+  and audit logs weekly (copytruncate, compress, retain 7/12).
 
 ## Secrets handling
 - AO should remain secretless. CI uses org-level secrets only for signing key
@@ -32,7 +43,10 @@ mailbox payloads. Ingests signed publish/apply events from
 ## Start/stop
 - AO health: `LUA_PATH="?.lua;?/init.lua;ao/?.lua;ao/?/init.lua" lua scripts/verify/health.lua`
 - Check metrics flush: `METRICS_PROM_PATH`, `METRICS_FLUSH_INTERVAL_SEC`.
-- HTTP /health + /metrics sidecar: `ops/systemd/ao-http.service` (uses `METRICS_PROM_PATH`, optional `AO_HEALTH_CMD`).
+- HTTP /health + /metrics sidecar: `ops/systemd/ao-http.service` (uses
+  `METRICS_PROM_PATH`, optional `AO_HEALTH_CMD`). Defaults bind to
+  `127.0.0.1:9100`; set `AO_HTTP_AUTH_TOKEN` in `/etc/blackcat/ao.env` for
+  bearer auth and scrape via localhost with that token.
 - Run checksum daemon under systemd: `ops/checksum-daemon.service` (set env file `/etc/blackcat/ao.env`).
 
 ## Incident: replay/rollback

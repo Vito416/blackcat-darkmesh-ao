@@ -4,7 +4,12 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env bash -c "install -o ao -g ao -m 664 /dev/null /var/lib/ao/metrics.prom"
+UMask=027
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ReadWritePaths=/var/lib/ao
+ExecStart=/usr/bin/env bash -c "install -o ao -g ao -m 640 /dev/null /var/lib/ao/metrics.prom"
 
 [Install]
 WantedBy=multi-user.target

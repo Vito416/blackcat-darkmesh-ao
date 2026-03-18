@@ -5,6 +5,7 @@ local Metrics = {}
 local LOG_PATH = os.getenv "METRICS_LOG" or "metrics/metrics.log"
 local ENABLED = os.getenv "METRICS_ENABLED" ~= "0"
 local PROM_PATH = os.getenv "METRICS_PROM_PATH"
+local PROM_MODE = os.getenv "METRICS_PROM_MODE"
 local FLUSH_EVERY = tonumber(os.getenv "METRICS_FLUSH_EVERY" or "0")
 local FLUSH_INTERVAL = tonumber(os.getenv "METRICS_FLUSH_INTERVAL_SEC" or "0")
 local counters = {}
@@ -54,6 +55,13 @@ local function log(event)
     )
   )
   f:close()
+end
+
+local function enforce_prom_mode(path)
+  if not PROM_MODE or PROM_MODE == "" then
+    return
+  end
+  os.execute(string.format('chmod %s "%s"', PROM_MODE, path))
 end
 
 function Metrics.inc(name, value)
@@ -177,6 +185,7 @@ function Metrics.flush_prom()
     emit(k, "gauge", v)
   end
   f:close()
+  enforce_prom_mode(PROM_PATH)
 end
 
 function Metrics.last_flush_ts()

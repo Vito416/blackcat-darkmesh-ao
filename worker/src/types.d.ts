@@ -2,6 +2,7 @@ export interface Env {
   INBOX_KV: KVNamespace
   INBOX_TTL_DEFAULT?: string
   INBOX_TTL_MAX?: string
+  WORKER_AUTH_TOKEN?: string
   FORGET_TOKEN?: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW?: string

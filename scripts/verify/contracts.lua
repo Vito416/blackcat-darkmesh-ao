@@ -84,11 +84,64 @@ local function canonical_key(secret)
   return secret .. string.rep("\0", 32 - #secret)
 end
 
-local function hmac_sign(action, site_id, request_id)
+local SIGNATURE_EXCLUDE_KEYS = {
+  Signature = true,
+  signature = true,
+  ["Signature-Ref"] = true,
+}
+
+local function sorted_pairs(tbl)
+  local keys = {}
+  for k in pairs(tbl) do
+    keys[#keys + 1] = k
+  end
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+  local i = 0
+  return function()
+    i = i + 1
+    local key = keys[i]
+    if key then
+      return key, tbl[key]
+    end
+  end
+end
+
+local function canonical_value(val)
+  local t = type(val)
+  if t == "table" then
+    local parts = {}
+    for k, v in sorted_pairs(val) do
+      parts[#parts + 1] = tostring(k) .. "=" .. canonical_value(v)
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+  elseif t == "boolean" then
+    return val and "true" or "false"
+  elseif t == "number" then
+    return tostring(val)
+  elseif t == "string" then
+    return val
+  else
+    return ""
+  end
+end
+
+local function canonical_payload(msg)
+  local cleaned = {}
+  for k, v in pairs(msg) do
+    if not SIGNATURE_EXCLUDE_KEYS[k] then
+      cleaned[k] = v
+    end
+  end
+  return canonical_value(cleaned)
+end
+
+local function hmac_sign(msg)
   if not (SIG_SECRET and SIG_SECRET ~= "") then
     return nil
   end
-  local target = string.format("%s|%s|%s", action or "", site_id or "", request_id or "")
+  local target = canonical_payload(msg)
 
   if openssl_ok and openssl.hmac and openssl.hex then
     local raw = openssl.hmac.digest("sha256", target, SIG_SECRET, true)
@@ -114,7 +167,7 @@ local function with_req(fields)
   fields.Nonce = fields.Nonce or tostring(math.random(1, 1e9))
   fields.ts = fields.ts or os.time()
   if SIG_SECRET then
-    local sig = hmac_sign(fields.Action, fields["Site-Id"], fields["Request-Id"])
+    local sig = hmac_sign(fields)
     if sig then
       fields.Signature = sig
     elseif REQUIRE_SIGNATURE then

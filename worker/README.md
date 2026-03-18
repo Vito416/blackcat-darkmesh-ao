@@ -28,7 +28,7 @@ Data model
 API (baseline)
 - `POST /inbox` body `{ subject, nonce, payload, ttlSeconds? }` → 201; stores + sets TTL.
 - `GET /inbox/:subject/:nonce` → 200 `{ payload, exp }`; deletes after read.
-- `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <FORGET_TOKEN>`.
+- `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <WORKER_AUTH_TOKEN>` (`FORGET_TOKEN` still accepted for legacy configs).
 - `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
 - `GET /health` — liveness check, returns `{ status: \"ok\" }`.
 - `GET /metrics` — Prometheus text; protect via `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN`.
@@ -43,7 +43,7 @@ Secrets to keep here (examples)
 Env/config
 - `INBOX_TTL_DEFAULT`, `INBOX_TTL_MAX`
 - `INBOX_KV` (KV binding)
-- `FORGET_TOKEN` (Bearer guard for forget)
+- `WORKER_AUTH_TOKEN` (Bearer guard for /forget and /notify; `FORGET_TOKEN` still accepted for backward compatibility)
 - `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN` (protect /metrics)
 - `SENDGRID_KEY` / `NOTIFY_WEBHOOK` (optional)
 - `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` (per-IP for inbox/notify)
@@ -54,11 +54,11 @@ Env/config
 - `INBOX_HMAC_SECRET` (optional HMAC check for /inbox; header `X-Signature`)
 - `NOTIFY_HMAC_SECRET` (HMAC check for /notify; set `NOTIFY_HMAC_OPTIONAL=1` only if unsigned allowed)
 - `NOTIFY_FROM` (default from address for SendGrid)
-- `REQUIRE_SECRETS` (prod: fail fast if FORGET_TOKEN/INBOX_HMAC_SECRET/NOTIFY_HMAC_SECRET unset)
+- `REQUIRE_SECRETS` (prod: fail fast if WORKER_AUTH_TOKEN/INBOX_HMAC_SECRET/NOTIFY_HMAC_SECRET unset)
 - `REQUIRE_METRICS_AUTH` (prod: 500 /metrics if auth secrets not configured)
 
 Build/Deploy
-- Fill `worker/wrangler.toml` (KV id; secrets via `wrangler secret put FORGET_TOKEN` etc.)
+- Fill `worker/wrangler.toml` (KV id; secrets via `wrangler secret put WORKER_AUTH_TOKEN` etc.)
 - Start from `ops/env.prod.example` for a fail-closed baseline (HMAC required, metrics auth required).
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test

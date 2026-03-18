@@ -1,0 +1,11 @@
+/var/lib/ao/outbox-queue.ndjson /var/lib/ao/registry-wal.ndjson /var/log/ao/audit/*.log {
+  daily
+  rotate 14
+  size 50M
+  missingok
+  notifempty
+  compress
+  delaycompress
+  copytruncate
+  create 0640 ao ao
+}

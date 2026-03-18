@@ -6,7 +6,7 @@ import { check, sleep } from 'k6'
 const BASE = __ENV.WORKER_BASE_URL || 'http://127.0.0.1:8787'
 const INBOX_HMAC_SECRET = __ENV.INBOX_HMAC_SECRET || 'ci-inbox'
 const NOTIFY_HMAC_SECRET = __ENV.NOTIFY_HMAC_SECRET || 'ci-notify'
-const FORGET_TOKEN = __ENV.FORGET_TOKEN || 'ci-token'
+const FORGET_TOKEN = __ENV.WORKER_AUTH_TOKEN || __ENV.FORGET_TOKEN || 'ci-token'
 const FAILING_WEBHOOK_URL = __ENV.FAILING_WEBHOOK_URL || ''
 
 export const options = {
