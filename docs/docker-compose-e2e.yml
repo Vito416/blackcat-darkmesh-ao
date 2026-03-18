@@ -4,7 +4,7 @@ services:
     image: alpine:3.19
     working_dir: /app
     volumes:
-      - ../blackcat-darkmesh-write:/app:ro
+      - ../blackcat-darkmesh-write:/app
     environment:
       OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
       WRITE_REQUIRE_SIGNATURE: '0'
@@ -16,7 +16,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ../blackcat-darkmesh-gateway:/app:ro
+      - ../blackcat-darkmesh-gateway:/app
     environment:
       METRICS_BASIC_USER: prom
       METRICS_BASIC_PASS: prompass
@@ -28,7 +28,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ./worker:/app:ro
+      - ./worker:/app
     environment:
       TEST_IN_MEMORY_KV: '1'
       INBOX_HMAC_SECRET: change-me
