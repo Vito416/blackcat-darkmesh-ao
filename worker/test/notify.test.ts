@@ -47,6 +47,8 @@ describe('/notify dedupe and breaker', () => {
     expect(res1.status).toBe(502)
     const res2 = await req(payload, { NOTIFY_BREAKER_THRESHOLD: '1', NOTIFY_RETRY_MAX: '1', NOTIFY_RETRY_BACKOFF_MS: '0' })
     expect(res2.status).toBe(429)
+    const res3 = await req(payload, { NOTIFY_BREAKER_THRESHOLD: '1', NOTIFY_RETRY_MAX: '1', NOTIFY_BREAKER_COOLDOWN: '600' })
+    expect(res3.status).toBe(429)
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 })
