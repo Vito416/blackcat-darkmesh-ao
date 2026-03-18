@@ -37,5 +37,7 @@ jobs:
               cd /workspace/blackcat-darkmesh-write &&
               luacheck ao &&
               LUA_PATH=\$LUA_PATH LUA_CPATH=\$LUA_CPATH lua5.4 scripts/verify/ingest_smoke.lua &&
+              LUA_PATH=\$LUA_PATH LUA_CPATH=\$LUA_CPATH lua5.4 scripts/verify/idempotency_replay.lua &&
+              LUA_PATH=\$LUA_PATH LUA_CPATH=\$LUA_CPATH OUTBOX_HMAC_SECRET=\$OUTBOX_HMAC_SECRET lua5.4 scripts/verify/publish_outbox_mock_ao.lua &&
               LUA_PATH=\$LUA_PATH LUA_CPATH=\$LUA_CPATH AO_WEAVEDB_EXPORT_PATH=/tmp/write-export.ndjson lua5.4 /workspace/blackcat-darkmesh-ao/scripts/export/bundle_export.lua | head -n 5
             "
