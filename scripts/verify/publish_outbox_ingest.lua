@@ -40,9 +40,8 @@ local events = {
 }
 
 for _, ev in ipairs(events) do
-  local handler = apply.handle[ev.type]
-  assert(handler, "handler missing for " .. ev.type)
-  handler(ev)
+  local ok, err = apply.apply(ev)
+  assert(ok, err or ("handler missing for " .. tostring(ev.type)))
 end
 
 print "publish_outbox_ingest: ok"
