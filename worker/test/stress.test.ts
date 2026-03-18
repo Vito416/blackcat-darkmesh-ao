@@ -1,19 +1,24 @@
 import { describe, it, expect } from 'vitest'
-import app from '../src/index'
+import mod from '../src/index'
 
-process.env.TEST_IN_MEMORY_KV = '1'
-process.env.INBOX_HMAC_SECRET = 'stress-secret'
-process.env.INBOX_HMAC_OPTIONAL = '1'
+const env = {
+  TEST_IN_MEMORY_KV: 1,
+  INBOX_HMAC_SECRET: 'stress-secret',
+  INBOX_HMAC_OPTIONAL: '1',
+  FORGET_TOKEN: 'test-token',
+}
 
 describe('stress smoke', () => {
   it('handles concurrent inbox puts', { timeout: 10000 }, async () => {
     const reqs = Array.from({ length: 50 }).map((_, i) =>
-      app.fetch(
+      mod.fetch(
         new Request('http://worker/inbox', {
           method: 'POST',
           body: JSON.stringify({ nonce: `n${i}`, subject: 'stress', payload: 'x' }),
           headers: { 'content-type': 'application/json', Authorization: 'Bearer test-token' },
         }),
+        env as any,
+        {} as any,
       ),
     )
     const res = await Promise.all(reqs)
