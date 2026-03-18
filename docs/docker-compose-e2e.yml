@@ -31,7 +31,17 @@ services:
       GW_CERT_PIN_SHA256: ''
       WRITE_WEBHOOK_TARGET: http://write:8787/mock-provider
       WRITE_WEBHOOK_HMAC_SECRET: 0123456789abcdef0123456789abcdef
-    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts"]
+    environment:
+      METRICS_BASIC_USER: prom
+      METRICS_BASIC_PASS: prompass
+      PAYPAL_WEBHOOK_SECRET: test
+      GW_CERT_PIN_SHA256: ''
+      WRITE_WEBHOOK_TARGET: http://write:8787/mock-provider
+      WRITE_WEBHOOK_HMAC_SECRET: 0123456789abcdef0123456789abcdef
+      WORKER_NOTIFY_URL: http://worker:8787/notify
+      WORKER_NOTIFY_TOKEN: t-notify
+      WORKER_NOTIFY_HMAC: secret-hmac
+    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts tests/forward.test.ts"]
 
   worker:
     image: node:20-alpine
