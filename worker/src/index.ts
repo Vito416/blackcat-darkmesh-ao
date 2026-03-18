@@ -284,10 +284,12 @@ function hexToBytes(hex: string): Uint8Array {
 
 async function verifyInboxSignature(c: any, body: string) {
   const secret = c.env.INBOX_HMAC_SECRET
+  const optional = c.env.INBOX_HMAC_OPTIONAL === '1'
   requireSecret(c.env, 'INBOX_HMAC_SECRET', 'missing_inbox_hmac_secret')
   if (!secret) return
   const sig = c.req.header('x-signature') || c.req.header('X-Signature')
   if (!sig) {
+    if (optional) return
     throw new HTTPException(401, { message: 'missing_signature' })
   }
   try {
