@@ -21,7 +21,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y docker-compose-plugin
 
       - name: Run compose smoke
-        run: docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit
+        env:
+          WRITE_KEEP_ALIVE: 0
+        run: docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit --exit-code-from worker
 
       - name: Compose logs
         if: always()

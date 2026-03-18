@@ -432,7 +432,15 @@ app.post('/notify', async (c) => {
   const backoffMs = parseInt(c.env.NOTIFY_RETRY_BACKOFF_MS || '300', 10)
   const breakerThreshold = parseInt(c.env.NOTIFY_BREAKER_THRESHOLD || '5', 10)
   const breakerCooldown = parseInt(c.env.NOTIFY_BREAKER_COOLDOWN || '300', 10)
-  const breakerKey = webhook ? 'webhook' : body.to ? 'sendgrid' : 'notify'
+  const headerBreakerKey = c.req.header('x-breaker-key')?.trim()
+  const breakerKey =
+    headerBreakerKey && headerBreakerKey.length > 0
+      ? headerBreakerKey
+      : webhook
+        ? 'webhook'
+        : body.to
+          ? 'sendgrid'
+          : 'notify'
   const kv = kvFor(c)
 
   async function breakerState() {
@@ -452,16 +460,17 @@ app.post('/notify', async (c) => {
   async function breakerAllows() {
     const st = await breakerState()
     const now = Math.floor(Date.now() / 1000)
-    if (st.count >= breakerThreshold) {
+    if (st.openUntil && st.openUntil > now) {
       inc('worker_notify_breaker_blocked')
-      logEvent('breaker_block', { key: breakerKey, state: st })
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
-    if (st.count >= breakerThreshold && st.openUntil === 0) {
-      st.openUntil = now + breakerCooldown
-      await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })
-    }
-    if (st.openUntil && st.openUntil > now) {
+    if (st.count >= breakerThreshold) {
+      const updated = {
+        count: st.count,
+        openUntil: st.openUntil && st.openUntil > now ? st.openUntil : now + breakerCooldown,
+      }
+      await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(updated), { expirationTtl: breakerCooldown * 2 })
+      logEvent('breaker_block', { key: breakerKey, state: updated })
       inc('worker_notify_breaker_blocked')
       throw new HTTPException(429, { message: 'notify_breaker_open' })
     }
@@ -477,6 +486,8 @@ app.post('/notify', async (c) => {
       st.count = (st.count || 0) + 1
       if (st.count >= breakerThreshold) {
         st.openUntil = now + breakerCooldown
+      } else {
+        st.openUntil = st.openUntil && st.openUntil > now ? st.openUntil : 0
       }
     }
     await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })

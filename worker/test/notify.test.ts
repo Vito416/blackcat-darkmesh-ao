@@ -11,11 +11,11 @@ const baseEnv = {
   NOTIFY_BREAKER_COOLDOWN: '300',
 }
 
-async function req(body: any, envOverrides: Record<string, any> = {}) {
+async function req(body: any, envOverrides: Record<string, any> = {}, headers: Record<string, string> = {}) {
   const env = { ...baseEnv, ...envOverrides } as any
   const r = new Request('http://localhost/notify', {
     method: 'POST',
-    headers: { Authorization: 'Bearer t', 'content-type': 'application/json' },
+    headers: { Authorization: 'Bearer t', 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   })
   return mod.fetch(r, env, {} as any)
@@ -43,11 +43,18 @@ describe('/notify dedupe and breaker', () => {
       .spyOn(global, 'fetch' as any)
       .mockResolvedValue(new Response('', { status: 500 }))
     const payload = { webhookUrl: 'https://example.com/fail', data: { y: 2 } }
-    const res1 = await req(payload, { NOTIFY_BREAKER_THRESHOLD: '1', NOTIFY_RETRY_MAX: '1', NOTIFY_RETRY_BACKOFF_MS: '0' })
+    const breakerHeaders = { 'x-breaker-key': 'test-breaker' }
+    const commonEnv = {
+      NOTIFY_BREAKER_THRESHOLD: '1',
+      NOTIFY_RETRY_MAX: '1',
+      NOTIFY_RETRY_BACKOFF_MS: '0',
+      NOTIFY_DEDUPE_TTL: '0', // disable dedupe so breaker can trigger
+    }
+    const res1 = await req(payload, commonEnv, breakerHeaders)
     expect(res1.status).toBe(502)
-    const res2 = await req(payload, { NOTIFY_BREAKER_THRESHOLD: '1', NOTIFY_RETRY_MAX: '1', NOTIFY_RETRY_BACKOFF_MS: '0' })
+    const res2 = await req(payload, commonEnv, breakerHeaders)
     expect(res2.status).toBe(429)
-    const res3 = await req(payload, { NOTIFY_BREAKER_THRESHOLD: '1', NOTIFY_RETRY_MAX: '1', NOTIFY_BREAKER_COOLDOWN: '600' })
+    const res3 = await req(payload, { ...commonEnv, NOTIFY_BREAKER_COOLDOWN: '600' }, breakerHeaders)
     expect(res3.status).toBe(429)
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })

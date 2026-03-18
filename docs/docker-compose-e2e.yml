@@ -11,7 +11,15 @@ services:
       WRITE_REQUIRE_NONCE: '0'
       WRITE_WEBHOOK_REPLAY_WINDOW: '600'
       METRICS_PROM_PATH: /tmp/metrics.prom
-    command: ["/bin/sh", "-c", "apk add --no-cache lua5.4 lua5.4-dev luarocks && lua5.4 scripts/verify/publish_outbox_mock_ao.lua"]
+    environment:
+      WRITE_KEEP_ALIVE: ${WRITE_KEEP_ALIVE:-0}
+    command:
+      - /bin/sh
+      - -c
+      - >
+        apk add --no-cache lua5.4 lua5.4-dev luarocks
+        && lua5.4 scripts/verify/publish_outbox_mock_ao.lua
+        && if [ "$WRITE_KEEP_ALIVE" = "1" ]; then tail -f /dev/null; fi
 
   gateway:
     depends_on:
@@ -31,6 +39,7 @@ services:
       WORKER_NOTIFY_URL: http://worker:8787/notify
       WORKER_NOTIFY_TOKEN: t-notify
       WORKER_NOTIFY_HMAC: secret-hmac
+      WORKER_NOTIFY_BREAKER_KEY: gateway
       GATEWAY_NOTIFY_URL: http://gateway:8787/webhook/demo-forward
       GATEWAY_NOTIFY_HMAC: secret-hmac
     command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts"]
