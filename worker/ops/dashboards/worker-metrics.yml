@@ -47,6 +47,24 @@ dashboard:
           legendFormat: breaker_open/s
         - expr: rate(worker_notify_deduped_total[5m])
           legendFormat: deduped/s
+        - expr: rate(worker_notify_breaker_blocked_total[5m])
+          legendFormat: breaker_blocked/s
+    - title: "Notify breaker per provider"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(worker_notify_breaker_open_total_stripe[5m])
+          legendFormat: stripe_open/s
+        - expr: rate(worker_notify_breaker_blocked_total_stripe[5m])
+          legendFormat: stripe_blocked/s
+        - expr: rate(worker_notify_breaker_open_total_paypal[5m])
+          legendFormat: paypal_open/s
+        - expr: rate(worker_notify_breaker_blocked_total_paypal[5m])
+          legendFormat: paypal_blocked/s
+        - expr: rate(worker_notify_breaker_open_total_gopay[5m])
+          legendFormat: gopay_open/s
+        - expr: rate(worker_notify_breaker_blocked_total_gopay[5m])
+          legendFormat: gopay_blocked/s
     - title: "Notify HMAC optional flag"
       type: stat
       datasource: Prometheus
