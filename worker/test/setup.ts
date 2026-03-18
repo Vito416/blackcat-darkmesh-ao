@@ -1,4 +1,5 @@
 import { afterAll, vi } from 'vitest'
+import { webcrypto } from 'crypto'
 
 // Ensure miniflare processes shut down cleanly
 afterAll(async () => {
@@ -10,3 +11,8 @@ vi.setConfig({
   pool: 'forks',
   maxThreads: 1,
 })
+
+// Ensure Web Crypto available for HMAC/digest in tests
+if (!(globalThis as any).crypto) {
+  ;(globalThis as any).crypto = webcrypto as any
+}

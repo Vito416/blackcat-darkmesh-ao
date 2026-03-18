@@ -412,7 +412,7 @@ app.post('/notify', async (c) => {
     if (seen) {
       inc('worker_notify_deduped')
       return c.json({ status: 'OK', deduped: true })
-    end
+    }
     await kv.put(`notify:hash:${hex}`, '1', { expirationTtl: dedupeTtl })
   }
   const maxRetry = parseInt(c.env.NOTIFY_RETRY_MAX || '3', 10)
@@ -427,38 +427,39 @@ app.post('/notify', async (c) => {
     if (rawState) {
       try {
         return JSON.parse(rawState) as { count: number; openUntil?: number }
-      end
-      return { count = 0 }
-    end
-    return { count = 0 }
-  end
+      } catch {
+        return { count: 0 }
+      }
+    }
+    return { count: 0 }
+  }
 
   async function breakerAllows() {
-    local st = await breakerState()
-    local now = math.floor(Date.now() / 1000)
-    if st.openUntil and now < st.openUntil then
+    const st = await breakerState()
+    const now = Math.floor(Date.now() / 1000)
+    if (st.openUntil && now < st.openUntil) {
       inc('worker_notify_breaker_blocked')
-      error(HTTPException(429, { message = 'notify_breaker_open' }))
-    end
-  end
+      throw new HTTPException(429, { message: 'notify_breaker_open' })
+    }
+  }
 
   async function breakerNote(success: boolean) {
-    local st = await breakerState()
-    local now = math.floor(Date.now() / 1000)
-    if success then
+    const st = await breakerState()
+    const now = Math.floor(Date.now() / 1000)
+    if (success) {
       st.count = 0
       st.openUntil = nil
-    else
-      st.count = (st.count or 0) + 1
-      if st.count >= breakerThreshold then
+    } else {
+      st.count = (st.count || 0) + 1
+      if (st.count >= breakerThreshold) {
         st.openUntil = now + breakerCooldown
-      end
-    end
+      }
+    }
     await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })
-    if st.openUntil and st.openUntil > now then
+    if (st.openUntil && st.openUntil > now) {
       inc('worker_notify_breaker_open')
-    end
-  end
+    }
+  }
 
   await breakerAllows()
   async function sendWithRetry(fn: () => Promise<Response>, label: string) {
