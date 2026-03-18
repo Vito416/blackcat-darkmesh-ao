@@ -3,8 +3,8 @@
 Goal: validate signing/HMAC chain end-to-end with test secrets before prod.
 
 ## Prereqs
-- Test secrets (env):
-  - OUTBOX_HMAC_SECRET=0123456789abcdef0123456789abcdef
+- Test secrets (env, no literals in repo):
+  - OUTBOX_HMAC_SECRET=<your_outbox_hmac_secret>
   - WRITE_REQUIRE_SIGNATURE=1, WRITE_REQUIRE_NONCE=1
   - GATEWAY_METRICS_* (basic/bearer) and webhook secrets
   - WORKER METRICS/NOTIFY tokens, INBOX/NOTIFY HMAC secrets

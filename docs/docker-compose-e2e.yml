@@ -6,12 +6,11 @@ services:
       # use sibling write repo at workspace root
       - ../../blackcat-darkmesh-write:/app
     environment:
-      OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
+      OUTBOX_HMAC_SECRET: ${OUTBOX_HMAC_SECRET:?set}
       WRITE_REQUIRE_SIGNATURE: '0'
       WRITE_REQUIRE_NONCE: '0'
       WRITE_WEBHOOK_REPLAY_WINDOW: '600'
       METRICS_PROM_PATH: /tmp/metrics.prom
-    environment:
       WRITE_KEEP_ALIVE: ${WRITE_KEEP_ALIVE:-0}
     command:
       - /bin/sh
@@ -35,7 +34,7 @@ services:
       PAYPAL_WEBHOOK_SECRET: test
       GW_CERT_PIN_SHA256: ''
       WRITE_WEBHOOK_TARGET: http://write:8787/mock-provider
-      WRITE_WEBHOOK_HMAC_SECRET: 0123456789abcdef0123456789abcdef
+      WRITE_WEBHOOK_HMAC_SECRET: ${WRITE_WEBHOOK_HMAC_SECRET:?set}
       WORKER_NOTIFY_URL: http://worker:8787/notify
       WORKER_NOTIFY_TOKEN: t-notify
       WORKER_NOTIFY_HMAC: secret-hmac

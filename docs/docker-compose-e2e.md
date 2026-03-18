@@ -11,7 +11,7 @@ services:
     volumes:
       - ../blackcat-darkmesh-write:/app:ro
     environment:
-      OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
+      OUTBOX_HMAC_SECRET: ${OUTBOX_HMAC_SECRET:?set}
       WRITE_REQUIRE_SIGNATURE: '0'
       WRITE_REQUIRE_NONCE: '0'
       METRICS_PROM_PATH: /tmp/metrics.prom
@@ -37,4 +37,4 @@ services:
     command: ["npm", "test", "--", "--run", "tests/metrics-auth.test.ts"]
 ```
 
-Use as a template; wire real routes instead of tests for a full flow. Keep secrets in a `.env` passed via `--env-file`.
+Use as a template; wire real routes instead of tests for a full flow. Keep secrets in a `.env` passed via `--env-file` (no literals in the YAML).

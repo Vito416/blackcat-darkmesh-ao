@@ -17,12 +17,11 @@ jobs:
           git clone https://github.com/Vito416/blackcat-darkmesh-write.git write
           git clone https://github.com/Vito416/blackcat-darkmesh-gateway.git gateway
 
-      - name: Install docker-compose
-        run: sudo apt-get update && sudo apt-get install -y docker-compose-plugin
-
       - name: Run compose smoke
         env:
           WRITE_KEEP_ALIVE: 0
+          OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST }}
+          WRITE_WEBHOOK_HMAC_SECRET: ${{ secrets.WRITE_WEBHOOK_HMAC_SECRET_TEST }}
         run: docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit --exit-code-from worker
 
       - name: Compose logs

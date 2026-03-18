@@ -29,4 +29,4 @@ jobs:
           npm test -- --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
       - name: Janitor TTL (miniflare)
         run: |
-          npm test -- --run tests/janitor.test.ts --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
+          npm test -- --run test/janitor.test.ts --reporter=basic --pool=forks --maxConcurrency=1 --testTimeout=30000
