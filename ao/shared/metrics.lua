@@ -241,6 +241,9 @@ local default_meta = {
     type = "gauge",
     help = "Duration of last catalog feed export in seconds",
   },
+  ao_page_view_total = { type = "counter", help = "Page view events emitted" },
+  ao_product_view_total = { type = "counter", help = "Product view events emitted" },
+  ao_risk_event_total = { type = "counter", help = "Risk signals emitted" },
   ao_outbox_queue_size = {
     type = "gauge",
     help = "Lines present in AO outbox queue file (write side export)",

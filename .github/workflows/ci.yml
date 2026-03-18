@@ -130,6 +130,8 @@ jobs:
           lua5.4 tests/integration/schema_validation_spec.lua
           lua5.4 tests/security/rate_limit_replay_spec.lua
           lua5.4 tests/security/pii_regression_spec.lua
+          lua5.4 tests/integration/analytics_spec.lua
+          lua5.4 tests/integration/analytics_spec.lua
 
       - name: Bundle export (if export file present)
         env:
@@ -198,3 +200,7 @@ jobs:
         env:
           TEST_IN_MEMORY_KV: "1"
         run: npm test -- --run
+      - name: Stress smoke
+        env:
+          TEST_IN_MEMORY_KV: "1"
+        run: npm run test:stress
