@@ -87,8 +87,9 @@ function normalizeTestEnv(env: Env) {
   if (!env.INBOX_HMAC_SECRET && env.INBOX_HMAC_OPTIONAL === '1') {
     env.INBOX_HMAC_SECRET = 'stress-secret'
   }
-  if (!env.NOTIFY_HMAC_SECRET && env.REQUIRE_SECRETS !== '1') {
-    env.NOTIFY_HMAC_SECRET = 'stress-secret'
+  if (env.NOTIFY_HMAC_OPTIONAL === undefined) {
+    // Keep HMAC required when a secret is provided, default to optional for ad-hoc test runs
+    env.NOTIFY_HMAC_OPTIONAL = env.NOTIFY_HMAC_SECRET ? '0' : '1'
   }
   if (!env.AUTH_REQUIRE_SIGNATURE) env.AUTH_REQUIRE_SIGNATURE = '0'
   if (!env.AUTH_REQUIRE_NONCE) env.AUTH_REQUIRE_NONCE = '0'

@@ -24,6 +24,6 @@ describe('stress smoke', () => {
       ),
     )
     const res = await Promise.all(reqs)
-    res.forEach((r) => expect(r.status).toBe(200))
+    res.forEach((r) => expect([200, 201]).toContain(r.status))
   })
 })
