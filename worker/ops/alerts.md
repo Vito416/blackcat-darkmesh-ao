@@ -54,6 +54,15 @@
     summary: "Notify delivery failures"
     description: "Notification retries exhausted (webhook/SendGrid). Check NOTIFY target health and secrets."
 
+- alert: WorkerNotifyBreakerOpen
+  expr: increase(worker_notify_breaker_open_total[5m]) > 0
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "Notify breaker tripped"
+    description: "Circuit breaker opened for notify target. Investigate webhook/SendGrid outages."
+
 ## Scrape example
 ```
 scrape_configs:

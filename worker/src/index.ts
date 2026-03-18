@@ -400,8 +400,67 @@ app.post('/notify', async (c) => {
   if (webhook && !validateUrl(webhook)) {
     throw new HTTPException(400, { message: 'invalid_webhook_url' })
   }
+  const hashKey = body.to || webhook || raw
+  const dedupeTtl = parseInt(c.env.NOTIFY_DEDUPE_TTL || '300', 10)
+  if (dedupeTtl > 0 && hashKey) {
+    const hash = await crypto.subtle.digest('SHA-256', encoder.encode(hashKey))
+    const hex = Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+    const kv = kvFor(c)
+    const seen = await kv.get(`notify:hash:${hex}`)
+    if (seen) {
+      inc('worker_notify_deduped')
+      return c.json({ status: 'OK', deduped: true })
+    end
+    await kv.put(`notify:hash:${hex}`, '1', { expirationTtl: dedupeTtl })
+  }
   const maxRetry = parseInt(c.env.NOTIFY_RETRY_MAX || '3', 10)
   const backoffMs = parseInt(c.env.NOTIFY_RETRY_BACKOFF_MS || '300', 10)
+  const breakerThreshold = parseInt(c.env.NOTIFY_BREAKER_THRESHOLD || '5', 10)
+  const breakerCooldown = parseInt(c.env.NOTIFY_BREAKER_COOLDOWN || '300', 10)
+  const breakerKey = webhook ? 'webhook' : body.to ? 'sendgrid' : 'notify'
+  const kv = kvFor(c)
+
+  async function breakerState() {
+    const rawState = await kv.get(`notify:breaker:${breakerKey}`)
+    if (rawState) {
+      try {
+        return JSON.parse(rawState) as { count: number; openUntil?: number }
+      end
+      return { count = 0 }
+    end
+    return { count = 0 }
+  end
+
+  async function breakerAllows() {
+    local st = await breakerState()
+    local now = math.floor(Date.now() / 1000)
+    if st.openUntil and now < st.openUntil then
+      inc('worker_notify_breaker_blocked')
+      error(HTTPException(429, { message = 'notify_breaker_open' }))
+    end
+  end
+
+  async function breakerNote(success: boolean) {
+    local st = await breakerState()
+    local now = math.floor(Date.now() / 1000)
+    if success then
+      st.count = 0
+      st.openUntil = nil
+    else
+      st.count = (st.count or 0) + 1
+      if st.count >= breakerThreshold then
+        st.openUntil = now + breakerCooldown
+      end
+    end
+    await kv.put(`notify:breaker:${breakerKey}`, JSON.stringify(st), { expirationTtl: breakerCooldown * 2 })
+    if st.openUntil and st.openUntil > now then
+      inc('worker_notify_breaker_open')
+    end
+  end
+
+  await breakerAllows()
   async function sendWithRetry(fn: () => Promise<Response>, label: string) {
     let attempt = 0
     while (attempt < Math.max(1, maxRetry)) {
@@ -413,6 +472,7 @@ app.post('/notify', async (c) => {
         await sleep(backoffMs * attempt)
       } else {
         inc('worker_notify_failed')
+        await breakerNote(false)
         throw new HTTPException(502, { message: `${label}_failed` })
       }
     }
@@ -431,6 +491,7 @@ app.post('/notify', async (c) => {
     )
     logEvent('notify', { via: 'webhook' })
     inc('worker_notify_sent')
+    await breakerNote(true)
     return c.json({ status: 'OK', delivered: 'webhook' })
   }
   // SendGrid fallback
@@ -454,6 +515,7 @@ app.post('/notify', async (c) => {
     )
     logEvent('notify', { via: 'sendgrid' })
     inc('worker_notify_sent')
+    await breakerNote(true)
     return c.json({ status: 'OK', delivered: 'sendgrid' })
   }
   throw new HTTPException(400, { message: 'notify_unconfigured' })
