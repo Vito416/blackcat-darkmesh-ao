@@ -15,6 +15,8 @@ on:
       - "docker-compose.test.yml"
   workflow_dispatch:
 
+permissions: { contents: read }
+
 jobs:
   ao-write:
     runs-on: ubuntu-latest
@@ -22,6 +24,8 @@ jobs:
       OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST || secrets.OUTBOX_HMAC_SECRET }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Build ao-write-test image
         run: docker build -f Dockerfile.ao-write-test -t ao-write-ci .
       - name: Run luacheck + ingest_smoke + bundler

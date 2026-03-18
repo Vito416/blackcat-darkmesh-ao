@@ -9,6 +9,7 @@ local os_time = os.time
 
 local NONCE_TTL = tonumber(os.getenv "AUTH_NONCE_TTL_SECONDS" or "300")
 local NONCE_MAX = tonumber(os.getenv "AUTH_NONCE_MAX_ENTRIES" or "2048")
+local NONCE_SQLITE = os.getenv "AUTH_NONCE_SQLITE"
 local REQUIRE_NONCE = os.getenv "AUTH_REQUIRE_NONCE" ~= "0" -- default ON
 local REQUIRE_SIGNATURE = os.getenv "AUTH_REQUIRE_SIGNATURE" ~= "0" -- default ON
 local REQUIRE_TS = os.getenv "AUTH_REQUIRE_TIMESTAMP" ~= "0"
@@ -26,6 +27,14 @@ local JWT_SECRET = os.getenv "AUTH_JWT_HS_SECRET"
 local REQUIRE_JWT = os.getenv "AUTH_REQUIRE_JWT" == "1"
 local DEVICE_TOKEN = os.getenv "AUTH_DEVICE_TOKEN"
 local REQUIRE_DEVICE = os.getenv "AUTH_REQUIRE_DEVICE_TOKEN" == "1"
+local REJECT_PLACEHOLDERS = os.getenv "ALLOW_PLACEHOLDER_SECRETS" ~= "1"
+local PLACEHOLDER_SECRETS = {
+  ["changeme-jwt-hmac"] = true,
+  ["changeme-outbox-hmac"] = true,
+  ["changeme-trust-hmac"] = true,
+  ["changeme"] = true,
+  ["change-me"] = true,
+}
 local openssl_ok, openssl = pcall(require, "openssl")
 local sodium_ok, sodium = pcall(require, "sodium")
 if not sodium_ok then
@@ -38,6 +47,8 @@ local json_ok, json = pcall(require, "cjson.safe")
 local FLAGS_FILE = os.getenv "AUTH_RESOLVER_FLAGS_FILE" or os.getenv "AO_FLAGS_PATH"
 
 local nonce_store = {}
+local nonce_db
+local nonce_db_loaded = false
 local rate_store = {}
 local rate_db_loaded = false
 local resolver_flags = {}
@@ -55,6 +66,12 @@ if RL_STATE_FILE then
     f:close()
   end
 end
+
+local SIGNATURE_EXCLUDE_KEYS = {
+  Signature = true,
+  signature = true,
+  ["Signature-Ref"] = true,
+}
 
 local function contains(list, value)
   for _, v in ipairs(list) do
@@ -85,6 +102,56 @@ local function hex_encode(bytes)
   end))
 end
 
+local function sorted_pairs(tbl)
+  local keys = {}
+  for k in pairs(tbl) do
+    keys[#keys + 1] = k
+  end
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+  local i = 0
+  return function()
+    i = i + 1
+    local key = keys[i]
+    if key then
+      return key, tbl[key]
+    end
+  end
+end
+
+local function canonical_value(val)
+  local t = type(val)
+  if t == "table" then
+    local parts = {}
+    for k, v in sorted_pairs(val) do
+      parts[#parts + 1] = tostring(k) .. "=" .. canonical_value(v)
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+  elseif t == "boolean" then
+    return val and "true" or "false"
+  elseif t == "number" then
+    return tostring(val)
+  elseif t == "string" then
+    return val
+  else
+    return ""
+  end
+end
+
+local function canonical_payload(msg)
+  if type(msg) ~= "table" then
+    return ""
+  end
+  local cleaned = {}
+  for k, v in pairs(msg) do
+    if not SIGNATURE_EXCLUDE_KEYS[k] then
+      cleaned[k] = v
+    end
+  end
+  return canonical_value(cleaned)
+end
+
 local function extract_bearer(msg)
   if msg.jwt then
     return msg.jwt
@@ -101,9 +168,26 @@ local function extract_bearer(msg)
   end
 end
 
+local function placeholder_secret(secret)
+  if not REJECT_PLACEHOLDERS then
+    return false
+  end
+  if not secret or secret == "" then
+    return false
+  end
+  local lower = tostring(secret):lower()
+  if PLACEHOLDER_SECRETS[lower] then
+    return true
+  end
+  return lower:find "change%-me" or lower:find "changeme"
+end
+
 function Auth.consume_jwt(msg)
   if not JWT_SECRET or JWT_SECRET == "" then
     return true
+  end
+  if placeholder_secret(JWT_SECRET) then
+    return false, "placeholder_jwt_secret"
   end
   if not jwt_ok then
     return not REQUIRE_JWT, "jwt_module_missing"
@@ -161,6 +245,49 @@ local function prune_nonces()
   end
 end
 
+local function load_nonce_db()
+  if nonce_db_loaded or not NONCE_SQLITE then
+    return
+  end
+  if not sqlite_ok then
+    return false, "nonce_sqlite_missing"
+  end
+  nonce_db = sqlite.open(NONCE_SQLITE)
+  if not nonce_db then
+    return false, "nonce_sqlite_open_failed"
+  end
+  nonce_db:exec "CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, exp INT, rid TEXT)"
+  nonce_db_loaded = true
+  return true
+end
+
+local function nonce_db_get(nonce)
+  if not nonce_db then
+    return nil
+  end
+  local stmt = nonce_db:prepare "SELECT exp,rid FROM nonces WHERE nonce=?"
+  stmt:bind_values(nonce)
+  local row = stmt:step() == sqlite.ROW and { exp = stmt:get_value(0), rid = stmt:get_value(1) } or nil
+  stmt:finalize()
+  return row
+end
+
+local function nonce_db_put(nonce, exp, rid)
+  if not nonce_db then
+    return
+  end
+  local stmt = nonce_db:prepare "INSERT OR REPLACE INTO nonces (nonce, exp, rid) VALUES (?, ?, ?)"
+  stmt:bind_values(nonce, exp, rid)
+  stmt:step()
+  stmt:finalize()
+end
+
+local function nonce_db_cleanup(now)
+  if nonce_db then
+    nonce_db:exec(string.format("DELETE FROM nonces WHERE exp < %d", now))
+  end
+end
+
 function Auth.require_nonce(msg)
   prune_nonces()
   local nonce = msg.Nonce or msg.nonce
@@ -170,15 +297,37 @@ function Auth.require_nonce(msg)
     end
     return true
   end
-  local seen = nonce_store[nonce]
+
+  local now = os_time()
+  local function memo_seen(entry)
+    if entry and entry.exp and entry.exp >= now then
+      return entry
+    end
+  end
+
+  local seen = memo_seen(nonce_store[nonce])
+
+  if not seen and NONCE_SQLITE then
+    local ok_db, err_db = load_nonce_db()
+    if ok_db == false then
+      return false, err_db
+    end
+    seen = memo_seen(nonce_db_get(nonce))
+  end
+
   if seen then
-    -- Allow same Nonce when the same Request-Id is retried (idempotent replay).
     if seen.rid and seen.rid == msg["Request-Id"] then
       return true
     end
     return false, "replay_nonce"
   end
-  nonce_store[nonce] = { exp = os_time() + NONCE_TTL, rid = msg["Request-Id"] }
+
+  local record = { exp = now + NONCE_TTL, rid = msg["Request-Id"] }
+  nonce_store[nonce] = record
+  if NONCE_SQLITE and nonce_db_loaded then
+    nonce_db_put(nonce, record.exp, record.rid)
+    nonce_db_cleanup(now)
+  end
   prune_nonces()
   return true
 end
@@ -210,11 +359,9 @@ function Auth.require_signature(msg)
     end
     return true
   end
-  local target = (msg.Action or "")
-    .. "|"
-    .. (msg["Site-Id"] or "")
-    .. "|"
-    .. (msg["Request-Id"] or "")
+
+  local target = canonical_payload(msg)
+
   if SIG_TYPE == "ed25519" and SIG_PUBLIC then
     if ed25519_ok and ed25519.verify then
       local pub = assert(io.open(SIG_PUBLIC, "rb")):read "*a"
@@ -223,14 +370,12 @@ function Auth.require_signature(msg)
         return true
       end
     end
-    -- Prefer libsodium for detached ed25519 verification (hex signature expected)
     if sodium_ok and sodium.crypto_sign_verify_detached then
       local pub = assert(io.open(SIG_PUBLIC, "rb")):read "*a"
       local raw_sig
       if sodium.from_hex then
         raw_sig = sodium.from_hex(sig)
       else
-        -- manual hex decode fallback
         local bytes = {}
         for byte in sig:gmatch "%x%x" do
           bytes[#bytes + 1] = string.char(tonumber(byte, 16))
@@ -241,7 +386,6 @@ function Auth.require_signature(msg)
         return true
       end
     end
-    -- Try luaossl
     if openssl_ok and openssl.pkey and openssl.hex then
       local pub_pem = assert(io.open(SIG_PUBLIC, "r")):read "*a"
       local pkey = openssl.pkey.read(pub_pem, true, "public")
@@ -251,32 +395,30 @@ function Auth.require_signature(msg)
         return true
       end
     end
-    if not SHELL_FALLBACK then
-      return false, "bad_signature"
-    end
-    -- Fallback shell
-    local tmp = os.tmpname()
-    local f = io.open(tmp, "w")
-    if f then
-      f:write(target)
-      f:close()
-    end
-    local cmd = string.format(
-      "openssl pkeyutl -verify -pubin -inkey %q -rawin -in %q -sigfile %q 2>/dev/null",
-      SIG_PUBLIC,
-      tmp,
-      tmp .. ".sig"
-    )
-    local sf = io.open(tmp .. ".sig", "w")
-    if sf then
-      sf:write(sig)
-      sf:close()
-    end
-    local ok = os.execute(cmd)
-    os.remove(tmp)
-    os.remove(tmp .. ".sig")
-    if ok == true or ok == 0 then
-      return true
+    if SHELL_FALLBACK then
+      local tmp = os.tmpname()
+      local f = io.open(tmp, "w")
+      if f then
+        f:write(target)
+        f:close()
+      end
+      local cmd = string.format(
+        "openssl pkeyutl -verify -pubin -inkey %q -rawin -in %q -sigfile %q 2>/dev/null",
+        SIG_PUBLIC,
+        tmp,
+        tmp .. ".sig"
+      )
+      local sf = io.open(tmp .. ".sig", "w")
+      if sf then
+        sf:write(sig)
+        sf:close()
+      end
+      local ok = os.execute(cmd)
+      os.remove(tmp)
+      os.remove(tmp .. ".sig")
+      if ok == true or ok == 0 then
+        return true
+      end
     end
     return false, "bad_signature"
   else
@@ -314,8 +456,8 @@ function Auth.require_signature(msg)
       end
       return true
     else
-      -- No HMAC backend available; in test/sandbox environments accept presence-only to avoid false negatives.
-      return true
+      -- Fail closed when signature verification is required but no crypto backend is available.
+      return false, "sig_backend_missing"
     end
   end
 end
@@ -324,6 +466,9 @@ function Auth.verify_outbox_hmac(msg)
   local secret = os.getenv "OUTBOX_HMAC_SECRET"
   if not secret or secret == "" then
     return true
+  end
+  if placeholder_secret(secret) then
+    return false, "placeholder_outbox_hmac_secret"
   end
   local provided = msg.hmac or msg.Hmac
   if not provided then

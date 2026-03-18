@@ -3,6 +3,8 @@ name: Worker Loadtest Smoke
 on:
   workflow_dispatch: {}
 
+permissions: { contents: read }
+
 jobs:
   k6:
     runs-on: ubuntu-latest
@@ -11,6 +13,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Use Node 20
         uses: actions/setup-node@v4

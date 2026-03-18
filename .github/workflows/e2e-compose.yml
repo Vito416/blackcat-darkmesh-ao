@@ -3,12 +3,16 @@ name: E2E Compose Smoke
 on:
   workflow_dispatch: {}
 
+permissions: { contents: read }
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout AO repo
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Clone gateway + write repos
         run: |

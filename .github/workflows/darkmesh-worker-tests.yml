@@ -11,6 +11,8 @@ on:
       - "docker-compose.test.yml"
   workflow_dispatch:
 
+permissions: { contents: read }
+
 jobs:
   worker:
     runs-on: ubuntu-latest
@@ -20,6 +22,8 @@ jobs:
         working-directory: blackcat-darkmesh-ao/worker
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Install deps
         run: |
           npm ci --ignore-scripts

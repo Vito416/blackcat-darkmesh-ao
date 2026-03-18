@@ -96,6 +96,7 @@ function requireSecret(env: Env, key: keyof Env | string, message?: string) {
 
 // Provide safe defaults for tests/stress when optional auth is allowed
 function normalizeTestEnv(env: Env) {
+  if (!env.FORGET_TOKEN && env.WORKER_AUTH_TOKEN) env.FORGET_TOKEN = env.WORKER_AUTH_TOKEN
   if (!env.WORKER_AUTH_TOKEN && env.FORGET_TOKEN) env.WORKER_AUTH_TOKEN = env.FORGET_TOKEN
   if (!env.INBOX_HMAC_SECRET && env.INBOX_HMAC_OPTIONAL === '1') {
     env.INBOX_HMAC_SECRET = 'stress-secret'
@@ -426,7 +427,8 @@ app.post('/forget', async (c) => {
 
 app.get('/metrics', async (c) => {
   const needBasic = !!(c.env.METRICS_BASIC_USER && c.env.METRICS_BASIC_PASS)
-  const needBearer = !!c.env.METRICS_BEARER_TOKEN
+  const bearerToken = isPlaceholderSecret(c.env.METRICS_BEARER_TOKEN) ? '' : c.env.METRICS_BEARER_TOKEN || ''
+  const needBearer = !!bearerToken
   const mustGuard = c.env.REQUIRE_METRICS_AUTH === '1' || secretsEnforced(c.env)
   if (!needBasic && !needBearer && mustGuard) {
     throw new HTTPException(500, { message: 'metrics_auth_not_configured' })
@@ -436,12 +438,12 @@ app.get('/metrics', async (c) => {
     const alt = c.req.header('x-metrics-token') || ''
     let ok = false
     let method: 'basic' | 'bearer' | null = null
-    if (needBearer && alt === c.env.METRICS_BEARER_TOKEN) {
+    if (needBearer && alt === bearerToken) {
       ok = true
       method = 'bearer'
     }
     if (!ok && needBearer && /^Bearer\s+/i.test(auth)) {
-      ok = auth.replace(/^Bearer\s+/i, '').trim() === c.env.METRICS_BEARER_TOKEN
+      ok = auth.replace(/^Bearer\s+/i, '').trim() === bearerToken
       if (ok) method = 'bearer'
     }
     if (!ok && needBasic && /^Basic\s+/i.test(auth)) {
