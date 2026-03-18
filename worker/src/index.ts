@@ -405,7 +405,7 @@ app.post('/notify', async (c) => {
   if (webhook && !validateUrl(webhook)) {
     throw new HTTPException(400, { message: 'invalid_webhook_url' })
   }
-  const hashKey = body.to || webhook || raw
+  const hashKey = `${body.to || webhook || raw}|${webhook ? 'webhook' : body.to ? 'email' : 'notify'}`
   const dedupeTtl = parseInt(c.env.NOTIFY_DEDUPE_TTL || '300', 10)
   if (dedupeTtl > 0 && hashKey) {
     const hash = await crypto.subtle.digest('SHA-256', encoder.encode(hashKey))

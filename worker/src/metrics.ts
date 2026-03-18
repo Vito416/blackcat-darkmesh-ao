@@ -18,7 +18,7 @@ const help: Record<string, string> = {
   worker_notify_failed_total: 'Notify deliveries failed after retries',
   worker_notify_breaker_blocked_total: 'Notify breaker open (blocked)',
   worker_notify_breaker_open_total: 'Notify breaker trips',
-  worker_notify_deduped_total: 'Notify deduped by hash',
+  worker_notify_deduped_total: 'Notify deduped by hash (provider label)',
   worker_metrics_auth_blocked_total: 'Metrics requests unauthorized',
   worker_notify_hmac_optional: 'Notify HMAC optional flag (1 when optional)',
 }
