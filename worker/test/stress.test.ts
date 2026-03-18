@@ -5,6 +5,8 @@ const env = {
   TEST_IN_MEMORY_KV: 1,
   INBOX_HMAC_SECRET: 'stress-secret',
   INBOX_HMAC_OPTIONAL: '1',
+  AUTH_REQUIRE_SIGNATURE: '0',
+  AUTH_REQUIRE_NONCE: '0',
   FORGET_TOKEN: 'test-token',
 }
 
