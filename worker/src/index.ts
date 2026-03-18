@@ -271,6 +271,27 @@ async function verifyInboxSignature(c: any, body: string) {
   }
 }
 
+async function verifyNotifySignature(c: any, body: string) {
+  const secret = c.env.NOTIFY_HMAC_SECRET
+  if (!secret) return
+  const sig = c.req.header('x-signature') || c.req.header('X-Signature')
+  if (!sig) {
+    throw new HTTPException(401, { message: 'missing_signature' })
+  }
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const signatureBytes = hexToBytes(sig.trim().toLowerCase())
+  const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
+  if (!ok) {
+    throw new HTTPException(401, { message: 'invalid_signature' })
+  }
+}
+
 app.post('/inbox', async (c) => {
   const raw = await c.req.text()
   await verifyInboxSignature(c, raw)
@@ -337,11 +358,11 @@ app.get('/metrics', async (c) => {
     const alt = c.req.header('x-metrics-token') || ''
     let ok = false
     if (needBearer && alt === c.env.METRICS_BEARER_TOKEN) ok = true
-    if (!ok && needBearer && /^Bearer\\s+/i.test(auth)) {
-      ok = auth.replace(/^Bearer\\s+/i, '').trim() === c.env.METRICS_BEARER_TOKEN
+    if (!ok && needBearer && /^Bearer\s+/i.test(auth)) {
+      ok = auth.replace(/^Bearer\s+/i, '').trim() === c.env.METRICS_BEARER_TOKEN
     }
-    if (!ok && needBasic && /^Basic\\s+/i.test(auth)) {
-      const b64 = auth.replace(/^Basic\\s+/i, '')
+    if (!ok && needBasic && /^Basic\s+/i.test(auth)) {
+      const b64 = auth.replace(/^Basic\s+/i, '')
       try {
         const decoded = Buffer.from(b64, 'base64').toString()
         const [u, p] = decoded.split(':')
@@ -358,7 +379,16 @@ app.get('/metrics', async (c) => {
 
 app.post('/notify', async (c) => {
   requireToken(c)
-  const body = await c.req.json<{ to?: string; subject?: string; text?: string; html?: string; data?: any; webhookUrl?: string }>()
+  const raw = await c.req.text()
+  await verifyNotifySignature(c, raw)
+  const body = JSON.parse(raw || '{}') as {
+    to?: string
+    subject?: string
+    text?: string
+    html?: string
+    data?: any
+    webhookUrl?: string
+  }
   if (!body.to && !body.webhookUrl && !c.env.NOTIFY_WEBHOOK) {
     throw new HTTPException(400, { message: 'missing_destination' })
   }
@@ -370,38 +400,58 @@ app.post('/notify', async (c) => {
   if (webhook && !validateUrl(webhook)) {
     throw new HTTPException(400, { message: 'invalid_webhook_url' })
   }
+  const maxRetry = parseInt(c.env.NOTIFY_RETRY_MAX || '3', 10)
+  const backoffMs = parseInt(c.env.NOTIFY_RETRY_BACKOFF_MS || '300', 10)
+  async function sendWithRetry(fn: () => Promise<Response>, label: string) {
+    let attempt = 0
+    while (attempt < Math.max(1, maxRetry)) {
+      const resp = await fn()
+      if (resp.ok) return resp
+      attempt++
+      if (attempt < maxRetry) {
+        inc('worker_notify_retry')
+        await sleep(backoffMs * attempt)
+      } else {
+        inc('worker_notify_failed')
+        throw new HTTPException(502, { message: `${label}_failed` })
+      }
+    }
+    throw new HTTPException(502, { message: `${label}_failed` })
+  }
   // webhook first (either body.webhookUrl or env NOTIFY_WEBHOOK)
   if (webhook) {
-    const resp = await fetch(webhook, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ to: body.to, subject: body.subject, text: body.text, html: body.html, data: body.data }),
-    })
-    if (!resp.ok) {
-      throw new HTTPException(502, { message: 'notify_webhook_failed' })
-    }
+    const resp = await sendWithRetry(
+      () =>
+        fetch(webhook, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ to: body.to, subject: body.subject, text: body.text, html: body.html, data: body.data }),
+        }),
+      'notify_webhook'
+    )
     logEvent('notify', { via: 'webhook' })
     inc('worker_notify_sent')
     return c.json({ status: 'OK', delivered: 'webhook' })
   }
   // SendGrid fallback
   if (c.env.SENDGRID_KEY && body.to) {
-    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${c.env.SENDGRID_KEY}`,
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: body.to }] }],
-        from: { email: 'no-reply@example.com' },
-        subject: body.subject || 'Notification',
-        content: [{ type: body.html ? 'text/html' : 'text/plain', value: body.html || body.text || '' }],
-      }),
-    })
-    if (!resp.ok) {
-      throw new HTTPException(502, { message: 'notify_sendgrid_failed' })
-    }
+    const resp = await sendWithRetry(
+      () =>
+        fetch('https://api.sendgrid.com/v3/mail/send', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${c.env.SENDGRID_KEY}`,
+          },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: body.to }] }],
+            from: { email: 'no-reply@example.com' },
+            subject: body.subject || 'Notification',
+            content: [{ type: body.html ? 'text/html' : 'text/plain', value: body.html || body.text || '' }],
+          }),
+        }),
+      'notify_sendgrid'
+    )
     logEvent('notify', { via: 'sendgrid' })
     inc('worker_notify_sent')
     return c.json({ status: 'OK', delivered: 'sendgrid' })

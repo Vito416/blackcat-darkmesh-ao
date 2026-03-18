@@ -45,6 +45,15 @@
     summary: "Frequent forget requests"
     description: "Elevated forget deletions; verify AO/ForgetSubject or abuse."
 
+- alert: WorkerNotifyFailures
+  expr: increase(worker_notify_failed_total[5m]) > 0
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Notify delivery failures"
+    description: "Notification retries exhausted (webhook/SendGrid). Check NOTIFY target health and secrets."
+
 ## Scrape example
 ```
 scrape_configs:

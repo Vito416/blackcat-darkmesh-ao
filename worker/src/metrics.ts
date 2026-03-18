@@ -14,6 +14,8 @@ const help: Record<string, string> = {
   worker_rate_limit_blocked_total: 'Requests blocked by inbox rate-limit',
   worker_notify_rate_blocked_total: 'Notify requests blocked',
   worker_notify_sent_total: 'Notify deliveries accepted',
+  worker_notify_retry_total: 'Notify retries attempted',
+  worker_notify_failed_total: 'Notify deliveries failed after retries',
   worker_metrics_auth_blocked_total: 'Metrics requests unauthorized',
 }
 
