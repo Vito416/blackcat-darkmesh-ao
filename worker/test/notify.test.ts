@@ -39,7 +39,9 @@ describe('/notify dedupe and breaker', () => {
   })
 
   it('opens breaker after failure and blocks subsequent calls', async () => {
-    const fetchSpy = vi.spyOn(global, 'fetch' as any).mockResolvedValue(new Response('', { status: 500 }))
+    const fetchSpy = vi
+      .spyOn(global, 'fetch' as any)
+      .mockResolvedValue(new Response('', { status: 500 }))
     const payload = { webhookUrl: 'https://example.com/fail', data: { y: 2 } }
     const res1 = await req(payload, { NOTIFY_BREAKER_THRESHOLD: '1', NOTIFY_RETRY_MAX: '1', NOTIFY_RETRY_BACKOFF_MS: '0' })
     expect(res1.status).toBe(502)
