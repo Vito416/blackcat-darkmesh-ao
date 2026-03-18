@@ -1,10 +1,10 @@
-version: '3.9'
 services:
   write:
     image: alpine:3.19
     working_dir: /app
     volumes:
-      - ../blackcat-darkmesh-write:/app
+      # use sibling write repo at workspace root
+      - ../../blackcat-darkmesh-write:/app
     environment:
       OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
       WRITE_REQUIRE_SIGNATURE: '0'
@@ -16,7 +16,8 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ../blackcat-darkmesh-gateway:/app
+      # use the top-level gateway repo (sibling of -ao), not the empty stub in this repo
+      - ../../blackcat-darkmesh-gateway:/app
     environment:
       METRICS_BASIC_USER: prom
       METRICS_BASIC_PASS: prompass
@@ -28,11 +29,12 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ./worker:/app
+      # worker sources live one level up from docs/
+      - ../worker:/app
     environment:
       TEST_IN_MEMORY_KV: '1'
       INBOX_HMAC_SECRET: change-me
       NOTIFY_HMAC_SECRET: change-me
       METRICS_BASIC_USER: prom
       METRICS_BASIC_PASS: prompass
-    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts"]
+    command: ["/bin/sh", "-c", "npm ci && npm test -- --run test/metrics-auth.test.ts"]
