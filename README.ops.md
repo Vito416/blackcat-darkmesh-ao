@@ -9,6 +9,9 @@
   - `DOCKER_CONFIG=/tmp docker compose -f docs/docker-compose-e2e.yml up --build --abort-on-container-exit`
   - Mountuje lokální sibling repa (write/gateway/worker) a spouští: outbox HMAC smoke, gateway /metrics auth + webhook pen-test, worker /metrics auth + HMAC pen-test + notify breaker/dedupe.
   - Po doběhu zůstávají logy v docker outputu; stopne se automaticky při chybě některého servisu.
+- End-to-end notify smoke (volitelné, pokud chceš prověřit celý řetězec):
+  - Doplnit do `docs/docker-compose-e2e.yml` kroky: Write emit /notify event → Gateway forward → Worker /notify; použít test webhook URL nebo stub fetch.
+  - Před spuštěním nastav `NOTIFY_HMAC_SECRET` a `NOTIFY_RATE_MAX=1` v worker env pro striktní ověření.
 
 ## CI
 - `.github/workflows/darkmesh-worker-tests.yml` — Vitest suite for the worker. Badge: `![Worker Tests](https://github.com/blackcatacademy/blackcat-darkmesh-ao/actions/workflows/darkmesh-worker-tests.yml/badge.svg)`
