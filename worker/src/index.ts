@@ -54,18 +54,21 @@ function kvFor(c: any) {
       async delete(key: string) {
         memoryKv.delete(key)
       },
-      async list(params?: { prefix?: string; limit?: number }) {
+      async list(params?: { prefix?: string; limit?: number; cursor?: string }) {
         const prefix = params?.prefix || ''
         const limit = params?.limit ?? memoryKv.size
-        const keys = []
-        for (const key of memoryKv.keys()) {
+        const start = params?.cursor ? parseInt(params.cursor, 10) || 0 : 0
+        const allKeys = Array.from(memoryKv.keys())
+        const filtered = [] as string[]
+        for (const key of allKeys) {
           if (!key.startsWith(prefix)) continue
           const entry = cleanExpired(key)
           if (!entry) continue
-          keys.push({ name: key })
-          if (keys.length >= limit) break
+          filtered.push(key)
         }
-        return { keys }
+        const slice = filtered.slice(start, start + limit)
+        const nextCursor = start + slice.length < filtered.length ? String(start + slice.length) : undefined
+        return { keys: slice.map((k) => ({ name: k })), list_complete: !nextCursor, cursor: nextCursor }
       },
     }
   }
@@ -73,17 +76,27 @@ function kvFor(c: any) {
 }
 
 function secretsEnforced(env: Env) {
-  return env.REQUIRE_SECRETS === '1'
+  // Fail-closed by default unless explicitly running with the in-memory test shim
+  return env.REQUIRE_SECRETS === '1' || !useMemoryKv(env)
+}
+
+function isPlaceholderSecret(val?: string) {
+  if (!val) return true
+  const lower = val.trim().toLowerCase()
+  return ['change-me', 'changeme', 'placeholder', 'example', 'sample', 'setme'].some((p) => lower.includes(p))
 }
 
 function requireSecret(env: Env, key: keyof Env | string, message?: string) {
-  if (secretsEnforced(env) && !(env as any)[key]) {
+  if (!secretsEnforced(env)) return
+  const value = (env as any)[key]
+  if (!value || isPlaceholderSecret(String(value))) {
     throw new HTTPException(500, { message: message || `missing_secret:${String(key)}` })
   }
 }
 
 // Provide safe defaults for tests/stress when optional auth is allowed
 function normalizeTestEnv(env: Env) {
+  if (!env.WORKER_AUTH_TOKEN && env.FORGET_TOKEN) env.WORKER_AUTH_TOKEN = env.FORGET_TOKEN
   if (!env.INBOX_HMAC_SECRET && env.INBOX_HMAC_OPTIONAL === '1') {
     env.INBOX_HMAC_SECRET = 'stress-secret'
   }
@@ -205,7 +218,11 @@ async function notifyRateLimit(c: any) {
 }
 
 function replayWindow(c: any) {
-  return parseInt(c.env.REPLAY_TTL || '600', 10)
+  const ttl = parseInt(c.env.REPLAY_TTL || '600', 10)
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    throw new HTTPException(500, { message: 'invalid_replay_ttl' })
+  }
+  return ttl
 }
 
 async function checkReplay(c: any, subj: string, nonce: string) {
@@ -230,9 +247,12 @@ async function checkReplay(c: any, subj: string, nonce: string) {
 
 // simple token check for forget/notify
 function requireToken(c: any) {
-  requireSecret(c.env, 'FORGET_TOKEN', 'missing_forget_token')
+  const tokenEnv = c.env.WORKER_AUTH_TOKEN || c.env.FORGET_TOKEN
+  if (!tokenEnv) {
+    requireSecret(c.env, 'WORKER_AUTH_TOKEN', 'missing_auth_token')
+  }
   const token = c.req.header('Authorization') || c.req.header('authorization') || ''
-  if (c.env.FORGET_TOKEN && token !== `Bearer ${c.env.FORGET_TOKEN}`) {
+  if (tokenEnv && token !== `Bearer ${tokenEnv}`) {
     throw new HTTPException(401, { message: 'unauthorized' })
   }
 }
@@ -375,6 +395,7 @@ app.get('/inbox/:subject/:nonce', async (c) => {
   const subj = c.req.param('subject')
   const nonce = c.req.param('nonce')
   const kv = kvFor(c)
+  await rateLimit(c)
   const raw = await kv.get(key(subj, nonce))
   if (!raw) throw new HTTPException(404, { message: 'not_found' })
   const item = JSON.parse(raw) as InboxItem
@@ -633,21 +654,26 @@ export default {
     const prefixes = ['', 'replay:']
     let deleted = 0
     for (const prefix of prefixes) {
-      const list = await kv.list({ prefix })
-      for (const k of list.keys) {
-        const raw = await kv.get(k.name)
-        if (!raw) continue
-        try {
-          const item = JSON.parse(raw) as InboxItem
-          if (item.exp && item.exp < now) {
+      let cursor: string | undefined
+      do {
+        const page = await kv.list({ prefix, cursor, limit: 1000 })
+        for (const k of page.keys) {
+          const raw = await kv.get(k.name)
+          if (!raw) continue
+          try {
+            const item = JSON.parse(raw) as InboxItem
+            if (item.exp && item.exp < now) {
+              ctx.waitUntil(kv.delete(k.name))
+              deleted++
+            }
+          } catch (_e) {
             ctx.waitUntil(kv.delete(k.name))
             deleted++
           }
-        } catch (_e) {
-          ctx.waitUntil(kv.delete(k.name))
-          deleted++
         }
-      }
+        cursor = page.cursor
+        if (page.list_complete === true || !cursor) break
+      } while (true)
     }
     if (deleted > 0) inc('worker_inbox_expired_total', deleted)
     logEvent('janitor', { ts: now, deleted })
