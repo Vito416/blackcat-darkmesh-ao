@@ -1,0 +1,63 @@
+# Grafana dashboard snippet for AO metrics (import via file provisioner or UI).
+apiVersion: 1
+providers:
+  - name: "ao-overview"
+    orgId: 1
+    folder: "Blackcat Mesh / AO"
+    type: file
+    options:
+      path: /etc/grafana/dashboards/ao-overview.json
+
+dashboard:
+  title: "AO Overview"
+  tags: ["blackcat", "ao"]
+  timezone: browser
+  panels:
+    - title: "Ingest apply"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(ao_ingest_apply_ok_total[5m])
+          legendFormat: apply ok/s
+        - expr: rate(ao_ingest_apply_failed_total[5m])
+          legendFormat: apply failed/s
+    - title: "Outbox lag"
+      type: timeseries
+      datasource: Prometheus
+      fieldConfig:
+        defaults: { unit: s }
+      targets:
+        - expr: ao_outbox_lag_seconds
+          legendFormat: lag seconds
+    - title: "Cache hit ratio"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(ao_cache_hit_total[5m]) / (rate(ao_cache_hit_total[5m]) + rate(ao_cache_miss_total[5m]))
+          legendFormat: hit_ratio
+    - title: "Cache misses / stale"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(ao_cache_miss_total[5m])
+          legendFormat: miss/s
+        - expr: rate(ao_cache_stale_hit_total[5m])
+          legendFormat: stale hit/s
+        - expr: rate(ao_cache_stale_fallback_total[5m])
+          legendFormat: stale fallback/s
+    - title: "Sitemap export duration"
+      type: timeseries
+      datasource: Prometheus
+      fieldConfig:
+        defaults: { unit: s }
+      targets:
+        - expr: ao_sitemap_export_duration_seconds
+          legendFormat: sitemap duration
+    - title: "Feed export"
+      type: timeseries
+      datasource: Prometheus
+      targets:
+        - expr: rate(ao_feed_export_total[30m])
+          legendFormat: feed export/s
+        - expr: rate(ao_feed_export_failed_total[30m])
+          legendFormat: feed failed/s

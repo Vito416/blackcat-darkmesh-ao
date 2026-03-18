@@ -13,7 +13,9 @@ What you deploy
   plus shared libs.
 - Systemd services: see `ops/checksum-daemon.service` for checksum monitoring;
   set env via `/etc/blackcat/ao.env`.
-- Metrics/health: `METRICS_PROM_PATH`, `scripts/verify/health.lua`.
+- Metrics/health: write Prom text to `METRICS_PROM_PATH` and expose it via the
+  sidecar `ops/systemd/ao-http.service` (`/metrics`, `/health`). Configure
+  scrape target to `http://<host>:${AO_HTTP_PORT:-9100}/metrics`.
 - Optional immutable export: set `AO_WEAVEDB_EXPORT_PATH` to append PII-scrubbed
   public snapshots/WAL for bundling to WeaveDB; local restart snapshots via
   `AO_STATE_DIR`.
