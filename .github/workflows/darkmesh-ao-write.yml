@@ -18,6 +18,8 @@ on:
 jobs:
   ao-write:
     runs-on: ubuntu-latest
+    env:
+      OUTBOX_HMAC_SECRET: 0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v6
       - name: Build ao-write-test image
@@ -30,6 +32,7 @@ jobs:
             -e LUA_CPATH="/usr/local/lib/lua/5.4/?.so" \
             -e AO_WEAVEDB_EXPORT_PATH=/tmp/ao-export.ndjson \
             -e WRITE_OUTBOX_EXPORT_PATH=/tmp/write-export.ndjson \
+            -e OUTBOX_HMAC_SECRET=${{ env.OUTBOX_HMAC_SECRET }} \
             ao-write-ci sh -c "
               cd /workspace/blackcat-darkmesh-write &&
               luacheck ao &&
