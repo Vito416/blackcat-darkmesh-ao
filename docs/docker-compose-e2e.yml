@@ -41,7 +41,7 @@ services:
       WORKER_NOTIFY_BREAKER_KEY: gateway
       GATEWAY_NOTIFY_URL: http://gateway:8787/webhook/demo-forward
       GATEWAY_NOTIFY_HMAC: secret-hmac
-    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts"]
+    command: ["/bin/sh", "-c", "npm ci && npm test -- --run tests/metrics-auth.test.ts tests/webhook-pentest.test.ts && node scripts/e2e-psp-smoke.js"]
 
   worker:
     depends_on:
