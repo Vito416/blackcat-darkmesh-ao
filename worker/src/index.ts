@@ -276,6 +276,7 @@ async function verifyNotifySignature(c: any, body: string) {
   if (!secret) return
   const sig = c.req.header('x-signature') || c.req.header('X-Signature')
   if (!sig) {
+    if (c.env.NOTIFY_HMAC_OPTIONAL === '1') return
     throw new HTTPException(401, { message: 'missing_signature' })
   }
   const key = await crypto.subtle.importKey(
