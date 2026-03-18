@@ -62,6 +62,8 @@ Build/Deploy
 Local testing
 - Vitest/Miniflare run with in-memory KV/D1 (`TEST_IN_MEMORY_KV=1` in `wrangler.toml`) to avoid local SQLite locks.
 - Docker option: `docker compose -f docker-compose.test.yml run --rm worker-test` (installs workerd binaries and runs `npm test`).
+- Pen-test (webhook/auth) via Docker without local Node:
+  - `docker run --rm -v $(pwd):/app -w /app node:20-alpine sh -c "npm ci && npm test -- --run test/metrics-auth.test.ts"`
 
 Env vars (extra)
 - `TEST_IN_MEMORY_KV` — dev/test only; ignored in production.
