@@ -244,6 +244,9 @@ local default_meta = {
   ao_page_view_total = { type = "counter", help = "Page view events emitted" },
   ao_product_view_total = { type = "counter", help = "Product view events emitted" },
   ao_risk_event_total = { type = "counter", help = "Risk signals emitted" },
+  ao_subscription_start_total = { type = "counter", help = "Subscriptions started" },
+  ao_subscription_cancel_total = { type = "counter", help = "Subscriptions cancelled" },
+  ao_subscription_churn_total = { type = "counter", help = "Subscription churn events" },
   ao_outbox_queue_size = {
     type = "gauge",
     help = "Lines present in AO outbox queue file (write side export)",

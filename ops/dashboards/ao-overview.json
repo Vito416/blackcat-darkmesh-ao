@@ -1,0 +1,63 @@
+{
+  "title": "AO Overview",
+  "timezone": "browser",
+  "tags": ["blackcat", "ao"],
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Ingest apply",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ao_ingest_apply_ok_total[5m])", "legendFormat": "apply ok/s"},
+        {"expr": "rate(ao_ingest_apply_failed_total[5m])", "legendFormat": "apply failed/s"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox lag",
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "ao_outbox_lag_seconds", "legendFormat": "lag seconds"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache hit ratio",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ao_cache_hit_total[5m]) / (rate(ao_cache_hit_total[5m]) + rate(ao_cache_miss_total[5m]))", "legendFormat": "hit_ratio"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache misses / stale",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ao_cache_miss_total[5m])", "legendFormat": "miss/s"},
+        {"expr": "rate(ao_cache_stale_hit_total[5m])", "legendFormat": "stale hit/s"},
+        {"expr": "rate(ao_cache_stale_fallback_total[5m])", "legendFormat": "stale fallback/s"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sitemap export duration",
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "ao_sitemap_export_duration_seconds", "legendFormat": "sitemap duration"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Feed export",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ao_feed_export_total[30m])", "legendFormat": "feed export/s"},
+        {"expr": "rate(ao_feed_export_failed_total[30m])", "legendFormat": "feed failed/s"}
+      ]
+    }
+  ]
+}
