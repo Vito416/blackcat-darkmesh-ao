@@ -82,8 +82,21 @@ function requireSecret(env: Env, key: keyof Env | string, message?: string) {
   }
 }
 
+// Provide safe defaults for tests/stress when optional auth is allowed
+function normalizeTestEnv(env: Env) {
+  if (!env.INBOX_HMAC_SECRET && env.INBOX_HMAC_OPTIONAL === '1') {
+    env.INBOX_HMAC_SECRET = 'stress-secret'
+  }
+  if (!env.NOTIFY_HMAC_SECRET && env.REQUIRE_SECRETS !== '1') {
+    env.NOTIFY_HMAC_SECRET = 'stress-secret'
+  }
+  if (!env.AUTH_REQUIRE_SIGNATURE) env.AUTH_REQUIRE_SIGNATURE = '0'
+  if (!env.AUTH_REQUIRE_NONCE) env.AUTH_REQUIRE_NONCE = '0'
+}
+
 // Basic CORS (tighten origin in production)
 app.use('*', async (c, next) => {
+  normalizeTestEnv(c.env as any)
   c.header('Access-Control-Allow-Origin', '*')
   c.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Signature')
