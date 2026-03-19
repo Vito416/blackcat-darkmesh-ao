@@ -32,7 +32,13 @@ Default policy intent:
 
 - future fee increases should be no less protective than the cumulative official inflation published since the last applicable fee schedule;
 - the benchmark should come from a public official source;
-- and the founder may publish a higher schedule than inflation alone if justified by product, support, registry, or ecosystem costs.
+- and any ordinary increase above pure inflation should remain within the fairness guard below unless the update is only a technical preservation step caused by redenomination, successor-currency conversion, or transition to a valid successor value standard.
+
+Default fairness guard for operators:
+
+- ordinary fee updates should not be published more than once in any rolling twelve-month period for the same coverage unit;
+- the increase in the published Founder Fee should not exceed cumulative official inflation since the prior published schedule plus 0.5 percentage points;
+- and fee updates apply prospectively only.
 
 Recommended benchmark hierarchy:
 
@@ -44,10 +50,28 @@ Recommended benchmark hierarchy:
 Unless a later schedule states a different formula, the intended baseline rule is:
 
 - each future published Founder Fee should be at least the previous published fee adjusted upward by the applicable official inflation measure;
+- each ordinary future published Founder Fee should not exceed the previous published fee adjusted by the applicable official inflation measure plus 0.5 percentage points;
 - fee updates apply prospectively only;
 - and already compliant payments are not retroactively invalidated.
 
 Negative inflation or temporary deflation does not automatically require a fee decrease unless the founder expressly chooses to publish one.
+
+## 2B. Currency replacement, redenomination, and post-fiat continuity
+
+If the reference currency is legally redenominated, replaced, discontinued, or no longer functions as a meaningful unit of account, the founder or founder-controlled entity may continue the fee schedule using a good-faith successor standard intended to preserve substantially equivalent real economic value.
+
+Default succession order:
+
+- the legally recognized successor currency using the official conversion rate or legal redenomination rule;
+- if no practical successor currency is available, a public international unit of account such as IMF SDR, if still published and reasonably usable;
+- if neither remains practical, a published Successor Value Standard based on publicly verifiable economic benchmarks relevant to the ecosystem, such as energy, storage, bandwidth, compute, or another objective basket published in the repository or a Founder Notice.
+
+Any such transition should:
+
+- be documented publicly;
+- preserve the same general economic burden in good faith rather than serve as a disguised arbitrary increase;
+- remain subject, where reasonably measurable, to the same baseline fairness guard of inflation preservation plus no more than an additional 0.5 percentage points for ordinary increases;
+- and preserve the founder's and any lawful successor's ability to receive valid settlement even if prior fiat systems materially fail.
 
 ## 3. Required tags
 
