@@ -1,0 +1,11 @@
+{
+  "notice_id": "2026-03-19-founder-identity-v1",
+  "notice_path": "docs/notices/2026-03-19-founder-identity.notice.md",
+  "notice_sha256": "5CAB9CCB89CF263CB2E203CB9672FC172F034CE970387CB24C167E652F856FF6",
+  "authenticity_method": "ledger-backed-arweave-identity",
+  "authenticity_reference": "SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78",
+  "proof_txid": "wR0U76nEq9jHNBCBDl2n4UiAGGwOZ8DAmsk1FLn8-rw",
+  "proof_tags_version": "blackcat-founder-notice-v1",
+  "published_at": "2026-03-19T19:10:48+01:00",
+  "status": "pending-confirmation"
+}
