@@ -92,7 +92,7 @@ local WEBHOOK_REPLAY_WINDOW = tonumber(os.getenv "CATALOG_WEBHOOK_REPLAY_WINDOW"
 local CHALLENGE_TTL = tonumber(os.getenv "CATALOG_3DS_TTL" or "") or 900
 local MERCHANT_COUNTRY = (os.getenv "CATALOG_MERCHANT_COUNTRY" or "US"):upper()
 local WORKER_FORGET_URL = os.getenv "WORKER_FORGET_URL"
-local WORKER_AUTH_TOKEN = os.getenv("WORKER_AUTH_TOKEN") or os.getenv("WORKER_FORGET_TOKEN")
+local WORKER_AUTH_TOKEN = os.getenv "WORKER_AUTH_TOKEN" or os.getenv "WORKER_FORGET_TOKEN"
 
 local openssl_ok, openssl = pcall(require, "openssl")
 local sodium_ok, sodium = pcall(require, "sodium")

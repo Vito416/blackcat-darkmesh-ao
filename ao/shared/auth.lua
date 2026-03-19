@@ -267,7 +267,8 @@ local function nonce_db_get(nonce)
   end
   local stmt = nonce_db:prepare "SELECT exp,rid FROM nonces WHERE nonce=?"
   stmt:bind_values(nonce)
-  local row = stmt:step() == sqlite.ROW and { exp = stmt:get_value(0), rid = stmt:get_value(1) } or nil
+  local row = stmt:step() == sqlite.ROW and { exp = stmt:get_value(0), rid = stmt:get_value(1) }
+    or nil
   stmt:finalize()
   return row
 end
