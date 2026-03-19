@@ -33,6 +33,8 @@ if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
   export CF_API_TOKEN="$CLOUDFLARE_API_TOKEN"
 fi
 
+KV_ID=""
+
 echo "=== Wrangler whoami ==="
 $WR whoami
 
@@ -71,5 +73,9 @@ echo "Worker auth token:   $WORKER_AUTH_TOKEN"
 echo "Inbox HMAC secret:   $INBOX_HMAC_SECRET"
 echo "Notify HMAC secret:  $NOTIFY_HMAC_SECRET"
 echo "Metrics bearer:      $METRICS_BEARER_TOKEN"
-echo "KV ID:               $KV_ID"
+if [ -n "$KV_ID" ]; then
+  echo "KV ID (new):         $KV_ID"
+else
+  echo "KV ID (existing):    $(grep -m1 '[[kv_namespaces]]' -A1 wrangler.toml | awk -F'\"' '/id/ {print $2}')"
+fi
 $WR deployments list --env "$ENV" | head -n 5
