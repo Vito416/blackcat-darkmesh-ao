@@ -70,6 +70,9 @@ Build/Deploy
     -e WORKER_BASE_URL=https://<your-worker>.workers.dev \
     -e INBOX_HMAC_SECRET=<secret> -e NOTIFY_HMAC_SECRET=<secret> -e WORKER_AUTH_TOKEN=<token> -e LITE_MODE=1`
 - Shortcut runner: `ops/loadtest/run-lite.sh` (expects the same env vars exported; see script header).
+- Chaos/replay profile: `docker run --rm -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker-chaos.js \
+    -e WORKER_BASE_URL=https://<your-worker>.workers.dev \
+    -e INBOX_HMAC_SECRET=<secret> -e NOTIFY_HMAC_SECRET=<secret> -e WORKER_AUTH_TOKEN=<token> -e LITE_MODE=1`
 
 Production-like smoke (CF Free) — 2026-03-19
 - Profile: k6 lite (10 rps /inbox, 5 rps /notify, 60s), `LITE_MODE=1`, rate limit defaults 50 req / 60s.
@@ -99,3 +102,9 @@ Local testing
 Env vars (extra)
 - `TEST_IN_MEMORY_KV` — dev/test only; ignored in production (only value `1` enables the in-memory shim).
 - Metrics exposed (examples): `worker_inbox_put_total`, `worker_inbox_replay_total`, `worker_rate_limit_blocked_total`, `worker_inbox_expired_total`, `worker_forget_deleted_total`, `worker_notify_rate_blocked_total`, `worker_metrics_auth_blocked_total`, `worker_metrics_auth_ok_total`, `worker_notify_hmac_invalid_total`, `worker_notify_hmac_optional` (gauge).
+- Rate-limit tuning: defaults now 300 req / 60s per IP (≈5 rps). Raise in env if your SLA needs more headroom.
+
+Runbook snippets
+- Secrets rotation: `wrangler secret put <NAME> --env production` for WORKER_AUTH_TOKEN / INBOX_HMAC_SECRET / NOTIFY_HMAC_SECRET / METRICS_BEARER_TOKEN; then `wrangler deploy --env production`.
+- Cron/janitor verification: `wrangler tail --env production` and watch scheduled runs (*/5). Optionally `wrangler deployments` to confirm latest version live.
+- Backup stance: KV is a short-lived cache of encrypted envelopes; data loss is acceptable by design. If you need retention, mirror writes to R2/D1 outside the worker path.
