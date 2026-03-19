@@ -84,7 +84,7 @@ jobs:
           scripts/verify/checksum_alert.sh
 
       - name: Secret scan (gitleaks)
-        run: gitleaks detect --no-git -v
+        run: gitleaks detect --no-git -v --config .gitleaks.toml
 
       - name: Arweave hash verify (optional)
         if: env.ARWEAVE_VERIFY_FILE != '' && env.ARWEAVE_VERIFY_TX != ''

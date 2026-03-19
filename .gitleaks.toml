@@ -1,0 +1,7 @@
+title = "Blackcat AO gitleaks config"
+
+[allowlist]
+description = "Public founder authenticity reference and receiving address"
+regexes = [
+  '''SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78'''
+]
