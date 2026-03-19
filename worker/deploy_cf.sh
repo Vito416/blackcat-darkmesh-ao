@@ -36,19 +36,22 @@ fi
 echo "=== Wrangler whoami ==="
 $WR whoami
 
-echo "=== Create KV namespace INBOX_KV (${ENV}) ==="
-KV_OUT=$($WR kv namespace create INBOX_KV --env "$ENV")
-KV_ID=$(echo "$KV_OUT" | grep -Eo '[a-f0-9]{32}' | head -n1)
-if [ -z "$KV_ID" ]; then
-  echo "Failed to obtain KV ID. Output:" >&2
-  echo "$KV_OUT" >&2
-  exit 1
+if grep -q 'id = "x\+*"' wrangler.toml; then
+  echo "=== Create KV namespace INBOX_KV (${ENV}) ==="
+  KV_OUT=$($WR kv namespace create INBOX_KV --env "$ENV")
+  KV_ID=$(echo "$KV_OUT" | grep -Eo '[a-f0-9]{32}' | head -n1)
+  if [ -z "$KV_ID" ]; then
+    echo "Failed to obtain KV ID. Output:" >&2
+    echo "$KV_OUT" >&2
+    exit 1
+  fi
+  echo "KV_ID=$KV_ID"
+  echo "=== Patch wrangler.toml with KV ID ==="
+  tmpfile=$(mktemp)
+  perl -0777 -pe "s/id = \"x+\"/id = \"$KV_ID\"/g" wrangler.toml >"$tmpfile" && mv "$tmpfile" wrangler.toml
+else
+  echo "=== KV already configured in wrangler.toml; skipping create ==="
 fi
-echo "KV_ID=$KV_ID"
-
-echo "=== Patch wrangler.toml with KV ID ==="
-tmpfile=$(mktemp)
-perl -0777 -pe "s/id = \"x+\"/id = \"$KV_ID\"/g" wrangler.toml >"$tmpfile" && mv "$tmpfile" wrangler.toml
 
 echo "=== Set secrets ==="
 put_secret() { printf '%s' "$2" | $WR secret put "$1" --env "$ENV" >/dev/null; }
