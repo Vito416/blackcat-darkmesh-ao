@@ -32,6 +32,7 @@ For the purposes of this license:
 - `Reference Inflation Index` means the public official inflation benchmark designated in the applicable fee policy or Founder Notice for fee indexation, such as Eurostat HICP, a Czech Statistical Office consumer inflation measure, U.S. BLS CPI-U, or a successor official index.
 - `Lawful Successor` means a person or entity that validly succeeds to the founder's rights by inheritance, assignment, merger, corporate succession, or another lawful transfer recognized by applicable law.
 - `Liquid Settlement Asset` means any currency, digital asset, reserve-like asset, or other payment medium that is sufficiently liquid, publicly valued, and reasonably convertible so that it can represent substantially equivalent real economic value at the time of settlement.
+- `Accessibility Principle` means the good-faith rule that the Founder Fee should remain a minor participation burden and must not be increased to a level that materially impairs practical accessibility of the Software for typical independent hosts, web operators, e-shop operators, or similarly situated SMEs.
 - `Successor Value Standard` means a publicly described replacement unit of account or value-preservation benchmark designated in good faith by the founder, founder-controlled entity, or Lawful Successor if the reference currency, settlement currency, or Reference Inflation Index becomes unavailable, unreliable, legally discontinued, or economically non-functional.
 - `Steward` means a future maintainer, operator, foundation, or governing entity explicitly designated by the founder or founder-controlled entity in a signed public notice.
 - `Steward Fee` means an additional fee that a validly designated Steward may impose for maintenance, development, support, or operation of the official ecosystem.
@@ -114,9 +115,11 @@ The commercial and production-use conditions of this license are implemented thr
 - amount or formula of the Founder Fee;
 - any reference value standard, exchange method, or settlement method;
 - the categories of Liquid Settlement Asset that may be used to satisfy the Founder Fee;
+- the valuation method and timing used to determine whether a Liquid Settlement Asset satisfied the published economic obligation;
 - any indexation formula or inflation-adjustment method;
 - the applicable Reference Inflation Index or successor benchmark;
 - any Successor Value Standard and the triggering conditions for using it;
+- the Accessibility Principle or any published affordability guardrail used to prevent fee schedules from becoming materially exclusionary;
 - receiving address or accepted payment rail;
 - required Arweave tags;
 - proof format;
@@ -131,6 +134,8 @@ Unless the fee policy expressly states otherwise, a compliant payment made under
 If ordinary fiat currencies, settlement rails, or inflation indices become unavailable, are legally replaced, or cease to function as a meaningful economic benchmark, the founder, founder-controlled entity, or Lawful Successor may designate a successor benchmark or Successor Value Standard in good faith so that the Founder Fee remains economically meaningful and enforceable in future conditions.
 
 Unless the then-current fee policy states otherwise, the Founder Fee may be satisfied and proven using any Liquid Settlement Asset that, at the time of payment, represents no less than the required published economic value for the relevant coverage unit. The validity of payment should turn on substantially equivalent real economic satisfaction of the published obligation, not on the continued existence of any one specific fiat currency.
+
+The fee policy and any Founder Notice should be interpreted consistently with the Accessibility Principle. The Founder Fee may preserve real economic value and may be adjusted within the published fairness guardrails, but it should not be raised to a level that materially undermines the practical availability of the Software for ordinary hosting providers, web operators, e-shop operators, or comparable SMEs for whom the ecosystem is intended.
 
 ## 8. Proof and Compliance
 

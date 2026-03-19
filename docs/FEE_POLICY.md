@@ -106,6 +106,49 @@ Proof should be based on publicly verifiable evidence available at the time of p
 
 The intended rule is economic equivalence, not formal dependence on any single currency name. If the payer proves that the transferred asset satisfied the then-current published economic value in a sufficiently liquid and publicly verifiable form, the payment should be treated as valid even if historical fiat references later disappear, are redenominated, or lose global relevance.
 
+## 2D. Valuation method and settlement timestamp
+
+Unless a narrower method is published for a given period, the following baseline valuation method applies:
+
+- the relevant valuation time is the timestamp at which the payment transaction becomes publicly final or is otherwise irrevocably credited under the applicable payment rail;
+- if the payment rail has an objective on-chain timestamp, that timestamp should control;
+- if the payment rail does not have an on-chain timestamp, the earliest reliable public or provider-confirmed completion timestamp should be used.
+
+Value determination should then follow this order:
+
+- if the settlement asset is directly denominated in the current published reference value standard, its face amount controls;
+- if an official public reference rate exists for the conversion, that official rate should be used;
+- if no official rate exists, the value should be determined using a publicly documented median or equivalent robust measure from multiple liquid public markets reasonably close to the settlement timestamp;
+- if market fragmentation, illiquidity, or abnormal conditions make the usual method unreliable, the founder or founder-controlled entity may publish a fallback conversion method in good faith, and any disputed valuation should be resolved in favor of the method that best preserves substantially equivalent real economic value.
+
+The proof package should normally include:
+
+- the transaction identifier or equivalent payment proof;
+- the settlement timestamp;
+- the conversion source or sources used;
+- the resulting calculated value;
+- and the required policy tags or metadata.
+
+## 2E. Accessibility and non-exclusion guardrail
+
+The Founder Fee is intended to remain a small participation contribution, not a barrier that prices out the target ecosystem.
+
+Accordingly, ordinary fee schedules and ordinary fee increases should not be set above a level that materially impairs practical accessibility for typical:
+
+- independent hosting operators;
+- website operators;
+- e-shop operators;
+- and similarly situated SMEs or small commercial operators.
+
+In applying this guardrail, the founder or founder-controlled entity should act in good faith and may consider publicly observable indicators such as:
+
+- typical entry-level hosting or gateway operating costs;
+- basic domain, TLS, storage, and bandwidth costs;
+- ordinary onboarding and maintenance costs faced by small operators;
+- and the policy objective that the Founder Fee remain a minor ecosystem participation charge rather than a dominant cost component.
+
+The intent of this clause is not to prevent preservation of real economic value, but to prevent the Founder Fee from being increased into a level that would make the solution materially less reachable for the kinds of operators the project is meant to serve.
+
 ## 3. Required tags
 
 Each payment transaction should include, at minimum:
