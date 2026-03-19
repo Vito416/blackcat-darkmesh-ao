@@ -141,6 +141,19 @@ When you deploy the write bridge alongside this repo, enable its logging so AO o
 - WAL on write-side: `WRITE_WAL_PATH=/var/log/ao/write-wal.ndjson` (stores request/response hashes for every command).
 These live in the **write** service; keep paths under your ops log/data locations.
 
+## Registration fee (Arweave) — transparent onboarding
+To be listed as a verified participant (gateway/site/shop) in the shared mesh, send a small on-chain fee that is public and auditable:
+- Destination: `AR_RECEIVER_ADDRESS_TBD` (will be published at launch)
+- Amount: ~2 USD equivalent in AR (or Bundlr) minimum
+- Required tags:
+  - `App: blackcat-mesh`
+  - `Type: gateway|site|shop`
+  - `Domain: your-domain.tld`
+  - `Contact: email_or_pgp`
+- Optional proof-of-domain: TXT `blackcat-verify=<txid>` or signed challenge served from the domain.
+
+What you get: inclusion in the public registry, priority support/SLA, and a tamper-evident record. Core software remains open for self-hosting; the fee is for registry & support.
+
 ## Schemas (WeaveDB-first)
 - Canonical table definitions (columns, types, constraints) live in `schemas/canonical-db/tables/` plus the map `schemas/canonical-db/schema-map.yaml`.
 - WeaveDB-ready collections are in `schemas/weavedb/collections/*.yaml` (JSON Schema + indexes); manifest v3 carries them under `weavedb`.
@@ -149,3 +162,5 @@ These live in the **write** service; keep paths under your ops log/data location
 
 ## License
 Blackcat Darkmesh AO Proprietary License (see `LICENSE`). External contributions require written permission from Black Cat Academy s. r. o.
+
+_Planned change_: see `docs/licensing.md` for a proposed shift to Apache-2.0 (with trademark policy) combined with the transparent Arweave registration fee for verified listing/support.
