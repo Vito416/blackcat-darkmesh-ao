@@ -63,6 +63,10 @@ This should not live in one file alone. The defensible package is:
    Covers verified listing, support eligibility, and delisting for non-payment.
 5. `CONTRIBUTOR_TERMS.md` or CLA
    Keeps relicensing authority centralized in the founder-controlled entity.
+6. `NOTICE_CHANNELS.md`
+   Defines authentic public notice rails, signing authority, and succession notice expectations.
+7. `DISPUTE_RESOLUTION.md`
+   Defines the intended forum, language, cure-first posture, and evidence hierarchy for disputes.
 
 ## Core clauses to include
 - Definitions:
@@ -181,6 +185,8 @@ The first concrete drafts now live in:
 3. `docs/TRADEMARKS.md`
 4. `docs/REGISTRY_TERMS.md`
 5. `docs/CONTRIBUTOR_TERMS.md`
+6. `docs/NOTICE_CHANNELS.md`
+7. `docs/DISPUTE_RESOLUTION.md`
 
 The next practical move is:
 1. review the draft license line by line,
