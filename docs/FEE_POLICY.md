@@ -22,6 +22,33 @@ Until a final commercial schedule is published, the intended baseline is:
 - proof method: Arweave transaction id with required tags;
 - fee type: one-time per covered registration event, unless a later revision defines renewal or per-deployment rules.
 
+The final commercial schedule may denominate the Founder Fee in a reference fiat currency such as EUR, CZK, or USD, with settlement permitted in AR or Bundlr equivalent at the time of payment according to the published instructions.
+
+## 2A. Inflation indexation and future-proof adjustment
+
+The founder or founder-controlled entity reserves the explicit right to increase the published Founder Fee prospectively in order to preserve its real value over time.
+
+Default policy intent:
+
+- future fee increases should be no less protective than the cumulative official inflation published since the last applicable fee schedule;
+- the benchmark should come from a public official source;
+- and the founder may publish a higher schedule than inflation alone if justified by product, support, registry, or ecosystem costs.
+
+Recommended benchmark hierarchy:
+
+- for EUR-denominated schedules: Eurostat HICP;
+- for CZK-denominated schedules: Czech Statistical Office CPI or HICP;
+- for USD-denominated schedules: U.S. Bureau of Labor Statistics CPI-U;
+- if a benchmark is discontinued, materially changed, or unavailable, the founder may designate a reasonable successor official benchmark by published revision or Founder Notice.
+
+Unless a later schedule states a different formula, the intended baseline rule is:
+
+- each future published Founder Fee should be at least the previous published fee adjusted upward by the applicable official inflation measure;
+- fee updates apply prospectively only;
+- and already compliant payments are not retroactively invalidated.
+
+Negative inflation or temporary deflation does not automatically require a fee decrease unless the founder expressly chooses to publish one.
+
 ## 3. Required tags
 
 Each payment transaction should include, at minimum:

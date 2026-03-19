@@ -29,6 +29,7 @@ For the purposes of this license:
 - `Network Use` means providing access to the Software or its functionality over a network, whether publicly or privately, including gateway operation, SaaS, managed hosting, shared hosting, API exposure, or multi-tenant use.
 - `Deployment` means a production site, shop, gateway, hosted instance, or other operational installation covered by the current fee policy.
 - `Founder Fee` means the required fee reserved to the founder or founder-designated receiving address as specified in the applicable fee policy.
+- `Reference Inflation Index` means the public official inflation benchmark designated in the applicable fee policy or Founder Notice for fee indexation, such as Eurostat HICP, a Czech Statistical Office consumer inflation measure, U.S. BLS CPI-U, or a successor official index.
 - `Steward` means a future maintainer, operator, foundation, or governing entity explicitly designated by the founder or founder-controlled entity in a signed public notice.
 - `Steward Fee` means an additional fee that a validly designated Steward may impose for maintenance, development, support, or operation of the official ecosystem.
 - `Founder Notice` means a signed written notice published by the Licensor or founder-controlled entity that updates receiving addresses, fee instructions, waivers, or Steward designations.
@@ -77,6 +78,10 @@ Unless the founder or founder-controlled entity publishes an explicit written wa
 
 The Founder Fee is intended to remain small enough not to block adoption, but meaningful enough that production participation in the official Blackcat ecosystem is not entirely free of contribution.
 
+The founder or founder-controlled entity also reserves the explicit right to adjust the Founder Fee prospectively in order to preserve its real economic value over time. Unless a published fee policy states a more specific formula, future upward adjustments may be made periodically and should be no less protective than indexation by the applicable Reference Inflation Index.
+
+Absent an explicit written waiver, deflation or a temporary negative reading in the applicable Reference Inflation Index does not require a reduction of the previously published Founder Fee.
+
 ## 6. Future Stewardship
 
 The founder may designate one or more future Stewards by Founder Notice.
@@ -100,6 +105,9 @@ The default rule is cumulative:
 The commercial and production-use conditions of this license are implemented through the applicable fee policy, including:
 
 - amount or formula of the Founder Fee;
+- any reference currency, exchange method, or AR-equivalent settlement method;
+- any indexation formula or inflation-adjustment method;
+- the applicable Reference Inflation Index or successor benchmark;
 - receiving address or accepted payment rail;
 - required Arweave tags;
 - proof format;
@@ -108,6 +116,8 @@ The commercial and production-use conditions of this license are implemented thr
 - and any grace period, waiver, or program for community or charitable use.
 
 The fee policy may be updated by the Licensor or founder-controlled entity by published revision or Founder Notice, provided that updates are applied prospectively and in good faith.
+
+Unless the fee policy expressly states otherwise, a compliant payment made under a then-current published fee schedule remains valid for the scope it originally covered and does not become retroactively non-compliant merely because the Founder Fee is later increased.
 
 ## 8. Proof and Compliance
 
