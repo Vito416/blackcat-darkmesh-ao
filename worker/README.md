@@ -69,6 +69,7 @@ Build/Deploy
   `docker run --rm -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker-lite.js \
     -e WORKER_BASE_URL=https://<your-worker>.workers.dev \
     -e INBOX_HMAC_SECRET=<secret> -e NOTIFY_HMAC_SECRET=<secret> -e WORKER_AUTH_TOKEN=<token> -e LITE_MODE=1`
+- Shortcut runner: `ops/loadtest/run-lite.sh` (expects the same env vars exported; see script header).
 
 Production-like smoke (CF Free) — 2026-03-19
 - Profile: k6 lite (10 rps /inbox, 5 rps /notify, 60s), `LITE_MODE=1`, rate limit defaults 50 req / 60s.
