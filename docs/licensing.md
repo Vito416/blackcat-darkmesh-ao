@@ -36,6 +36,8 @@ Recommended clause design:
 - **Founder intent on successors**: lawful successors may enforce valid rights, but ambiguous monetization or enforcement questions should be resolved in a way that does not disproportionately suppress smaller or weaker participants in the ecosystem.
 - **Non-exclusionary enforcement covenant**: enforcement should be good-faith and proportional, with cure-first treatment for smaller operators acting in substantial good faith, while preserving strong remedies for fraud or willful evasion.
 - **Default affordability threshold**: ordinary schedules should be tied to a concrete affordability ceiling, for example no more than 5% of the publicly observable first-year baseline operating cost of a comparable small operator for the relevant deployment class.
+- **Integrated system scope**: all official repositories and future internal packages that make up the same Covered System should be treated as one integrated licensing surface for ordinary deployment classes, not as automatic separate fee events.
+- **Anti-capture dependency rule**: future internal packages should not be made both materially necessary and separately unavoidable in a way that bypasses the Accessibility Principle or recreates duplicative hidden fees.
 - **Order of precedence**: the final package should explicitly say which document controls on conflict between the license, fee policy, registry terms, trademark policy, contributor terms, and signed waivers.
 - **Authenticated notices**: Founder Notices and successor notices should use a published signing key and authorized publication channels so future disputes about fake notices are easier to defeat.
 - **Succession proof chain**: any lawful successor should have to publish a public succession notice and proof chain before gaining authority to redirect fees, change schedules, or designate stewards.
@@ -67,6 +69,10 @@ This should not live in one file alone. The defensible package is:
    Defines authentic public notice rails, signing authority, and succession notice expectations.
 7. `DISPUTE_RESOLUTION.md`
    Defines the intended forum, language, cure-first posture, and evidence hierarchy for disputes.
+8. `SYSTEM_SCOPE.md`
+   Defines system-wide fee coverage across repositories and blocks anti-accessibility modular fragmentation.
+9. `AFFORDABILITY_BASELINE.md`
+   Defines the method for measuring first-year baseline cost and affordability thresholds.
 
 ## Core clauses to include
 - Definitions:
@@ -75,12 +81,14 @@ This should not live in one file alone. The defensible package is:
   - Gateway
   - Verified Listing
   - Founder Fee
+  - Covered System
   - Reference Inflation Index
   - Lawful Successor
   - Liquid Settlement Asset
   - Accessibility Principle
   - Founder Accessibility Declaration
   - Non-Exclusionary Enforcement Covenant
+  - Mandatory Internal Component
   - Founder Signing Key
   - Authorized Notice Channel
   - Successor Value Standard
@@ -187,6 +195,8 @@ The first concrete drafts now live in:
 5. `docs/CONTRIBUTOR_TERMS.md`
 6. `docs/NOTICE_CHANNELS.md`
 7. `docs/DISPUTE_RESOLUTION.md`
+8. `docs/SYSTEM_SCOPE.md`
+9. `docs/AFFORDABILITY_BASELINE.md`
 
 The next practical move is:
 1. review the draft license line by line,

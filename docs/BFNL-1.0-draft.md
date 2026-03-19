@@ -27,6 +27,7 @@ The founder further declares that a central policy objective of this model is to
 For the purposes of this license:
 
 - `Software` means this repository, its source code, scripts, schemas, manifests, fixtures, documentation, configuration files, and any covered releases, branches, or derivative works based on them.
+- `Covered System` means the integrated family of official Blackcat repositories, packages, services, manifests, gateways, installers, schemas, and future internal components designated in good faith as parts of the same operating system for licensing and deployment purposes.
 - `Production Use` means any use of the Software or a derivative in connection with a live website, e-shop, customer-facing service, gateway, hosted environment, or operational system beyond internal evaluation, internal testing, or non-public research.
 - `Network Use` means providing access to the Software or its functionality over a network, whether publicly or privately, including gateway operation, SaaS, managed hosting, shared hosting, API exposure, or multi-tenant use.
 - `Deployment` means a production site, shop, gateway, hosted instance, or other operational installation covered by the current fee policy.
@@ -37,6 +38,7 @@ For the purposes of this license:
 - `Accessibility Principle` means the good-faith rule that the Founder Fee should remain a minor participation burden and must not be increased to a level that materially impairs practical accessibility of the Software for typical independent hosts, web operators, e-shop operators, or similarly situated SMEs.
 - `Founder Accessibility Declaration` means the founder's express statement that monetization, succession, interpretation, and enforcement of this licensing model should preserve accessibility for the broadest reasonable class of interested operators and should not become a tool of disproportionate pressure against smaller or weaker participants.
 - `Non-Exclusionary Enforcement Covenant` means the interpretive and performance covenant that fee collection, remedies, suspension, termination, and litigation should be pursued in good faith, proportionately, and in a manner aimed at preserving lawful economic rights without using the license primarily as a tool to price out or crush smaller or weaker participants who are acting in substantial good faith.
+- `Mandatory Internal Component` means an official internal repository, package, service, or module without which the relevant ordinary deployment class cannot practically operate in its intended baseline mode.
 - `Successor Value Standard` means a publicly described replacement unit of account or value-preservation benchmark designated in good faith by the founder, founder-controlled entity, or Lawful Successor if the reference currency, settlement currency, or Reference Inflation Index becomes unavailable, unreliable, legally discontinued, or economically non-functional.
 - `Steward` means a future maintainer, operator, foundation, or governing entity explicitly designated by the founder or founder-controlled entity in a signed public notice.
 - `Steward Fee` means an additional fee that a validly designated Steward may impose for maintenance, development, support, or operation of the official ecosystem.
@@ -75,6 +77,8 @@ This requirement applies equally to:
 - hosted services built on top of the Software;
 - gateways, registries, or public websites operated using the Software;
 - and forks or derivatives that remain based on this codebase.
+
+For avoidance of doubt, when the Software is used as part of the Covered System, repository separation, package separation, or internal modularization should not by itself create multiple independent Founder Fee obligations for the same covered deployment unless the current fee policy clearly defines a genuinely separate coverage class in good faith.
 
 ## 5. Founder Fee Reservation
 
@@ -146,6 +150,8 @@ Unless the then-current fee policy states otherwise, the Founder Fee may be sati
 The fee policy and any Founder Notice should be interpreted consistently with the Accessibility Principle. The Founder Fee may preserve real economic value and may be adjusted within the published fairness guardrails, but it should not be raised to a level that materially undermines the practical availability of the Software for ordinary hosting providers, web operators, e-shop operators, or comparable SMEs for whom the ecosystem is intended.
 
 To the fullest extent permitted by applicable law, any ambiguous question concerning fee scope, successor monetization rights, remedies, or enforcement posture should be interpreted consistently with the Founder Accessibility Declaration. The founder's expressed intent is that lawful successors may preserve and enforce the economic rights attached to this model, but should not use those rights in a manner that turns the licensing structure into a mechanism of exclusionary extraction against smaller, weaker, or more economically fragile participants in the ecosystem.
+
+The same interpretive rule applies to the Covered System as a whole. Neither the Licensor, any Steward, nor any Lawful Successor should use repository splits, internal package splits, or newly introduced Mandatory Internal Components as a disguised method of multiplying unavoidable founder-fee equivalents or bypassing the Accessibility Principle for ordinary operators.
 
 ## 7B. Order of Precedence
 
@@ -236,7 +242,8 @@ You may not, unless separately authorized in writing:
 - remove, falsify, or conceal fee-related notices, attribution notices, or official compliance instructions from official distributions;
 - falsely claim verified or official status;
 - imply endorsement, sponsorship, or certification by the Licensor without written permission;
-- or use the Software in a way that is intentionally structured to evade the Founder Fee or Steward Fee.
+- use the Software in a way that is intentionally structured to evade the Founder Fee or Steward Fee;
+- or interpret or restructure the Covered System in a way that treats ordinary Mandatory Internal Components as separately unavoidable fee triggers without a clear, published, and non-exclusionary basis in the fee policy.
 
 ## 11. Derivative Works and Forks
 

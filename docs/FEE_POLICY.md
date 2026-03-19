@@ -249,6 +249,20 @@ The final commercial schedule should define what one payment covers. Recommended
 - one site or shop registration covers one production domain or storefront;
 - materially separate production deployments require separate payment unless grouped in an announced plan.
 
+The default interpretation is system-wide for the covered deployment class, not repository-by-repository. If an ordinary deployment depends on multiple official Blackcat repositories or Mandatory Internal Components that form part of the same Covered System, that dependency should not by itself create duplicative Founder Fee obligations.
+
+## 4A. Integrated system and anti-capture rule
+
+Official repository separation is presumed to exist for maintenance, safety, delivery, or architectural reasons, not to multiply unavoidable fees.
+
+Accordingly:
+
+- ordinary baseline functionality should remain operable without forcing an operator into multiple separately unavoidable internal package charges;
+- a Mandatory Internal Component for an ordinary deployment class should ordinarily be treated as part of the same integrated fee surface for that class;
+- and optional premium or enterprise components may be separately priced only where their optional nature is genuine and their pricing does not nullify the Accessibility Principle in practice.
+
+If a future internal package becomes materially necessary for ordinary operation, the default presumption should be that it falls within the same integrated system treatment unless a clearly differentiated and non-exclusionary coverage class is published in good faith.
+
 ## 5. Proof of payment
 
 Proof of payment means:
