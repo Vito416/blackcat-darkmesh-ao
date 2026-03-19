@@ -4,6 +4,8 @@ Status: active companion policy text for BFNL 1.0
 
 This document describes the public channels and authenticity rules for Founder Notices, succession notices, fee notices, and other governance notices referenced by Blackcat Founder Network License 1.0.
 
+For the operational signing and proof workflow, see `docs/NOTICE_SIGNING_WORKFLOW.md`.
+
 ## 1. Purpose
 
 The purpose of this document is to reduce ambiguity, impersonation risk, and future disputes over:
@@ -115,6 +117,8 @@ An ordinary notice should, where reasonably possible, contain:
 - the full text of the change or a precise pointer to it;
 - the signing key identity;
 - and a signature or equivalent authenticity proof.
+
+Where practical, that authenticity proof should be paired with the workflow and record format described in `docs/NOTICE_SIGNING_WORKFLOW.md`.
 
 ## 8. Emergency notices
 

@@ -1,4 +1,4 @@
-# Contributor Terms (Draft)
+# Contributor Terms
 
 Status: active companion policy text for BFNL 1.0
 

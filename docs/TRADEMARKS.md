@@ -1,4 +1,4 @@
-# Trademark Policy (Draft)
+# Trademark Policy
 
 Status: active companion policy text for BFNL 1.0
 

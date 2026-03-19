@@ -1,4 +1,4 @@
-# Dispute Resolution Framework (Draft)
+# Dispute Resolution Framework
 
 Status: active companion policy text for BFNL 1.0
 
@@ -31,7 +31,7 @@ This is not meant to protect fraud, willful evasion, impersonation, or malicious
 
 ## 3. Governing law
 
-Unless a later valid replacement license states otherwise, the governing law remains:
+The governing law is:
 
 - the laws of the Slovak Republic,
 
@@ -39,34 +39,26 @@ excluding its conflict-of-law rules.
 
 ## 4. Authoritative language
 
-The intended authoritative legal language of the licensing package should be:
+The authoritative legal language of the licensing package is:
 
 - English.
 
-Translations may be published for convenience, but in case of conflict the English version should control unless a later valid replacement license expressly states otherwise.
+Translations may be published for convenience, but in case of conflict the English version controls.
 
 ## 5. Exclusive forum
 
-For a court-based version of the final package, the recommended default is:
+The exclusive jurisdiction and venue model is:
 
-- exclusive jurisdiction and venue in a clearly named court system tied to the chosen governing law.
+- the courts located in Bratislava, Slovak Republic,
+- or their lawful successor courts with subject-matter jurisdiction if the court structure is later reorganized.
 
-This is usually cleaner than leaving venue open-ended across jurisdictions.
+The intended operational effect is that contract, licensing, trademark, registry, and contribution disputes should be heard in one predictable forum where legally possible.
 
-Recommended drafting intent:
+## 6. No default arbitration layer
 
-- contract, licensing, trademark, registry, and contribution disputes should be heard in one predictable forum where legally possible.
+The default dispute model does not require a separate arbitration layer.
 
-## 6. Arbitration option
-
-An alternative model, if preferred, is commercial arbitration for some dispute categories.
-
-Suggested split model:
-
-- court forum for trademark misuse, injunctive relief, impersonation, or urgent enforcement;
-- arbitration for fee-amount, payment-proof, valuation, or schedule disputes.
-
-This is often useful where cross-border operators are expected.
+Arbitration may still be adopted later only by a later valid replacement license or other instrument expressly authorized to change the governing dispute terms.
 
 ## 7. Provisional relief and urgent cases
 
@@ -94,7 +86,7 @@ The intended dispute-evidence hierarchy should prioritize:
 
 ## 9. Interpretation principles
 
-Any final dispute clause should say that ambiguous terms are to be interpreted, to the fullest extent permitted by law, consistently with:
+Ambiguous terms should be interpreted, to the fullest extent permitted by law, consistently with:
 
 - the Accessibility Principle,
 - the Founder Accessibility Declaration,
@@ -113,7 +105,7 @@ This does not bar claims for accrued payment obligations or recovery for deliber
 
 ## 11. Cost proportionality
 
-The final framework should avoid making ordinary fee disputes economically absurd by default.
+The framework should avoid making ordinary fee disputes economically absurd by default.
 
 If a disagreement is small and curable, the intended approach is proportional handling rather than immediate maximal-cost escalation.
 
@@ -128,15 +120,7 @@ This does not erase payment obligations, but it does support:
 - hardship review,
 - and other proportionate remedies.
 
-## 13. Next operating decision
-
-The project should eventually choose one of these final directions:
-
-- `Court-first model`: exclusive Slovak forum, English text controls, emergency injunctive relief preserved.
-- `Split model`: Slovak law, court forum for urgent brand/security matters, arbitration for payment/valuation disputes.
-- `Arbitration-first model`: broad arbitration clause with narrow court carve-outs for urgent relief.
-
-## 14. Contact
+## 13. Contact
 
 Questions about the intended dispute model may be directed to:
 

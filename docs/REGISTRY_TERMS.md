@@ -1,4 +1,4 @@
-# Registry Terms (Draft)
+# Registry Terms
 
 Status: active companion policy text for BFNL 1.0
 

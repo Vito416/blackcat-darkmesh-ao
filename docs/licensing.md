@@ -49,10 +49,11 @@ The active licensing bundle lives in `blackcat-darkmesh-ao/docs/`:
 5. `CONTRIBUTOR_TERMS.md`
 6. `NOTICE_CHANNELS.md`
 7. `DISPUTE_RESOLUTION.md`
-8. `SYSTEM_SCOPE.md`
-9. `AFFORDABILITY_BASELINE.md`
-10. `ANTI_CIRCUMVENTION.md`
-11. `LICENSING_SYSTEM_NOTICE.md`
+8. `NOTICE_SIGNING_WORKFLOW.md`
+9. `SYSTEM_SCOPE.md`
+10. `AFFORDABILITY_BASELINE.md`
+11. `ANTI_CIRCUMVENTION.md`
+12. `LICENSING_SYSTEM_NOTICE.md`
 
 Those files are intended to be read as one coordinated licensing system.
 

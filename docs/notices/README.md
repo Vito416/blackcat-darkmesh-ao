@@ -11,3 +11,9 @@ Operational rule:
 - newer valid notices may supersede older notices prospectively;
 - older notices remain relevant for historical payment and authority verification;
 - and a notice should be treated as authoritative only if it is published through an Authorized Notice Channel under the current notice rules.
+
+Proof workflow:
+
+- where practical, a notice should also have a sibling `*.notice.sig.json` proof record;
+- that proof record should follow `docs/NOTICE_SIGNING_WORKFLOW.md`;
+- and the proof record should link the notice file hash to an Arweave proof transaction or another currently valid authenticity method.
