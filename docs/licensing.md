@@ -129,11 +129,12 @@ The first concrete drafts now live in:
 2. `docs/FEE_POLICY.md`
 3. `docs/TRADEMARKS.md`
 4. `docs/REGISTRY_TERMS.md`
+5. `docs/CONTRIBUTOR_TERMS.md`
 
 The next practical move is:
 1. review the draft license line by line,
 2. review trademark and registry terms,
-3. add contributor terms or CLA,
+3. review contributor terms or CLA language,
 4. replace the root `LICENSE` only after legal review.
 
 _This document is a product and licensing recommendation, not legal advice. Before publishing a final license, have counsel review the final text in your target jurisdictions._
