@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Env } from './types'
 import { gauge, inc, toProm } from './metrics'
-import { Buffer } from 'buffer'
+import { Buffer } from 'node:buffer'
 
 type InboxItem = {
   payload: string
