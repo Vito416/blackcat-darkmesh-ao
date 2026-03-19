@@ -25,7 +25,7 @@ echo "=== Wrangler login ==="
 if ! $WR whoami >/dev/null 2>&1; then $WR login; fi
 
 echo "=== Create KV namespace INBOX_KV (${ENV}) ==="
-KV_OUT=$($WR kv namespace create --binding INBOX_KV --env "$ENV")
+KV_OUT=$($WR kv namespace create INBOX_KV --binding INBOX_KV --env "$ENV")
 KV_ID=$(echo "$KV_OUT" | awk '/id/ {print $NF}' | head -n1 | tr -d '\"')
 if [ -z "$KV_ID" ]; then
   echo "Failed to obtain KV ID. Output:" >&2
