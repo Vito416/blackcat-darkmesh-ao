@@ -58,18 +58,17 @@ Env/config
 - `REQUIRE_METRICS_AUTH` (prod: 500 /metrics if auth secrets not configured)
 
 Build/Deploy
-- Fill `worker/wrangler.toml` (KV id; secrets via `wrangler secret put WORKER_AUTH_TOKEN` etc.)
-- Start from `ops/env.prod.example` for a fail-closed baseline (HMAC required, metrics auth required).
+- Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test
-- `wrangler publish --env production`
+- `wrangler publish --env production` (or use deploy script below)
 - Load/perf smoke: `docker run --rm --network host -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker.js` (expects miniflare at :8787 with HMAC secrets).
 - CF deploy (WSL):  
   1) `export CLOUDFLARE_API_TOKEN=<token>` (scopes: Workers Scripts Edit, KV Edit, User Details Read).  
   2) `export CLOUDFLARE_ACCOUNT_ID=<your account id>` (CF Dashboard → Workers & Pages → Overview).  
-  3) `cp wrangler.toml.example wrangler.toml` (not tracked; gitignored).  
-  4) `./deploy_cf.sh` (vytvoří KV, vygeneruje náhodné secrets, nasadí).  
-  5) Worker URL a secrets se vypíšou na konci skriptu.
+  3) `cp wrangler.toml.example wrangler.toml` (local only, gitignored).  
+  4) `./deploy_cf.sh` (creates KV, generates random secrets, deploys with wrangler@4).  
+  5) Worker URL and generated secrets are printed at the end—store them in your vault.
 
 Local testing
 - Vitest/Miniflare run with in-memory KV/D1 (`TEST_IN_MEMORY_KV=1` in `wrangler.toml`) to avoid local SQLite locks.
