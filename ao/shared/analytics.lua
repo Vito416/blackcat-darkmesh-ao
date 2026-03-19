@@ -8,23 +8,27 @@ local Analytics = {}
 
 local function write_log(ev)
   local path = os.getenv "METRICS_LOG"
-  if not path or path == "" then return end
+  if not path or path == "" then
+    return
+  end
   local f = io.open(path, "a")
-  if not f then return end
+  if not f then
+    return
+  end
   ev.ts = os.date "!%Y-%m-%dT%H:%M:%SZ"
   f:write(cjson.encode(ev))
-  f:write("\n")
+  f:write "\n"
   f:close()
 end
 
 function Analytics.page_view(site, path, locale)
   metrics.inc "ao_page_view"
-  write_log({ event = "page_view", site = site, path = path, locale = locale })
+  write_log { event = "page_view", site = site, path = path, locale = locale }
 end
 
 function Analytics.product_view(site, sku, locale)
   metrics.inc "ao_product_view"
-  write_log({ event = "product_view", site = site, sku = sku, locale = locale })
+  write_log { event = "product_view", site = site, sku = sku, locale = locale }
 end
 
 -- risk event: attrs should already be hashed/obfuscated
