@@ -152,7 +152,7 @@ To be listed as a verified participant (gateway/site/shop) in the shared mesh, s
   - `Contact: email_or_pgp`
 - Optional proof-of-domain: TXT `blackcat-verify=<txid>` or signed challenge served from the domain.
 
-What you get: inclusion in the public registry, priority support/SLA, and a tamper-evident record. Core software remains open for self-hosting; the fee is for registry & support.
+What you get: inclusion in the public registry, priority support/SLA, and a tamper-evident record. Source code is public for audit and development, but future production-use terms are expected to reserve a founder fee for official network use.
 
 ## Schemas (WeaveDB-first)
 - Canonical table definitions (columns, types, constraints) live in `schemas/canonical-db/tables/` plus the map `schemas/canonical-db/schema-map.yaml`.
@@ -163,4 +163,4 @@ What you get: inclusion in the public registry, priority support/SLA, and a tamp
 ## License
 Blackcat Darkmesh AO Proprietary License (see `LICENSE`). External contributions require written permission from Black Cat Academy s. r. o.
 
-_Planned change_: see `docs/licensing.md` for a proposed shift to Apache-2.0 (with trademark policy) combined with the transparent Arweave registration fee for verified listing/support.
+_Planned change_: see [docs/licensing.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/licensing.md) for the proposed founder-fee source-available licensing model and Arweave registration policy.
