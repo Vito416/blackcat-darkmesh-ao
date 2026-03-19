@@ -36,6 +36,11 @@ Recommended clause design:
 - **Founder intent on successors**: lawful successors may enforce valid rights, but ambiguous monetization or enforcement questions should be resolved in a way that does not disproportionately suppress smaller or weaker participants in the ecosystem.
 - **Non-exclusionary enforcement covenant**: enforcement should be good-faith and proportional, with cure-first treatment for smaller operators acting in substantial good faith, while preserving strong remedies for fraud or willful evasion.
 - **Default affordability threshold**: ordinary schedules should be tied to a concrete affordability ceiling, for example no more than 5% of the publicly observable first-year baseline operating cost of a comparable small operator for the relevant deployment class.
+- **Order of precedence**: the final package should explicitly say which document controls on conflict between the license, fee policy, registry terms, trademark policy, contributor terms, and signed waivers.
+- **Authenticated notices**: Founder Notices and successor notices should use a published signing key and authorized publication channels so future disputes about fake notices are easier to defeat.
+- **Succession proof chain**: any lawful successor should have to publish a public succession notice and proof chain before gaining authority to redirect fees, change schedules, or designate stewards.
+- **Alternative proof rail**: if Arweave is temporarily unavailable, the policy should allow another public and auditable proof rail with later anchoring back to the primary record.
+- **Registry appeal path**: registry suspension and delisting should have a lightweight review path and public transparency log where practical.
 - **Proof of Payment**: a valid Arweave txid with required tags is the evidence of compliance.
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
@@ -72,6 +77,8 @@ This should not live in one file alone. The defensible package is:
   - Accessibility Principle
   - Founder Accessibility Declaration
   - Non-Exclusionary Enforcement Covenant
+  - Founder Signing Key
+  - Authorized Notice Channel
   - Successor Value Standard
   - Founder Concept and Network Contribution
   - Steward Fee
@@ -125,6 +132,10 @@ And for successor enforcement:
 And for non-exclusionary enforcement:
 
 "Except in cases of fraud, willful evasion, repeated refusal to cure, abuse of official marks, or malicious conduct, enforcement of the Founder Fee should ordinarily proceed through notice, cure, prospective compliance, or another proportional remedy before exclusionary measures are sought. The licensing model is intended to protect valid founder economics, not to weaponize ambiguity or fee pressure against smaller operators acting in substantial good faith."
+
+And for notice authenticity:
+
+"A Founder Notice or succession notice should be effective only if published through an authorized public channel and authenticated by the currently recognized founder signing key or successor authenticity method. This is intended to reduce ambiguity, impersonation risk, and future disputes over fee redirection or authority."
 
 ## Hard truth: what the license cannot do
 No license is bulletproof in the absolute sense.

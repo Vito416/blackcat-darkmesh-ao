@@ -40,7 +40,9 @@ For the purposes of this license:
 - `Successor Value Standard` means a publicly described replacement unit of account or value-preservation benchmark designated in good faith by the founder, founder-controlled entity, or Lawful Successor if the reference currency, settlement currency, or Reference Inflation Index becomes unavailable, unreliable, legally discontinued, or economically non-functional.
 - `Steward` means a future maintainer, operator, foundation, or governing entity explicitly designated by the founder or founder-controlled entity in a signed public notice.
 - `Steward Fee` means an additional fee that a validly designated Steward may impose for maintenance, development, support, or operation of the official ecosystem.
-- `Founder Notice` means a signed written notice published by the Licensor or founder-controlled entity that updates receiving addresses, fee instructions, waivers, or Steward designations.
+- `Founder Notice` means a signed written notice published through an Authorized Notice Channel by the Licensor, founder-controlled entity, or Lawful Successor that updates receiving addresses, fee instructions, waivers, Steward designations, or other operational matters expressly allowed by this license.
+- `Authorized Notice Channel` means a repository path, official registry endpoint, Arweave record, or other public channel designated in the fee policy and accompanied by the currently recognized signing method for authenticity verification.
+- `Founder Signing Key` means the public key, signature method, or equivalent public authenticity mechanism currently designated for validating Founder Notices and succession notices.
 - `Proof of Payment` means a valid Arweave transaction identifier, with the tags and conditions required by the applicable fee policy, sufficient to demonstrate payment of the Founder Fee.
 - `Official Registry` means the public listing, verification process, trust manifest, or other official ecosystem service operated or recognized by the Licensor.
 - `Non-Production Use` means local development, security review, internal staging, internal QA, personal experimentation, or academic research that is not customer-facing and not used to provide a live service.
@@ -144,6 +146,45 @@ Unless the then-current fee policy states otherwise, the Founder Fee may be sati
 The fee policy and any Founder Notice should be interpreted consistently with the Accessibility Principle. The Founder Fee may preserve real economic value and may be adjusted within the published fairness guardrails, but it should not be raised to a level that materially undermines the practical availability of the Software for ordinary hosting providers, web operators, e-shop operators, or comparable SMEs for whom the ecosystem is intended.
 
 To the fullest extent permitted by applicable law, any ambiguous question concerning fee scope, successor monetization rights, remedies, or enforcement posture should be interpreted consistently with the Founder Accessibility Declaration. The founder's expressed intent is that lawful successors may preserve and enforce the economic rights attached to this model, but should not use those rights in a manner that turns the licensing structure into a mechanism of exclusionary extraction against smaller, weaker, or more economically fragile participants in the ecosystem.
+
+## 7B. Order of Precedence
+
+Unless a final adopted license states otherwise, the intended order of precedence for conflicting terms is:
+
+1. a signed written waiver or transfer expressly authorized under this license;
+2. this license;
+3. the current fee policy for fee amount, settlement, valuation, and payment mechanics;
+4. the registry terms for listing, support, and verification operations;
+5. the trademark policy for name, logo, and badge use;
+6. the contributor terms, but only with respect to contributions and contributor rights.
+
+No Founder Notice, registry rule, support policy, or operational announcement should be interpreted to silently amend this license except where this license expressly permits such an update by Founder Notice.
+
+## 7C. Authenticity of Founder Notices and Successor Notices
+
+To reduce future disputes, Founder Notices and succession notices should be authenticated through the currently recognized Founder Signing Key or a clearly published successor authenticity method.
+
+Unless an emergency security issue requires faster action, an ordinary notice affecting fees, settlement methods, coverage scope, or successor administration should:
+
+- be published through an Authorized Notice Channel;
+- identify the effective date;
+- identify the policy or document version being changed;
+- and provide a reasonable prospective notice period before taking effect.
+
+Emergency security or anti-fraud notices may take effect sooner to the extent reasonably necessary, but should still be documented publicly as soon as practical.
+
+## 7D. Succession Proof and Authority Chain
+
+A person or entity asserting status as a Lawful Successor should publish a good-faith public succession notice sufficient to establish authority without requiring unnecessary disclosure of private material.
+
+Such a notice should, where reasonably possible:
+
+- identify the claimed basis of succession;
+- identify the current Founder Signing Key or successor authenticity method;
+- identify the scope of rights claimed;
+- and identify where supporting evidence, redacted evidence, or independent attestation may be reviewed.
+
+Until such a succession notice is publicly issued through an Authorized Notice Channel, no purported successor should be presumed to have authority to change fee schedules, redirect Founder Fee payments, issue waivers, or designate Stewards.
 
 ## 7A. Good-Faith and Non-Exclusionary Enforcement Covenant
 
@@ -269,6 +310,14 @@ This license shall be governed by the laws of the Slovak Republic, excluding con
 
 This draft anticipates companion documents including a fee policy, trademark policy, and registry terms. The final adopted license should expressly define the order of precedence among those documents.
 
-## 21. Practical Note
+## 21. Survival, Severability, and No Waiver
+
+If any provision of this license is held unenforceable or invalid, the remaining provisions should remain in effect to the fullest extent permitted by applicable law.
+
+The provisions concerning fee obligations, payment proof, trademark separation, contributor relicensing authority, limitations on official status, accrued remedies, and any clause that by its nature is intended to survive should survive termination or expiration of rights.
+
+No delay or failure by the Licensor, founder-controlled entity, Steward, or Lawful Successor to enforce a right under this license should be treated as a waiver of that right unless the waiver is expressly stated in a signed written notice.
+
+## 22. Practical Note
 
 This license is designed to reserve monetization rights in the code and official ecosystem. It cannot stop independent clean-room reimplementations or similar business ideas created without use of this code.

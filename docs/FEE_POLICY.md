@@ -33,6 +33,12 @@ The final commercial schedule may denominate the Founder Fee in a reference valu
 
 Settlement may then be made in any approved Liquid Settlement Asset whose publicly verifiable value at the time of payment satisfies the published obligation.
 
+The fee policy should also publish:
+
+- the current Founder Signing Key or successor authenticity method;
+- the Authorized Notice Channels for fee and succession notices;
+- and the current effective version identifier of the fee schedule.
+
 ## 2A. Inflation indexation and future-proof adjustment
 
 The founder or founder-controlled entity reserves the explicit right to increase the published Founder Fee prospectively in order to preserve its real value over time.
@@ -131,6 +137,12 @@ The proof package should normally include:
 - the resulting calculated value;
 - and the required policy tags or metadata.
 
+Where practical, the policy should also identify a default public source hierarchy for valuation, for example:
+
+- official public reference rates where available;
+- central-bank or similarly authoritative public reference sources;
+- and only then a robust multi-market public median methodology.
+
 ## 2E. Accessibility and non-exclusion guardrail
 
 The Founder Fee is intended to remain a small participation contribution, not a barrier that prices out the target ecosystem.
@@ -180,6 +192,38 @@ Where an operator appears to be acting in substantial good faith and is reasonab
 - or a reasonable path to payment rather than immediate exclusion.
 
 This preference does not limit strong remedies against fraud, willful non-payment, deliberate evasion, or repeated refusal to cure.
+
+## 2H. Arweave unavailability or public-proof fallback
+
+If Arweave is temporarily unavailable, materially impaired, or practically unusable for timely proof publication, interim proof of payment may be established using another publicly verifiable payment or notice rail designated in a valid Founder Notice or published fee schedule, provided that:
+
+- the interim method is publicly auditable;
+- the proof remains reasonably tamper-evident;
+- the economic value can still be verified under the valuation rules;
+- and the proof can be anchored or mirrored to the primary long-term record once normal publication becomes practical again.
+
+An operator acting in substantial good faith should not be treated as non-compliant solely because the preferred public proof rail is temporarily unavailable, if substantially equivalent public proof is provided through an approved fallback method.
+
+## 2I. Annual affordability and schedule review
+
+Ordinary fee schedules should be reviewed periodically in light of the Accessibility Principle, public market conditions, and the stated affordability threshold.
+
+Where practical, each ordinary schedule revision should be accompanied by a short public note stating:
+
+- the prior fee;
+- the updated fee;
+- the inflation or value-preservation basis used;
+- and the good-faith accessibility rationale for concluding that the new fee does not materially impair the intended operator base.
+
+## 2J. Hardship, public-interest, and micro-operator path
+
+The final commercial model should consider publishing a narrow hardship or micro-operator path for cases where:
+
+- the operator is acting in substantial good faith;
+- the deployment is genuinely small or public-interest in nature;
+- and immediate full payment would likely create a disproportionate barrier relative to the founder's legitimate economic interest.
+
+Such a path may take the form of a temporary waiver, delayed payment, staged payment, capped micro-operator tier, or another narrowly tailored accommodation published in good faith.
 
 ## 3. Required tags
 

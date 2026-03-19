@@ -71,6 +71,21 @@ A listing may be suspended or removed if:
 
 Where practical, the Registry operator should provide notice and a cure period before permanent delisting, except where urgent security action is reasonably necessary.
 
+Where urgent action is taken first, the Registry operator should provide a post-action explanation and a reasonable opportunity for review once the immediate risk has been addressed.
+
+## 6A. Appeals and transparency log
+
+The registry should, where practical, maintain a lightweight public log or equivalent public record of:
+
+- listing approvals;
+- suspensions;
+- delistings;
+- and materially relevant status changes.
+
+Sensitive security details may be withheld where necessary, but the existence of a material action should ordinarily remain visible.
+
+An operator materially affected by suspension or delisting should ordinarily have access to a reasonable review or appeal path, unless fraud, malicious conduct, impersonation, or urgent security circumstances make immediate permanent action reasonably necessary.
+
 ## 7. No entitlement to perpetual listing
 
 Registry participation is a conditional service, not an irrevocable property right.
@@ -104,6 +119,8 @@ Delisting or loss of verified status automatically ends any permission to use ve
 If a valid Steward is designated by Founder Notice, the Steward may operate or administer the Registry in accordance with the governing license, fee policy, and trademark policy.
 
 Unless the founder expressly states otherwise, such stewardship does not remove the founder's reserved Founder Fee.
+
+Any material change in Registry operator identity should be publicly announced through an Authorized Notice Channel or equivalent public channel recognized by the governing license and fee policy.
 
 ## 12. Contact
 

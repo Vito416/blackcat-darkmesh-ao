@@ -2,7 +2,7 @@
 
 Status: draft for legal review
 
-These terms are intended to ensure that outside contributions do not fragment licensing authority and that the project can continue to be maintained, relicensed, and commercially administered by the Licensor or founder-controlled entity.
+These terms are intended to ensure that outside contributions do not fragment licensing authority and that the project can continue to be maintained, relicensed, and commercially administered by the Licensor, founder-controlled entity, or lawful successor recognized under the governing project license.
 
 ## 1. Purpose
 
@@ -33,7 +33,7 @@ The contributor represents that:
 
 ## 5. License grant to Licensor
 
-The contributor grants to the Licensor, and any founder-controlled successor entity designated by the Licensor, a perpetual, irrevocable, worldwide, non-exclusive, royalty-free right to:
+The contributor grants to the Licensor, and any founder-controlled successor entity or lawful successor recognized under the governing project license, a perpetual, irrevocable, worldwide, non-exclusive, royalty-free right to:
 
 - use,
 - reproduce,
