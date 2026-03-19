@@ -22,7 +22,14 @@ Until a final commercial schedule is published, the intended baseline is:
 - proof method: Arweave transaction id with required tags;
 - fee type: one-time per covered registration event, unless a later revision defines renewal or per-deployment rules.
 
-The final commercial schedule may denominate the Founder Fee in a reference fiat currency such as EUR, CZK, or USD, with settlement permitted in AR or Bundlr equivalent at the time of payment according to the published instructions.
+The final commercial schedule may denominate the Founder Fee in a reference value standard rather than a single mandatory fiat currency. The founder-controlled entity may publish the fee using one or more reference expressions, for example:
+
+- a fiat reference amount;
+- an IMF SDR-linked reference amount;
+- a published basket of major currencies;
+- or another public successor value standard described in good faith.
+
+Settlement may then be made in any approved Liquid Settlement Asset whose publicly verifiable value at the time of payment satisfies the published obligation.
 
 ## 2A. Inflation indexation and future-proof adjustment
 
@@ -72,6 +79,32 @@ Any such transition should:
 - preserve the same general economic burden in good faith rather than serve as a disguised arbitrary increase;
 - remain subject, where reasonably measurable, to the same baseline fairness guard of inflation preservation plus no more than an additional 0.5 percentage points for ordinary increases;
 - and preserve the founder's and any lawful successor's ability to receive valid settlement even if prior fiat systems materially fail.
+
+## 2C. Proof by any sufficiently liquid settlement asset
+
+The policy intent is that payment should remain provable even if today's dominant world currencies change materially in the future.
+
+Accordingly, unless a narrower rule is published for a specific period, the Founder Fee may be satisfied using any Liquid Settlement Asset that is:
+
+- widely traded or otherwise publicly and reliably valued;
+- reasonably convertible into the then-current reference value standard or successor value standard;
+- and objectively sufficient to satisfy the required economic value at the time of settlement.
+
+Illustrative examples may include:
+
+- major fiat currencies;
+- AR or other sufficiently liquid digital assets;
+- assets priced through a public reserve or basket benchmark;
+- or another publicly documented payment asset accepted by published policy.
+
+Proof should be based on publicly verifiable evidence available at the time of payment, such as:
+
+- an on-chain transaction id;
+- a public exchange rate or market reference;
+- a published conversion methodology;
+- and the tags or metadata required by the current policy.
+
+The intended rule is economic equivalence, not formal dependence on any single currency name. If the payer proves that the transferred asset satisfied the then-current published economic value in a sufficiently liquid and publicly verifiable form, the payment should be treated as valid even if historical fiat references later disappear, are redenominated, or lose global relevance.
 
 ## 3. Required tags
 

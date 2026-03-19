@@ -30,6 +30,7 @@ Recommended clause design:
 - **Inflation protection**: the founder-controlled entity should retain the express right to adjust the Founder Fee prospectively, with future increases anchored at least to official inflation from public sources so the fee does not lose real value over time.
 - **Counterparty protection**: ordinary fee increases should be capped for fairness, for example at no more than cumulative official inflation since the prior published schedule plus 0.5 percentage points, and ordinarily no more than once in a rolling twelve-month period.
 - **Continuity across currency failure**: if fiat currencies or the chosen benchmark cease to function, the founder or lawful successor should be allowed to preserve the same real economic burden by moving to a published successor currency, official conversion, IMF SDR, or another public and objective successor value standard.
+- **Proof by equivalent value**: the operator should be allowed to prove payment using any sufficiently liquid settlement asset that satisfies the same published economic value, rather than being locked to one named fiat currency forever.
 - **Proof of Payment**: a valid Arweave txid with required tags is the evidence of compliance.
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
@@ -62,6 +63,7 @@ This should not live in one file alone. The defensible package is:
   - Founder Fee
   - Reference Inflation Index
   - Lawful Successor
+  - Liquid Settlement Asset
   - Successor Value Standard
   - Founder Concept and Network Contribution
   - Steward Fee
@@ -99,6 +101,10 @@ And for inflation indexation:
 And for capped fairness and continuity:
 
 "To protect operators and preserve good-faith fairness, ordinary Founder Fee increases should not be published more than once in a rolling twelve-month period and should not exceed cumulative official inflation since the previous published schedule plus 0.5 percentage points. If the reference currency, official inflation benchmark, or practical fiat settlement system ceases to exist or to function meaningfully, the founder or lawful successor may preserve substantially equivalent real economic value by adopting a publicly documented successor currency, official legal conversion, IMF SDR, or another objective and publicly described successor value standard."
+
+And for settlement flexibility:
+
+"Unless the current fee policy expressly requires a narrower method, the Founder Fee may be satisfied using any sufficiently liquid and publicly verifiable settlement asset whose value at the time of payment is no less than the published economic obligation. The validity of payment should depend on equivalent economic satisfaction, not on permanent dependence on any one specific fiat currency."
 
 ## Hard truth: what the license cannot do
 No license is bulletproof in the absolute sense.

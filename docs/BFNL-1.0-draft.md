@@ -31,6 +31,7 @@ For the purposes of this license:
 - `Founder Fee` means the required fee reserved to the founder or founder-designated receiving address as specified in the applicable fee policy.
 - `Reference Inflation Index` means the public official inflation benchmark designated in the applicable fee policy or Founder Notice for fee indexation, such as Eurostat HICP, a Czech Statistical Office consumer inflation measure, U.S. BLS CPI-U, or a successor official index.
 - `Lawful Successor` means a person or entity that validly succeeds to the founder's rights by inheritance, assignment, merger, corporate succession, or another lawful transfer recognized by applicable law.
+- `Liquid Settlement Asset` means any currency, digital asset, reserve-like asset, or other payment medium that is sufficiently liquid, publicly valued, and reasonably convertible so that it can represent substantially equivalent real economic value at the time of settlement.
 - `Successor Value Standard` means a publicly described replacement unit of account or value-preservation benchmark designated in good faith by the founder, founder-controlled entity, or Lawful Successor if the reference currency, settlement currency, or Reference Inflation Index becomes unavailable, unreliable, legally discontinued, or economically non-functional.
 - `Steward` means a future maintainer, operator, foundation, or governing entity explicitly designated by the founder or founder-controlled entity in a signed public notice.
 - `Steward Fee` means an additional fee that a validly designated Steward may impose for maintenance, development, support, or operation of the official ecosystem.
@@ -111,7 +112,8 @@ The default rule is cumulative:
 The commercial and production-use conditions of this license are implemented through the applicable fee policy, including:
 
 - amount or formula of the Founder Fee;
-- any reference currency, exchange method, or AR-equivalent settlement method;
+- any reference value standard, exchange method, or settlement method;
+- the categories of Liquid Settlement Asset that may be used to satisfy the Founder Fee;
 - any indexation formula or inflation-adjustment method;
 - the applicable Reference Inflation Index or successor benchmark;
 - any Successor Value Standard and the triggering conditions for using it;
@@ -127,6 +129,8 @@ The fee policy may be updated by the Licensor or founder-controlled entity by pu
 Unless the fee policy expressly states otherwise, a compliant payment made under a then-current published fee schedule remains valid for the scope it originally covered and does not become retroactively non-compliant merely because the Founder Fee is later increased.
 
 If ordinary fiat currencies, settlement rails, or inflation indices become unavailable, are legally replaced, or cease to function as a meaningful economic benchmark, the founder, founder-controlled entity, or Lawful Successor may designate a successor benchmark or Successor Value Standard in good faith so that the Founder Fee remains economically meaningful and enforceable in future conditions.
+
+Unless the then-current fee policy states otherwise, the Founder Fee may be satisfied and proven using any Liquid Settlement Asset that, at the time of payment, represents no less than the required published economic value for the relevant coverage unit. The validity of payment should turn on substantially equivalent real economic satisfaction of the published obligation, not on the continued existence of any one specific fiat currency.
 
 ## 8. Proof and Compliance
 
