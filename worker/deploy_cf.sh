@@ -19,7 +19,7 @@ FORGET_TOKEN=""
 SENDGRID_KEY=""
 NOTIFY_WEBHOOK=""
 
-WR="npx wrangler"
+WR="npx --yes wrangler"
 
 echo "=== Wrangler login ==="
 if ! $WR whoami >/dev/null 2>&1; then $WR login; fi
