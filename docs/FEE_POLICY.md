@@ -20,9 +20,17 @@ The founder also declares that long-term accessibility is a core policy objectiv
 Until a final commercial schedule is published, the intended baseline is:
 
 - minimum fee target: approximately 2 USD equivalent in AR or Bundlr;
-- recipient address: `AR_RECEIVER_ADDRESS_TBD`;
+- recipient address: `SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78`;
 - proof method: Arweave transaction id with required tags;
 - fee type: one-time per covered registration event, unless a later revision defines renewal or per-deployment rules.
+
+The above recipient address is the current authoritative Founder Fee receiving address unless and until a later address is published through a valid Founder Notice under the notice rules referenced by BFNL 1.0.
+
+If the founder or founder-controlled entity later rotates the Founder Fee receiving address:
+
+- the replacement address becomes authoritative prospectively only;
+- the replacement should be announced through an Authorized Notice Channel;
+- and a payment made to a previously published valid founder address remains acceptable if it satisfied the policy in force at the time of payment.
 
 The final commercial schedule may denominate the Founder Fee in a reference value standard rather than a single mandatory fiat currency. The founder-controlled entity may publish the fee using one or more reference expressions, for example:
 
