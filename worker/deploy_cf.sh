@@ -37,7 +37,7 @@ echo "=== Wrangler whoami ==="
 $WR whoami
 
 echo "=== Create KV namespace INBOX_KV (${ENV}) ==="
-KV_OUT=$($WR kv namespace create --binding INBOX_KV --env "$ENV")
+KV_OUT=$($WR kv namespace create --binding=INBOX_KV)
 KV_ID=$(echo "$KV_OUT" | awk '/ID:/ {print $NF}' | head -n1 | tr -d '\"')
 if [ -z "$KV_ID" ]; then
   echo "Failed to obtain KV ID. Output:" >&2
