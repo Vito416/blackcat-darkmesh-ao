@@ -13,6 +13,8 @@ The Founder Fee is intended to be:
 - simple to prove,
 - and fair as a one-time contribution toward the founder's concept, system design, ecosystem bootstrap, registry maintenance, and continued motivation for future development.
 
+The founder also declares that long-term accessibility is a core policy objective of this fee model: the system should remain practically usable by as broad a class of interested operators as reasonably possible. The fee exists to preserve a fair economic right and future development incentive, not to become a mechanism for exclusionary pressure against smaller or weaker operators.
+
 ## 2. Current default model
 
 Until a final commercial schedule is published, the intended baseline is:
@@ -148,6 +150,8 @@ In applying this guardrail, the founder or founder-controlled entity should act 
 - and the policy objective that the Founder Fee remain a minor ecosystem participation charge rather than a dominant cost component.
 
 The intent of this clause is not to prevent preservation of real economic value, but to prevent the Founder Fee from being increased into a level that would make the solution materially less reachable for the kinds of operators the project is meant to serve.
+
+Where lawful successors later interpret, enforce, litigate, or renegotiate fee rights, this policy should be read as preserving their ability to seek valid payment and lawful compensation, but not as authorizing a strategy whose practical effect is to crush accessibility for smaller or economically weaker participants. The intended balance is enforceable founder economics without turning the fee model into a disproportionate burden on the weakest viable layer of the ecosystem.
 
 ## 3. Required tags
 

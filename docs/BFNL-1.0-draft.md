@@ -20,6 +20,8 @@ The Licensor considers this structure fair because the Founder Fee is intended t
 
 The Founder Fee is not an investment product, security, or speculative asset. It is a participation fee for production use of the Software and the official ecosystem built around it.
 
+The founder further declares that a central policy objective of this model is to keep the Software practically reachable to the broadest reasonable class of interested users and operators. The founder does not seek to prohibit lawful successors from enforcing valid fee rights or pursuing greater lawful compensation where justified, but does expressly state that such enforcement should not be interpreted or pursued in a manner that materially suppresses, prices out, or disproportionately harms smaller, weaker, or economically fragile layers of the ecosystem if such layers exist at the relevant time.
+
 ## 2. Definitions
 
 For the purposes of this license:
@@ -33,6 +35,7 @@ For the purposes of this license:
 - `Lawful Successor` means a person or entity that validly succeeds to the founder's rights by inheritance, assignment, merger, corporate succession, or another lawful transfer recognized by applicable law.
 - `Liquid Settlement Asset` means any currency, digital asset, reserve-like asset, or other payment medium that is sufficiently liquid, publicly valued, and reasonably convertible so that it can represent substantially equivalent real economic value at the time of settlement.
 - `Accessibility Principle` means the good-faith rule that the Founder Fee should remain a minor participation burden and must not be increased to a level that materially impairs practical accessibility of the Software for typical independent hosts, web operators, e-shop operators, or similarly situated SMEs.
+- `Founder Accessibility Declaration` means the founder's express statement that monetization, succession, interpretation, and enforcement of this licensing model should preserve accessibility for the broadest reasonable class of interested operators and should not become a tool of disproportionate pressure against smaller or weaker participants.
 - `Successor Value Standard` means a publicly described replacement unit of account or value-preservation benchmark designated in good faith by the founder, founder-controlled entity, or Lawful Successor if the reference currency, settlement currency, or Reference Inflation Index becomes unavailable, unreliable, legally discontinued, or economically non-functional.
 - `Steward` means a future maintainer, operator, foundation, or governing entity explicitly designated by the founder or founder-controlled entity in a signed public notice.
 - `Steward Fee` means an additional fee that a validly designated Steward may impose for maintenance, development, support, or operation of the official ecosystem.
@@ -120,6 +123,7 @@ The commercial and production-use conditions of this license are implemented thr
 - the applicable Reference Inflation Index or successor benchmark;
 - any Successor Value Standard and the triggering conditions for using it;
 - the Accessibility Principle or any published affordability guardrail used to prevent fee schedules from becoming materially exclusionary;
+- the Founder Accessibility Declaration or any corresponding non-predatory enforcement guidance;
 - receiving address or accepted payment rail;
 - required Arweave tags;
 - proof format;
@@ -136,6 +140,8 @@ If ordinary fiat currencies, settlement rails, or inflation indices become unava
 Unless the then-current fee policy states otherwise, the Founder Fee may be satisfied and proven using any Liquid Settlement Asset that, at the time of payment, represents no less than the required published economic value for the relevant coverage unit. The validity of payment should turn on substantially equivalent real economic satisfaction of the published obligation, not on the continued existence of any one specific fiat currency.
 
 The fee policy and any Founder Notice should be interpreted consistently with the Accessibility Principle. The Founder Fee may preserve real economic value and may be adjusted within the published fairness guardrails, but it should not be raised to a level that materially undermines the practical availability of the Software for ordinary hosting providers, web operators, e-shop operators, or comparable SMEs for whom the ecosystem is intended.
+
+To the fullest extent permitted by applicable law, any ambiguous question concerning fee scope, successor monetization rights, remedies, or enforcement posture should be interpreted consistently with the Founder Accessibility Declaration. The founder's expressed intent is that lawful successors may preserve and enforce the economic rights attached to this model, but should not use those rights in a manner that turns the licensing structure into a mechanism of exclusionary extraction against smaller, weaker, or more economically fragile participants in the ecosystem.
 
 ## 8. Proof and Compliance
 

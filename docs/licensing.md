@@ -33,6 +33,7 @@ Recommended clause design:
 - **Proof by equivalent value**: the operator should be allowed to prove payment using any sufficiently liquid settlement asset that satisfies the same published economic value, rather than being locked to one named fiat currency forever.
 - **Valuation rule**: the fee policy should define the settlement timestamp and a public valuation method hierarchy so equivalent-value payments can actually be proved in a repeatable way.
 - **Accessibility guardrail**: the founder fee should not be increased beyond a level that materially harms accessibility of the solution for typical hosting operators, website operators, e-shop operators, and comparable SMEs.
+- **Founder intent on successors**: lawful successors may enforce valid rights, but ambiguous monetization or enforcement questions should be resolved in a way that does not disproportionately suppress smaller or weaker participants in the ecosystem.
 - **Proof of Payment**: a valid Arweave txid with required tags is the evidence of compliance.
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
@@ -67,6 +68,7 @@ This should not live in one file alone. The defensible package is:
   - Lawful Successor
   - Liquid Settlement Asset
   - Accessibility Principle
+  - Founder Accessibility Declaration
   - Successor Value Standard
   - Founder Concept and Network Contribution
   - Steward Fee
@@ -112,6 +114,10 @@ And for settlement flexibility:
 And for accessibility:
 
 "The Founder Fee is intended to remain a minor participation charge and must not be increased above a level that materially impairs practical accessibility of the Software for typical hosting providers, web operators, e-shop operators, or similarly situated SMEs. Real-value preservation is permitted, but exclusionary pricing is not the policy objective of this model."
+
+And for successor enforcement:
+
+"The founder expressly declares that this model is intended to preserve accessibility for the broadest reasonable class of interested operators. Lawful successors may enforce valid fee rights and may seek lawful compensation, but ambiguous fee, remedy, or enforcement questions should be interpreted in a manner that does not disproportionately burden, suppress, or price out smaller or economically weaker participants if such participants form part of the relevant ecosystem at that time."
 
 ## Hard truth: what the license cannot do
 No license is bulletproof in the absolute sense.
