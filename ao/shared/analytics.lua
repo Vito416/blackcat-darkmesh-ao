@@ -1,1 +1,58 @@
--- Simple analytics/risk/subscription helpers (secretless, future-proof).\n+-- Counts via metrics and optionally appends NDJSON to METRICS_LOG.\n+\n+local cjson = require \"cjson\"\n+local metrics = require \"ao.shared.metrics\"\n+\n+local Analytics = {}\n+\n+local function write_log(ev)\n+  local path = os.getenv \"METRICS_LOG\"\n+  if not path or path == \"\" then return end\n+  local f = io.open(path, \"a\")\n+  if not f then return end\n+  ev.ts = os.date \"!%Y-%m-%dT%H:%M:%SZ\"\n+  f:write(cjson.encode(ev))\n+  f:write(\"\\n\")\n+  f:close()\n+end\n+\n+function Analytics.page_view(site, path, locale)\n+  metrics.inc \"ao_page_view\"\n+  write_log({ event = \"page_view\", site = site, path = path, locale = locale })\n+end\n+\n+function Analytics.product_view(site, sku, locale)\n+  metrics.inc \"ao_product_view\"\n+  write_log({ event = \"product_view\", site = site, sku = sku, locale = locale })\n+end\n+\n+-- risk event: attrs should already be hashed/obfuscated\n+function Analytics.risk_event(kind, attrs)\n+  metrics.inc \"ao_risk_event\"\n+  local ev = attrs or {}\n+  ev.event = kind or \"risk\"\n+  write_log(ev)\n+end\n+\n+function Analytics.subscription_start(site, plan, attrs)\n+  metrics.inc \"ao_subscription_start\"\n+  local ev = attrs or {}\n+  ev.event = \"subscription_start\"\n+  ev.site = site\n+  ev.plan = plan\n+  write_log(ev)\n+end\n+\n+function Analytics.subscription_cancel(site, plan, reason, attrs)\n+  metrics.inc \"ao_subscription_cancel\"\n+  metrics.inc \"ao_subscription_churn\"\n+  local ev = attrs or {}\n+  ev.event = \"subscription_cancel\"\n+  ev.site = site\n+  ev.plan = plan\n+  ev.reason = reason\n+  write_log(ev)\n+end\n+\n+return Analytics\n*** End Patchества
+-- Simple analytics/risk/subscription helpers (secretless, future-proof).
+-- Counts via metrics and optionally appends NDJSON to METRICS_LOG.
+
+local cjson = require "cjson"
+local metrics = require "ao.shared.metrics"
+
+local Analytics = {}
+
+local function write_log(ev)
+  local path = os.getenv "METRICS_LOG"
+  if not path or path == "" then return end
+  local f = io.open(path, "a")
+  if not f then return end
+  ev.ts = os.date "!%Y-%m-%dT%H:%M:%SZ"
+  f:write(cjson.encode(ev))
+  f:write("\n")
+  f:close()
+end
+
+function Analytics.page_view(site, path, locale)
+  metrics.inc "ao_page_view"
+  write_log({ event = "page_view", site = site, path = path, locale = locale })
+end
+
+function Analytics.product_view(site, sku, locale)
+  metrics.inc "ao_product_view"
+  write_log({ event = "product_view", site = site, sku = sku, locale = locale })
+end
+
+-- risk event: attrs should already be hashed/obfuscated
+function Analytics.risk_event(kind, attrs)
+  metrics.inc "ao_risk_event"
+  local ev = attrs or {}
+  ev.event = kind or "risk"
+  write_log(ev)
+end
+
+function Analytics.subscription_start(site, plan, attrs)
+  metrics.inc "ao_subscription_start"
+  local ev = attrs or {}
+  ev.event = "subscription_start"
+  ev.site = site
+  ev.plan = plan
+  write_log(ev)
+end
+
+function Analytics.subscription_cancel(site, plan, reason, attrs)
+  metrics.inc "ao_subscription_cancel"
+  metrics.inc "ao_subscription_churn"
+  local ev = attrs or {}
+  ev.event = "subscription_cancel"
+  ev.site = site
+  ev.plan = plan
+  ev.reason = reason
+  write_log(ev)
+end
+
+return Analytics
