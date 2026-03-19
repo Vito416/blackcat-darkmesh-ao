@@ -1,1 +1,37 @@
-local analytics = require "ao.shared.analytics"\n+local metrics = require "ao.shared.metrics"\n+\n+describe(\"analytics helpers\", function()\n+  before_each(function()\n+    metrics._reset()\n+  end)\n+\n+  it(\"counts page views and logs\", function()\n+    analytics.page_view(\"site1\", \"/home\", \"en\")\n+    assert.is_true(metrics.get(\"ao_page_view\") >= 1)\n+  end)\n+\n+  it(\"counts product views\", function()\n+    analytics.product_view(\"site1\", \"sku1\", \"en\")\n+    assert.is_true(metrics.get(\"ao_product_view\") >= 1)\n+  end)\n+\n+  it(\"counts risk events\", function()\n+    analytics.risk_event(\"fraud_signal\", { ip_hash = \"abc\" })\n+    assert.is_true(metrics.get(\"ao_risk_event\") >= 1)\n+  end)\n+\n+  it(\"tracks subscriptions\", function()\n+    analytics.subscription_start(\"site1\", \"pro\")\n+    analytics.subscription_cancel(\"site1\", \"pro\", \"churn\")\n+    assert.is_true(metrics.get(\"ao_subscription_start\") >= 1)\n+    assert.is_true(metrics.get(\"ao_subscription_cancel\") >= 1)\n+    assert.is_true(metrics.get(\"ao_subscription_churn\") >= 1)\n+  end)\n+end)\n*** End Patchательного
+local analytics = require "ao.shared.analytics"
+local metrics = require "ao.shared.metrics"
+
+-- Allow running under plain lua (CI calls lua5.4 <file>) without busted.
+if type(describe) ~= "function" then
+  io.stdout:write("analytics_spec: skipped (busted not available)\n")
+  return
+end
+
+describe("analytics helpers", function()
+  before_each(function()
+    metrics._reset()
+  end)
+
+  it("counts page views and logs", function()
+    analytics.page_view("site1", "/home", "en")
+    assert.is_true(metrics.get("ao_page_view") >= 1)
+  end)
+
+  it("counts product views", function()
+    analytics.product_view("site1", "sku1", "en")
+    assert.is_true(metrics.get("ao_product_view") >= 1)
+  end)
+
+  it("counts risk events", function()
+    analytics.risk_event("fraud_signal", { ip_hash = "abc" })
+    assert.is_true(metrics.get("ao_risk_event") >= 1)
+  end)
+
+  it("tracks subscriptions", function()
+    analytics.subscription_start("site1", "pro")
+    analytics.subscription_cancel("site1", "pro", "churn")
+    assert.is_true(metrics.get("ao_subscription_start") >= 1)
+    assert.is_true(metrics.get("ao_subscription_cancel") >= 1)
+    assert.is_true(metrics.get("ao_subscription_churn") >= 1)
+  end)
+end)
