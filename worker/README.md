@@ -108,3 +108,12 @@ Runbook snippets
 - Secrets rotation: `wrangler secret put <NAME> --env production` for WORKER_AUTH_TOKEN / INBOX_HMAC_SECRET / NOTIFY_HMAC_SECRET / METRICS_BEARER_TOKEN; then `wrangler deploy --env production`.
 - Cron/janitor verification: `wrangler tail --env production` and watch scheduled runs (*/5). Optionally `wrangler deployments` to confirm latest version live.
 - Backup stance: KV is a short-lived cache of encrypted envelopes; data loss is acceptable by design. If you need retention, mirror writes to R2/D1 outside the worker path.
+- Monitoring hook (Prom/Grafana): scrape `/metrics` with bearer auth. Example Prom job:
+  ```
+  - job_name: blackcat_worker
+    metrics_path: /metrics
+    bearer_token: ${METRICS_BEARER_TOKEN}
+    static_configs: [{ targets: ['<your-worker>.workers.dev'] }]
+  ```
+  Suggested alerts: `increase(worker_rate_limit_blocked_total[5m]) > 100`, `increase(worker_inbox_replay_total[5m]) > 50`, `increase(worker_notify_hmac_invalid_total[5m]) > 10`.
+- Notify live check: set `NOTIFY_WEBHOOK=https://httpbin.org/status/200` (or real endpoint) and run the chaos profile’s `notifyFail` with a 200 URL to validate dedupe/retries; keep `LITE_MODE=1` for CF Free.
