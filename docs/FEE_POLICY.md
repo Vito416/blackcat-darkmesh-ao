@@ -1,8 +1,8 @@
-# Blackcat Founder Fee Policy (Draft)
+# Blackcat Founder Fee Policy
 
-Status: draft for legal and business review
+Status: active companion policy text for BFNL 1.0
 
-This policy describes how the Founder Fee is paid and how compliance is proven for the draft Blackcat Founder Network License.
+This policy describes how the Founder Fee is paid and how compliance is proven for Blackcat Founder Network License 1.0.
 
 ## 1. Purpose
 

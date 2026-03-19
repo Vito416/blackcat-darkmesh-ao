@@ -1,6 +1,6 @@
-# Blackcat System Scope and Modularization Policy (Draft)
+# Blackcat System Scope and Modularization Policy
 
-Status: draft for legal, product, and licensing review
+Status: active companion policy text for BFNL 1.0
 
 This document explains how the founder-fee licensing model is intended to apply across the Blackcat system when the system is split across multiple repositories, packages, services, or internal components for operational reasons.
 
@@ -15,6 +15,10 @@ The Blackcat ecosystem may be maintained across multiple repositories and packag
 - or operational scalability.
 
 That modular structure is not intended to multiply founder-fee obligations merely because the system is split into several repositories.
+
+## 1A. NEXUS workspace presumption
+
+Unless a signed public Founder Notice expressly excludes a component, every official repository and internal workspace directory currently maintained inside the top-level `BLACKCAT_MESH_NEXUS` workspace should be presumed part of the same Covered System. That presumption applies even when a component is not separately versioned as its own repository, so shared tests, supporting tooling, migration material, internal manifests, and other internal workspace materials are not excluded merely because they live as directories rather than standalone repositories.
 
 ## 2. Integrated system intent
 

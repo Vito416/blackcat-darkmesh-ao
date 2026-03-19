@@ -1,6 +1,6 @@
 # Registry Terms (Draft)
 
-Status: draft for legal review
+Status: active companion policy text for BFNL 1.0
 
 These terms govern participation in the Official Registry, verified listings, and related trust or support programs.
 

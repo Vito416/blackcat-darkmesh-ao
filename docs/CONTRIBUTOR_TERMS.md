@@ -1,6 +1,6 @@
 # Contributor Terms (Draft)
 
-Status: draft for legal review
+Status: active companion policy text for BFNL 1.0
 
 These terms are intended to ensure that outside contributions do not fragment licensing authority and that the project can continue to be maintained, relicensed, and commercially administered by the Licensor, founder-controlled entity, or lawful successor recognized under the governing project license.
 

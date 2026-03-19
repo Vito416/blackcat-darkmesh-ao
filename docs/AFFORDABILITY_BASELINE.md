@@ -1,8 +1,8 @@
-# Affordability Baseline Method (Draft)
+# Affordability Baseline Method
 
-Status: draft for legal, product, and policy review
+Status: active companion policy text for BFNL 1.0
 
-This document explains the intended method for estimating the affordability baseline referenced by the draft Founder Fee Policy.
+This document explains the active method for estimating the affordability baseline referenced by the Blackcat Founder Fee Policy.
 
 ## 1. Purpose
 

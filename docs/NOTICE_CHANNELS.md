@@ -1,8 +1,8 @@
 # Notice Channels and Signing Authority (Draft)
 
-Status: draft for legal and operational review
+Status: active companion policy text for BFNL 1.0
 
-This document describes the intended public channels and authenticity rules for Founder Notices, succession notices, fee notices, and other governance notices referenced by the draft Blackcat Founder Network License.
+This document describes the public channels and authenticity rules for Founder Notices, succession notices, fee notices, and other governance notices referenced by Blackcat Founder Network License 1.0.
 
 ## 1. Purpose
 

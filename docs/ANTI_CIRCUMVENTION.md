@@ -1,6 +1,6 @@
-# Anti-Circumvention and Future Abuse Model (Draft)
+# Anti-Circumvention and Future Abuse Model
 
-Status: draft for legal, product, and governance review
+Status: active companion policy text for BFNL 1.0
 
 This document lists the main ways the founder-fee model could be weakened, bypassed, or turned into an exclusionary monetization system in the future. It is intended to help reviewers read the rest of the licensing bundle as a coordinated anti-circumvention package rather than as isolated documents.
 
@@ -200,6 +200,16 @@ Risk:
 Response:
 - no artificial incompatibility rule in `SYSTEM_SCOPE.md`;
 - anti-decay and documentation continuity in the license and `FEE_POLICY.md`.
+
+### 2.20 Workspace carve-out or repo-relocation capture
+
+Risk:
+- move an official mandatory component into a new repository, package name, organization, or non-repository workspace directory and then claim it is outside the Covered System or outside the affordability guardrails.
+
+Response:
+- NEXUS-workspace presumption in `SYSTEM_SCOPE.md`;
+- expanded `Covered System` definition in BFNL 1.0;
+- licensing system notice covering every current repository and internal top-level workspace component in `BLACKCAT_MESH_NEXUS`.
 
 ## 3. Remaining limits
 

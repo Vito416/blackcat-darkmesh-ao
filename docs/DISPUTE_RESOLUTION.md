@@ -1,8 +1,8 @@
 # Dispute Resolution Framework (Draft)
 
-Status: draft for legal review
+Status: active companion policy text for BFNL 1.0
 
-This document describes the intended dispute-resolution structure for the draft Blackcat Founder Network License and related policy documents.
+This document describes the dispute-resolution structure for Blackcat Founder Network License 1.0 and its related policy documents.
 
 ## 1. Purpose
 
@@ -128,7 +128,7 @@ This does not erase payment obligations, but it does support:
 - hardship review,
 - and other proportionate remedies.
 
-## 13. Recommended next drafting decision
+## 13. Next operating decision
 
 The project should eventually choose one of these final directions:
 

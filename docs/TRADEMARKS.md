@@ -1,6 +1,6 @@
 # Trademark Policy (Draft)
 
-Status: draft for legal review
+Status: active companion policy text for BFNL 1.0
 
 This document describes how names, logos, verified marks, and brand references connected with the Blackcat ecosystem may be used.
 

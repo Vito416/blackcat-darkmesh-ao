@@ -163,8 +163,14 @@ The intended policy is that this fee remains a very small, fair, one-time contri
 - Build bundle (manifest only): `./scripts/setup/build_schema_bundle.sh`; current deployed bundle: tx `iygsD6GhCXGI1cXrl2lw6VOpxbjwISZO5pqWmo7y8XM` (sha256 `b1ee8a00d4d2c989c4d7a88daf1ca45c0ea70fb0037dd8b688d44d05f9f534d5`).
 
 ## License
-Blackcat Darkmesh AO Proprietary License (see `LICENSE`). External contributions require written permission from Black Cat Academy s. r. o.
+Blackcat Darkmesh AO is licensed under `BFNL-1.0` (see `LICENSE`). Contribution and relicensing rules are governed by the companion documents in `blackcat-darkmesh-ao/docs/`.
 
-Umbrella licensing note: this repository is intended to be one official component of the Blackcat `Covered System`, not a separately monetized silo. Under the planned BFNL bundle, official Blackcat repositories and future mandatory internal components are treated as one integrated licensing surface for ordinary deployment classes. Repository separation exists for maintenance, safety, and delivery, not to trigger a separate founder fee or future steward/development fee for each repository.
 
-_Planned change_: see [docs/licensing.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/licensing.md), [docs/BFNL-1.0-draft.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/BFNL-1.0-draft.md), [docs/FEE_POLICY.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/FEE_POLICY.md), [docs/TRADEMARKS.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/TRADEMARKS.md), [docs/REGISTRY_TERMS.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/REGISTRY_TERMS.md), [docs/CONTRIBUTOR_TERMS.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/CONTRIBUTOR_TERMS.md), [docs/NOTICE_CHANNELS.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/NOTICE_CHANNELS.md), [docs/DISPUTE_RESOLUTION.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/DISPUTE_RESOLUTION.md), [docs/SYSTEM_SCOPE.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/SYSTEM_SCOPE.md), [docs/AFFORDABILITY_BASELINE.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/AFFORDABILITY_BASELINE.md), [docs/ANTI_CIRCUMVENTION.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/ANTI_CIRCUMVENTION.md), and [docs/LICENSING_SYSTEM_NOTICE.md](/mnt/c/Users/jaine/Desktop/BLACKCAT_MESH_NEXUS/blackcat-darkmesh-ao/docs/LICENSING_SYSTEM_NOTICE.md) for the proposed founder-fee source-available licensing model, Arweave registration policy, integrated multi-repository system scope, centralized contribution/relicensing terms, and anti-bypass governance safeguards.
+## Licensing
+
+This repository is an official component of the Blackcat Covered System. It is licensed under `BFNL-1.0`, and repository separation inside `BLACKCAT_MESH_NEXUS` exists for maintenance, safety, auditability, delivery, and architectural clarity. It does not by itself create a separate unavoidable founder-fee or steward/development-fee event for the same ordinary covered deployment.
+
+Canonical licensing bundle:
+- BFNL 1.0: https://github.com/Vito416/blackcat-darkmesh-ao/blob/main/docs/BFNL-1.0.md
+- Founder Fee Policy: https://github.com/Vito416/blackcat-darkmesh-ao/blob/main/docs/FEE_POLICY.md
+- Covered-System Notice: https://github.com/Vito416/blackcat-darkmesh-ao/blob/main/docs/LICENSING_SYSTEM_NOTICE.md
