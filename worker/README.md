@@ -61,7 +61,7 @@ Build/Deploy
 - Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test
-- `wrangler publish --env production` (or use deploy script below)
+- `wrangler publish --env production` (or use deploy script below). Cloudflare Workers need `compatibility_flags = ["nodejs_compat"]` (already in `wrangler.toml.example`) to resolve `buffer`.
 - Load/perf smoke: `docker run --rm --network host -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker.js` (expects miniflare at :8787 with HMAC secrets).
 - CF deploy (WSL):  
   1) `export CLOUDFLARE_API_TOKEN=<token>` (scopes: Workers Scripts Edit, KV Edit, User Details Read).  
