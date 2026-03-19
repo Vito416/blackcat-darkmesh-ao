@@ -108,6 +108,8 @@ Registry participation does not expand the rights granted under the code license
 
 Likewise, having access to source code or non-production rights does not automatically create a right to verified listing or official support.
 
+Conversely, registry rules, verified-status rules, trust-manifest rules, or support-program rules should not be interpreted to retroactively narrow an already validly acquired code-license scope for an ordinary covered deployment unless the governing license or fee policy clearly and prospectively creates a separate optional service class.
+
 ## 10. Relationship to trademarks
 
 Use of official marks, verified labels, badges, or branding remains subject to the trademark policy.

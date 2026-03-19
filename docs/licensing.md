@@ -29,20 +29,25 @@ Recommended clause design:
 - **Fairness statement**: the Founder Fee should be described as a fair, minimal, one-time contribution for access to the founder-created concept, system design, network model, public registry, and continued motivation for future development. It is not presented as an investment product or speculative asset, but as a practical participation fee for using the official production ecosystem.
 - **Inflation protection**: the founder-controlled entity should retain the express right to adjust the Founder Fee prospectively, with future increases anchored at least to official inflation from public sources so the fee does not lose real value over time.
 - **Counterparty protection**: ordinary fee increases should be capped for fairness, for example at no more than cumulative official inflation since the prior published schedule plus 0.5 percentage points, and ordinarily no more than once in a rolling twelve-month period.
-- **Continuity across currency failure**: if fiat currencies or the chosen benchmark cease to function, the founder or lawful successor should be allowed to preserve the same real economic burden by moving to a published successor currency, official conversion, IMF SDR, or another public and objective successor value standard.
+- **Continuity across currency failure**: if fiat currencies or the chosen benchmark cease to function, the founder or lawful successor should be allowed to preserve the same real economic burden by moving to a published successor currency, official conversion, a public international unit of account, or another public and objective successor value standard.
+- **Benchmark neutrality**: the benchmark hierarchy should not depend permanently on the continued existence of the EU, any specific state, or any one present-day currency bloc; it should fall back deterministically from public inflation measures to a published operational-cost basket.
 - **Proof by equivalent value**: the operator should be allowed to prove payment using any sufficiently liquid settlement asset that satisfies the same published economic value, rather than being locked to one named fiat currency forever.
 - **Valuation rule**: the fee policy should define the settlement timestamp and a public valuation method hierarchy so equivalent-value payments can actually be proved in a repeatable way.
-- **Accessibility guardrail**: the founder fee should not be increased beyond a level that materially harms accessibility of the solution for typical hosting operators, website operators, e-shop operators, and comparable SMEs.
+- **Accessibility guardrail**: the founder fee should not be increased beyond a level that materially harms accessibility of the solution for ordinary independent hosts, website operators, e-shop operators, gateway operators, and other comparable non-enterprise deployments.
 - **Founder intent on successors**: lawful successors may enforce valid rights, but ambiguous monetization or enforcement questions should be resolved in a way that does not disproportionately suppress smaller or weaker participants in the ecosystem.
 - **Non-exclusionary enforcement covenant**: enforcement should be good-faith and proportional, with cure-first treatment for smaller operators acting in substantial good faith, while preserving strong remedies for fraud or willful evasion.
-- **Default affordability threshold**: ordinary schedules should be tied to a concrete affordability ceiling, for example no more than 5% of the publicly observable first-year baseline operating cost of a comparable small operator for the relevant deployment class.
+- **Default affordability threshold**: ordinary schedules should be tied to a concrete affordability ceiling, for example no more than 5% of the publicly observable first-year baseline operating cost of a comparable ordinary non-enterprise operator for the relevant deployment class.
 - **Integrated system scope**: all official repositories and future internal packages that make up the same Covered System should be treated as one integrated licensing surface for ordinary deployment classes, not as automatic separate fee events.
 - **Anti-capture dependency rule**: future internal packages should not be made both materially necessary and separately unavoidable in a way that bypasses the Accessibility Principle or recreates duplicative hidden fees.
+- **Maintenance continuity rule**: ordinary operators should not be pushed into paid replacements through neglect, withheld security maintenance, withheld migration information, artificial end-of-life pressure, or disguised baseline decay.
+- **No forced control-plane rule**: already-paid ordinary deployments should not be converted into mandatory proprietary license-server or hosted-control-plane dependencies where public or self-hostable verification remains reasonably possible.
+- **No version-reset or class-reset capture**: a repo split, runtime split, major version, or naming change should not by itself recreate a new unavoidable fee event or reclassify an ordinary deployment as enterprise.
 - **Order of precedence**: the final package should explicitly say which document controls on conflict between the license, fee policy, registry terms, trademark policy, contributor terms, and signed waivers.
 - **Authenticated notices**: Founder Notices and successor notices should use a published signing key and authorized publication channels so future disputes about fake notices are easier to defeat.
 - **Succession proof chain**: any lawful successor should have to publish a public succession notice and proof chain before gaining authority to redirect fees, change schedules, or designate stewards.
 - **Alternative proof rail**: if Arweave is temporarily unavailable, the policy should allow another public and auditable proof rail with later anchoring back to the primary record.
 - **Registry appeal path**: registry suspension and delisting should have a lightweight review path and public transparency log where practical.
+- **Anti-circumvention map**: keep a written list of known governance, modularization, maintenance, compatibility, and pricing abuse patterns so the bundle can be interpreted as a coordinated anti-bypass system.
 - **Proof of Payment**: a valid Arweave txid with required tags is the evidence of compliance.
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
@@ -73,6 +78,8 @@ This should not live in one file alone. The defensible package is:
    Defines system-wide fee coverage across repositories and blocks anti-accessibility modular fragmentation.
 9. `AFFORDABILITY_BASELINE.md`
    Defines the method for measuring first-year baseline cost and affordability thresholds.
+10. `ANTI_CIRCUMVENTION.md`
+   Lists the main bypass and abuse patterns the bundle is intended to resist.
 
 ## Core clauses to include
 - Definitions:
@@ -127,7 +134,7 @@ And for inflation indexation:
 
 And for capped fairness and continuity:
 
-"To protect operators and preserve good-faith fairness, ordinary Founder Fee increases should not be published more than once in a rolling twelve-month period and should not exceed cumulative official inflation since the previous published schedule plus 0.5 percentage points. If the reference currency, official inflation benchmark, or practical fiat settlement system ceases to exist or to function meaningfully, the founder or lawful successor may preserve substantially equivalent real economic value by adopting a publicly documented successor currency, official legal conversion, IMF SDR, or another objective and publicly described successor value standard."
+"To protect operators and preserve good-faith fairness, ordinary Founder Fee increases should not be published more than once in a rolling twelve-month period and should not exceed cumulative official inflation since the previous published schedule plus 0.5 percentage points. If the reference currency, benchmark, or practical settlement system ceases to exist or to function meaningfully, the founder or lawful successor may preserve substantially equivalent real economic value by adopting a publicly documented successor benchmark, successor currency, public international unit of account, or another objective and publicly described successor value standard."
 
 And for settlement flexibility:
 
@@ -135,7 +142,7 @@ And for settlement flexibility:
 
 And for accessibility:
 
-"The Founder Fee is intended to remain a minor participation charge and must not be increased above a level that materially impairs practical accessibility of the Software for typical hosting providers, web operators, e-shop operators, or similarly situated SMEs. Real-value preservation is permitted, but exclusionary pricing is not the policy objective of this model."
+"The Founder Fee is intended to remain a minor participation charge and must not be increased above a level that materially impairs practical accessibility of the Software for ordinary hosting providers, web operators, e-shop operators, gateway operators, or other comparable non-enterprise deployments. Real-value preservation is permitted, but exclusionary pricing is not the policy objective of this model."
 
 And for successor enforcement:
 
@@ -148,6 +155,10 @@ And for non-exclusionary enforcement:
 And for notice authenticity:
 
 "A Founder Notice or succession notice should be effective only if published through an authorized public channel and authenticated by the currently recognized founder signing key or successor authenticity method. This is intended to reduce ambiguity, impersonation risk, and future disputes over fee redirection or authority."
+
+And for maintenance continuity and anti-capture:
+
+"Neither the founder, nor a founder-controlled entity, nor any lawful successor or steward should use maintenance neglect, artificial deprecation, withheld migration information, withheld baseline security maintenance, forced version resets, or avoidable compatibility breakage as a disguised method of pushing ordinary operators into separately monetized replacement components, hosted dependencies, or duplicate fee surfaces."
 
 ## Hard truth: what the license cannot do
 No license is bulletproof in the absolute sense.
@@ -197,6 +208,7 @@ The first concrete drafts now live in:
 7. `docs/DISPUTE_RESOLUTION.md`
 8. `docs/SYSTEM_SCOPE.md`
 9. `docs/AFFORDABILITY_BASELINE.md`
+10. `docs/ANTI_CIRCUMVENTION.md`
 
 The next practical move is:
 1. review the draft license line by line,

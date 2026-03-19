@@ -27,7 +27,7 @@ Until a final commercial schedule is published, the intended baseline is:
 The final commercial schedule may denominate the Founder Fee in a reference value standard rather than a single mandatory fiat currency. The founder-controlled entity may publish the fee using one or more reference expressions, for example:
 
 - a fiat reference amount;
-- an IMF SDR-linked reference amount;
+- a public international unit-of-account-linked reference amount;
 - a published basket of major currencies;
 - or another public successor value standard described in good faith.
 
@@ -57,10 +57,9 @@ Default fairness guard for operators:
 
 Recommended benchmark hierarchy:
 
-- for EUR-denominated schedules: Eurostat HICP;
-- for CZK-denominated schedules: Czech Statistical Office CPI or HICP;
-- for USD-denominated schedules: U.S. Bureau of Labor Statistics CPI-U;
-- if a benchmark is discontinued, materially changed, or unavailable, the founder may designate a reasonable successor official benchmark by published revision or Founder Notice.
+- first, a public inflation measure published by the authority or official statistical body most closely associated with the current reference unit, settlement unit, or successor value standard;
+- second, if no such measure remains sufficiently meaningful, a public international or multi-jurisdiction benchmark designated in the then-current published schedule;
+- third, if neither remains sufficiently meaningful, a published operational-cost basket using the method in `docs/AFFORDABILITY_BASELINE.md`, applied in good faith and using public pricing inputs.
 
 Unless a later schedule states a different formula, the intended baseline rule is:
 
@@ -78,7 +77,7 @@ If the reference currency is legally redenominated, replaced, discontinued, or n
 Default succession order:
 
 - the legally recognized successor currency using the official conversion rate or legal redenomination rule;
-- if no practical successor currency is available, a public international unit of account such as IMF SDR, if still published and reasonably usable;
+- if no practical successor currency is available, a public international unit of account, if one is still published and reasonably usable;
 - if neither remains practical, a published Successor Value Standard based on publicly verifiable economic benchmarks relevant to the ecosystem, such as energy, storage, bandwidth, compute, or another objective basket published in the repository or a Founder Notice.
 
 Any such transition should:
@@ -152,13 +151,14 @@ Accordingly, ordinary fee schedules and ordinary fee increases should not be set
 - independent hosting operators;
 - website operators;
 - e-shop operators;
-- and similarly situated SMEs or small commercial operators.
+- gateway operators;
+- and other comparable ordinary non-enterprise operators.
 
 In applying this guardrail, the founder or founder-controlled entity should act in good faith and may consider publicly observable indicators such as:
 
 - typical entry-level hosting or gateway operating costs;
 - basic domain, TLS, storage, and bandwidth costs;
-- ordinary onboarding and maintenance costs faced by small operators;
+- ordinary onboarding and maintenance costs faced by ordinary operators;
 - and the policy objective that the Founder Fee remain a minor ecosystem participation charge rather than a dominant cost component.
 
 The intent of this clause is not to prevent preservation of real economic value, but to prevent the Founder Fee from being increased into a level that would make the solution materially less reachable for the kinds of operators the project is meant to serve.
@@ -167,7 +167,7 @@ Where lawful successors later interpret, enforce, litigate, or renegotiate fee r
 
 ## 2F. Default affordability threshold
 
-Unless a narrower or more protective schedule is published, an ordinary Founder Fee for a standard single site, single shop, or similarly small deployment should be presumed materially inconsistent with the Accessibility Principle if it exceeds 5% of the publicly observable baseline first-year direct operating cost of a comparable small operator in the relevant market.
+Unless a narrower or more protective schedule is published, an ordinary Founder Fee for a standard single site, single shop, single gateway, or similarly ordinary deployment should be presumed materially inconsistent with the Accessibility Principle if it exceeds 5% of the publicly observable baseline first-year direct operating cost of a comparable ordinary non-enterprise operator in the relevant market.
 
 For this purpose, baseline first-year direct operating cost may be estimated in good faith from public market data for items such as:
 
@@ -225,6 +225,35 @@ The final commercial model should consider publishing a narrow hardship or micro
 
 Such a path may take the form of a temporary waiver, delayed payment, staged payment, capped micro-operator tier, or another narrowly tailored accommodation published in good faith.
 
+## 2K. Maintenance continuity and anti-decay rule
+
+Ordinary fee schedules, package structures, and successor monetization changes should not be combined with Maintenance Capture.
+
+Accordingly, the policy intent is that no Licensor, founder-controlled entity, Steward, or Lawful Successor should:
+
+- intentionally or through unreasonable neglect allow a Mandatory Internal Component for an ordinary deployment class to decay so that a separately priced replacement becomes practically unavoidable;
+- withhold baseline security maintenance, migration information, interface documentation, interoperability information, build instructions, or ordinary support materials in a way that materially pressures ordinary operators toward a separately monetized path;
+- declare a baseline component obsolete while failing to provide either a reasonable transition period or a compatible successor inside the same integrated fee surface;
+- or convert ordinary maintenance continuity into a disguised second payment surface.
+
+If an official baseline component is replaced, the preferred path should be:
+
+- maintain a reasonably usable compatibility and security path for a reasonable transition period;
+- or provide a compatible successor inside the same ordinary covered deployment class;
+- and preserve already-earned fee compliance for the covered deployment scope unless a clearly published prospective renewal model already applied.
+
+## 2L. No forced control-plane, version-reset, or reclassification capture
+
+Already validly paid rights for an ordinary covered deployment should not be made practically unusable merely because the official ecosystem later introduces:
+
+- a mandatory proprietary control plane or always-online entitlement service;
+- a mandatory private artifact feed, package feed, trust feed, or hosted distribution channel where a public or self-build path remains reasonably possible;
+- a major-version reset that treats the same ordinary deployment as a wholly new payment event without a clearly pre-published renewal model;
+- an artificial platform, runtime, repository, or package split used to recreate duplicate unavoidable charges;
+- or a relabeling of an ordinary deployment as premium or enterprise without a genuine operational distinction.
+
+Where a public proof rail, offline-verifiable proof path, or self-hostable verification path remains reasonably possible, the official ecosystem should prefer that path over a newly mandatory closed control dependency for ordinary operators.
+
 ## 3. Required tags
 
 Each payment transaction should include, at minimum:
@@ -250,6 +279,8 @@ The final commercial schedule should define what one payment covers. Recommended
 - materially separate production deployments require separate payment unless grouped in an announced plan.
 
 The default interpretation is system-wide for the covered deployment class, not repository-by-repository. If an ordinary deployment depends on multiple official Blackcat repositories or Mandatory Internal Components that form part of the same Covered System, that dependency should not by itself create duplicative Founder Fee obligations.
+
+Once a payment validly covered a stated deployment class under the then-current published schedule, that covered scope should not be retroactively narrowed merely because of later repository splits, version lines, support-plan changes, build pipeline changes, packaging changes, or other internal restructuring of the Covered System.
 
 ## 4A. Integrated system and anti-capture rule
 

@@ -94,7 +94,51 @@ Any future Steward or Lawful Successor should interpret modularization consisten
 
 Lawful successors may create new products, premium tiers, enterprise offerings, or optional commercial services, but should not use repository splits or mandatory internal dependencies as a disguised method of imposing duplicative founder-fee equivalents on ordinary operators.
 
-## 9. Relationship to fee policy
+## 9. Maintenance continuity and no-decay capture
+
+The integrated-system rule also applies over time, not only at the moment a package is introduced.
+
+Accordingly, the Licensor, founder-controlled entity, Steward, or Lawful Successor should not:
+
+- intentionally or through unreasonable neglect allow a Mandatory Internal Component for an ordinary deployment class to decay into insecurity, incompatibility, or practical unusability so that a separately priced replacement becomes the only realistic path;
+- withhold ordinary maintenance, migration notes, security fixes, or minimal interoperability information as a disguised monetization lever;
+- or deprecate baseline functionality without either a reasonable transition path or a compatible successor inside the same integrated fee surface for the same ordinary deployment class.
+
+Ordinary operators who have already satisfied the applicable founder-fee obligation should not be forced into a new unavoidable payment surface merely because a baseline module was later renamed, replaced, split out, or commercially repositioned.
+
+## 10. No artificial incompatibility or protocol capture
+
+The official ecosystem should not use avoidable compatibility breakage as a monetization tactic.
+
+Accordingly, public manifests, schemas, trust material, migration instructions, interoperability formats, and baseline protocol behaviors reasonably necessary for ordinary operation should remain publicly documented and reasonably stable, subject to ordinary security updates and good-faith technical evolution.
+
+The Licensor, founder-controlled entity, Steward, or Lawful Successor should not:
+
+- introduce artificial incompatibilities whose practical effect is to strand ordinary operators on unsupported paths unless they buy a separately monetized bridge, translation layer, or managed service;
+- withhold baseline export, migration, or compatibility information needed to keep a covered ordinary deployment functioning;
+- or use closed compatibility shims as the only practical path for a class previously treated as an ordinary deployment class.
+
+## 11. No mandatory control-plane capture
+
+Already validly paid rights for an ordinary deployment class should not be made dependent on a new mandatory always-online proprietary control service, entitlement server, or centrally hosted management dependency if a public, offline-verifiable, or self-hostable verification path remains reasonably possible.
+
+Centralized services may be offered for convenience, security, support, or premium operations, but ordinary baseline operation should not be silently converted into a dependency-captured service model.
+
+The same rule applies to private artifact feeds, package feeds, trust feeds, update channels, or hosted build/distribution paths. Such channels may exist as convenience or premium services, but they should not become the only practical way for an already covered ordinary deployment class to remain functional where a public or self-build path remains reasonably possible.
+
+## 12. No abusive reclassification of ordinary deployments
+
+An Ordinary Deployment Class should not be reclassified into a premium, enterprise, or special paid class merely because of:
+
+- repository or package restructuring;
+- a version-line change;
+- a runtime or language split;
+- a documentation or tooling reorganization;
+- or another internal architectural change that does not itself create a genuinely different operational burden.
+
+If a dispute arises, the default presumption should favor continuity of ordinary deployment treatment unless a clearly differentiated operational basis is published in good faith.
+
+## 13. Relationship to fee policy
 
 The fee policy should define:
 
@@ -104,7 +148,7 @@ The fee policy should define:
 
 If a dispute arises, ambiguity should be resolved in favor of integrated treatment for ordinary mandatory system components unless the published policy clearly and non-pretextually states otherwise.
 
-## 10. Contact
+## 14. Contact
 
 Questions about system scope, modularization, and integrated fee coverage may be directed to:
 

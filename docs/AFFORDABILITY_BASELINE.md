@@ -8,7 +8,7 @@ This document explains the intended method for estimating the affordability base
 
 The purpose of this document is to make the Accessibility Principle more concrete by defining a repeatable way to estimate:
 
-- the baseline first-year direct operating cost of a comparable small operator,
+- the baseline first-year direct operating cost of a comparable ordinary non-enterprise operator,
 - the affordability threshold used for ordinary fee schedules,
 - and the public evidence used to support schedule revisions.
 
@@ -31,6 +31,7 @@ The first-year direct operating cost estimate may include publicly observable ma
 - TLS or certificate cost where not otherwise included,
 - ordinary storage,
 - ordinary bandwidth or traffic allowance,
+- any mandatory official compatibility bridge, control service, or replacement module required for the profile to remain on a supported baseline,
 - and comparable unavoidable baseline operational costs for a small production deployment.
 
 It should not ordinarily include:
@@ -66,7 +67,7 @@ Recommended good-faith approach:
 
 Unless a more protective rule is published, the intended default affordability threshold remains:
 
-- no more than 5% of the publicly observable baseline first-year direct operating cost of a comparable small operator for the relevant ordinary deployment class.
+- no more than 5% of the publicly observable baseline first-year direct operating cost of a comparable ordinary non-enterprise operator for the relevant ordinary deployment class.
 
 This is intended as a rebuttable ceiling for ordinary schedules, not a floor.
 
@@ -89,7 +90,10 @@ The affordability baseline should not be manipulated by:
 
 - excluding a materially necessary internal dependency,
 - redefining a mandatory component as optional without genuine operational basis,
-- or moving ordinary required functionality into separately priced packages in a way that hides the true cost burden.
+- moving ordinary required functionality into separately priced packages in a way that hides the true cost burden,
+- allowing a baseline mandatory component to decay so that a separately priced replacement becomes practically required,
+- relabeling an ordinary deployment as premium or enterprise without a genuine operational distinction,
+- or making a centrally controlled proprietary verification or management dependency mandatory for an already covered ordinary deployment where a public or self-hostable path remains reasonably possible.
 
 ## 9. Review cadence
 
