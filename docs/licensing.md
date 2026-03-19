@@ -124,10 +124,14 @@ This is the closest fit to:
 - and a legally reserved payment stream to you.
 
 ## Next drafting step
-If you want, the next practical move is:
-1. replace the current proposal with a concrete `BFNL-1.0` license draft,
-2. add `FEE_POLICY.md`,
-3. add `TRADEMARKS.md`,
-4. wire the README to those documents.
+The first concrete drafts now live in:
+1. `docs/BFNL-1.0-draft.md`
+2. `docs/FEE_POLICY.md`
+
+The next practical move is:
+1. review the draft license line by line,
+2. add `TRADEMARKS.md`,
+3. add `REGISTRY_TERMS.md`,
+4. replace the root `LICENSE` only after legal review.
 
 _This document is a product and licensing recommendation, not legal advice. Before publishing a final license, have counsel review the final text in your target jurisdictions._
