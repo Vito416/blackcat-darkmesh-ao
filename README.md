@@ -154,6 +154,8 @@ To be listed as a verified participant (gateway/site/shop) in the shared mesh, s
 
 What you get: inclusion in the public registry, priority support/SLA, and a tamper-evident record. Source code is public for audit and development, but future production-use terms are expected to reserve a founder fee for official network use.
 
+The intended policy is that this fee remains a very small, fair, one-time contribution not only for registry/support, but also as recognition of the founder's original concept, ecosystem bootstrap, and motivation for continued development.
+
 ## Schemas (WeaveDB-first)
 - Canonical table definitions (columns, types, constraints) live in `schemas/canonical-db/tables/` plus the map `schemas/canonical-db/schema-map.yaml`.
 - WeaveDB-ready collections are in `schemas/weavedb/collections/*.yaml` (JSON Schema + indexes); manifest v3 carries them under `weavedb`.

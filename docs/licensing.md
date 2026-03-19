@@ -26,6 +26,7 @@ If your actual goal is "money must continue flowing to me," the license should s
 
 Recommended clause design:
 - **Founder Fee**: each production deployment, gateway, hosted service, or public site using the software must pay the Founder Fee to the founder-designated Arweave address.
+- **Fairness statement**: the Founder Fee should be described as a fair, minimal, one-time contribution for access to the founder-created concept, system design, network model, public registry, and continued motivation for future development. It is not presented as an investment product or speculative asset, but as a practical participation fee for using the official production ecosystem.
 - **Proof of Payment**: a valid Arweave txid with required tags is the evidence of compliance.
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
@@ -56,6 +57,7 @@ This should not live in one file alone. The defensible package is:
   - Gateway
   - Verified Listing
   - Founder Fee
+  - Founder Concept and Network Contribution
   - Steward Fee
   - Founder Notice
 - Grant:
@@ -74,6 +76,15 @@ This should not live in one file alone. The defensible package is:
   - no right to name, logo, certification marks, or official registry status
 - Governing updates:
   - founder can publish updated fee addresses, successor steward designations, or waivers by signed notice
+
+## Suggested policy wording
+The fee policy should say something close to this:
+
+"The Founder Fee is a fair and minimal one-time contribution required for production participation in the Blackcat network. It is charged in recognition of the founder's original concept, architectural design, ecosystem bootstrap, registry maintenance, and continued motivation to improve and secure the system. The fee is intended to be small enough not to block adoption, while ensuring that commercial or operational use of the official ecosystem is not entirely free of contribution."
+
+And for successor stewardship:
+
+"The founder may authorize a future steward to collect an additional development or maintenance fee for the continued operation of the ecosystem. Such authorization does not remove or replace the founder's reserved Founder Fee unless the founder expressly states so in a signed notice."
 
 ## Hard truth: what the license cannot do
 No license is bulletproof in the absolute sense.
