@@ -19,11 +19,13 @@ FORGET_TOKEN=""
 SENDGRID_KEY=""
 NOTIFY_WEBHOOK=""
 
+WR="npx wrangler"
+
 echo "=== Wrangler login ==="
-if ! wrangler whoami >/dev/null 2>&1; then wrangler login; fi
+if ! $WR whoami >/dev/null 2>&1; then $WR login; fi
 
 echo "=== Create KV namespace INBOX_KV (${ENV}) ==="
-KV_OUT=$(wrangler kv namespace create --binding INBOX_KV --env "$ENV")
+KV_OUT=$($WR kv namespace create --binding INBOX_KV --env "$ENV")
 KV_ID=$(echo "$KV_OUT" | awk '/id/ {print $NF}' | head -n1 | tr -d '\"')
 if [ -z "$KV_ID" ]; then
   echo "Failed to obtain KV ID. Output:" >&2
@@ -37,7 +39,7 @@ tmpfile=$(mktemp)
 perl -0777 -pe "s/id = \"x+\"/id = \"$KV_ID\"/g" wrangler.toml >"$tmpfile" && mv "$tmpfile" wrangler.toml
 
 echo "=== Set secrets ==="
-put_secret() { printf '%s' "$2" | wrangler secret put "$1" --env "$ENV" >/dev/null; }
+put_secret() { printf '%s' "$2" | $WR secret put "$1" --env "$ENV" >/dev/null; }
 put_secret WORKER_AUTH_TOKEN "$WORKER_AUTH_TOKEN"
 put_secret INBOX_HMAC_SECRET "$INBOX_HMAC_SECRET"
 put_secret NOTIFY_HMAC_SECRET "$NOTIFY_HMAC_SECRET"
@@ -47,7 +49,7 @@ put_secret METRICS_BEARER_TOKEN "$METRICS_BEARER_TOKEN"
 [ -n "$NOTIFY_WEBHOOK" ] && put_secret NOTIFY_WEBHOOK "$NOTIFY_WEBHOOK"
 
 echo "=== Publish ==="
-wrangler publish --env "$ENV"
+$WR publish --env "$ENV"
 
 echo "=== Summary ==="
 echo "Worker auth token:   $WORKER_AUTH_TOKEN"
@@ -55,4 +57,4 @@ echo "Inbox HMAC secret:   $INBOX_HMAC_SECRET"
 echo "Notify HMAC secret:  $NOTIFY_HMAC_SECRET"
 echo "Metrics bearer:      $METRICS_BEARER_TOKEN"
 echo "KV ID:               $KV_ID"
-wrangler deployments list --env "$ENV" | head -n 5
+$WR deployments list --env "$ENV" | head -n 5
