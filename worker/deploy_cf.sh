@@ -21,11 +21,17 @@ NOTIFY_WEBHOOK=""
 
 WR="npx --yes wrangler"
 
+ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
+if [ -z "$ACCOUNT_ID" ]; then
+  echo "Set CLOUDFLARE_ACCOUNT_ID env var (find it in CF dashboard: Workers & Pages → Overview)." >&2
+  exit 1
+fi
+
 echo "=== Wrangler login ==="
-if ! $WR whoami >/dev/null 2>&1; then $WR login; fi
+if ! $WR whoami --account-id "$ACCOUNT_ID" >/dev/null 2>&1; then $WR login; fi
 
 echo "=== Create KV namespace INBOX_KV (${ENV}) ==="
-KV_OUT=$($WR kv namespace create INBOX_KV --env "$ENV")
+KV_OUT=$($WR kv namespace create INBOX_KV --account-id "$ACCOUNT_ID" --env "$ENV")
 KV_ID=$(echo "$KV_OUT" | awk '/id/ {print $NF}' | head -n1 | tr -d '\"')
 if [ -z "$KV_ID" ]; then
   echo "Failed to obtain KV ID. Output:" >&2
@@ -39,7 +45,7 @@ tmpfile=$(mktemp)
 perl -0777 -pe "s/id = \"x+\"/id = \"$KV_ID\"/g" wrangler.toml >"$tmpfile" && mv "$tmpfile" wrangler.toml
 
 echo "=== Set secrets ==="
-put_secret() { printf '%s' "$2" | $WR secret put "$1" --env "$ENV" >/dev/null; }
+put_secret() { printf '%s' "$2" | $WR secret put "$1" --account-id "$ACCOUNT_ID" --env "$ENV" >/dev/null; }
 put_secret WORKER_AUTH_TOKEN "$WORKER_AUTH_TOKEN"
 put_secret INBOX_HMAC_SECRET "$INBOX_HMAC_SECRET"
 put_secret NOTIFY_HMAC_SECRET "$NOTIFY_HMAC_SECRET"
@@ -49,7 +55,7 @@ put_secret METRICS_BEARER_TOKEN "$METRICS_BEARER_TOKEN"
 [ -n "$NOTIFY_WEBHOOK" ] && put_secret NOTIFY_WEBHOOK "$NOTIFY_WEBHOOK"
 
 echo "=== Publish ==="
-$WR publish --env "$ENV"
+$WR publish --account-id "$ACCOUNT_ID" --env "$ENV"
 
 echo "=== Summary ==="
 echo "Worker auth token:   $WORKER_AUTH_TOKEN"
@@ -57,4 +63,4 @@ echo "Inbox HMAC secret:   $INBOX_HMAC_SECRET"
 echo "Notify HMAC secret:  $NOTIFY_HMAC_SECRET"
 echo "Metrics bearer:      $METRICS_BEARER_TOKEN"
 echo "KV ID:               $KV_ID"
-$WR deployments list --env "$ENV" | head -n 5
+$WR deployments list --account-id "$ACCOUNT_ID" --env "$ENV" | head -n 5
