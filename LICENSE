@@ -171,7 +171,7 @@ Unless a narrower rule is separately and clearly authorized in the published fee
 
 ## 7B. Order of Precedence
 
-Unless a final adopted license states otherwise, the intended order of precedence for conflicting terms is:
+Unless a later valid replacement license states otherwise, the order of precedence for conflicting terms is:
 
 1. a signed written waiver or transfer expressly authorized under this license;
 2. this license;

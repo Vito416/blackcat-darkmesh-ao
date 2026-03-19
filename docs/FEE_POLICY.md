@@ -51,7 +51,7 @@ Current operational values:
 
 - current Founder authenticity method: the same Ledger-backed Arweave identity currently used for the Founder Fee receiving address;
 - current Founder authenticity reference: `SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78`;
-- current Authorized Notice Channels: the canonical `blackcat-darkmesh-ao` repository, especially `docs/`, and the future notice path `docs/notices/`;
+- current Authorized Notice Channels: the canonical `blackcat-darkmesh-ao` repository, especially `docs/`, and the current notice path `docs/notices/`;
 - current fee schedule version identifier: `founder-fee-schedule-v1-2026-03-19`.
 
 Temporary operational note: the current Founder Fee receiving address and the current Founder Notice authenticity reference intentionally point to the same Ledger-backed Arweave identity for now. This is a temporary setup and is expected to be separated later into distinct payment and governance identities through a valid Founder Notice.

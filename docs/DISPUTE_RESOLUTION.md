@@ -31,7 +31,7 @@ This is not meant to protect fraud, willful evasion, impersonation, or malicious
 
 ## 3. Governing law
 
-Unless the final adopted license states otherwise, the intended governing law remains:
+Unless a later valid replacement license states otherwise, the governing law remains:
 
 - the laws of the Slovak Republic,
 
@@ -43,7 +43,7 @@ The intended authoritative legal language of the licensing package should be:
 
 - English.
 
-Translations may be published for convenience, but in case of conflict the English version should control unless the final adopted license expressly states otherwise.
+Translations may be published for convenience, but in case of conflict the English version should control unless a later valid replacement license expressly states otherwise.
 
 ## 5. Exclusive forum
 

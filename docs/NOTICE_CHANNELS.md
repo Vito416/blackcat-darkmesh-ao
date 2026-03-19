@@ -51,14 +51,14 @@ Examples:
 
 The governing fee policy or a valid notice should publish:
 
-- the current Founder Signing Key fingerprint;
+- the current Founder Signing Key fingerprint or equivalent public authenticity reference;
 - the signature method;
 - the date from which that key is authoritative;
 - and any superseded key history needed for verification of older notices.
 
 Recommended minimum publication format:
 
-- key id / fingerprint,
+- key id / fingerprint or equivalent public authenticity reference,
 - signature algorithm,
 - effective-from date,
 - and the channel where revocations or rotations will be announced.
@@ -71,7 +71,7 @@ Current temporary operational values:
 - current Founder authenticity reference: `SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78`;
 - current effective-from date: `2026-03-19`;
 - current primary repository channel: `blackcat-darkmesh-ao/docs/`;
-- current intended notice path: `blackcat-darkmesh-ao/docs/notices/`;
+- current notice path: `blackcat-darkmesh-ao/docs/notices/`;
 - current fee schedule version reference: `founder-fee-schedule-v1-2026-03-19`.
 
 Temporary operational note: the current Founder Fee receiving address and the current Founder Notice authenticity reference intentionally point to the same Ledger-backed Arweave identity for now. This is a temporary setup and is expected to be separated later into distinct payment and governance identities.

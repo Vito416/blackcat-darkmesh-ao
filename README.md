@@ -143,7 +143,7 @@ These live in the **write** service; keep paths under your ops log/data location
 
 ## Registration fee (Arweave) — transparent onboarding
 To be listed as a verified participant (gateway/site/shop) in the shared mesh, send a small on-chain fee that is public and auditable:
-- Destination: `AR_RECEIVER_ADDRESS_TBD` (will be published at launch)
+- Destination: `SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78`
 - Amount: ~2 USD equivalent in AR (or Bundlr) minimum
 - Required tags:
   - `App: blackcat-mesh`
@@ -164,9 +164,6 @@ The intended policy is that this fee remains a very small, fair, one-time contri
 
 ## License
 Blackcat Darkmesh AO is licensed under `BFNL-1.0` (see `LICENSE`). Contribution and relicensing rules are governed by the companion documents in `blackcat-darkmesh-ao/docs/`.
-
-
-## Licensing
 
 This repository is an official component of the Blackcat Covered System. It is licensed under `BFNL-1.0`, and repository separation inside `BLACKCAT_MESH_NEXUS` exists for maintenance, safety, auditability, delivery, and architectural clarity. It does not by itself create a separate unavoidable founder-fee or steward/development-fee event for the same ordinary covered deployment.
 
