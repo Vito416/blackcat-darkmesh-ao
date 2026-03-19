@@ -81,6 +81,8 @@ This should not live in one file alone. The defensible package is:
    Defines the method for measuring first-year baseline cost and affordability thresholds.
 10. `ANTI_CIRCUMVENTION.md`
    Lists the main bypass and abuse patterns the bundle is intended to resist.
+11. `LICENSING_SYSTEM_NOTICE.md`
+   Tracks the umbrella covered-system interpretation across the main Blackcat repositories included in the transition step.
 
 ## Core clauses to include
 - Definitions:
@@ -214,6 +216,7 @@ The first concrete drafts now live in:
 8. `docs/SYSTEM_SCOPE.md`
 9. `docs/AFFORDABILITY_BASELINE.md`
 10. `docs/ANTI_CIRCUMVENTION.md`
+11. `docs/LICENSING_SYSTEM_NOTICE.md`
 
 The next practical move is:
 1. review the draft license line by line,
