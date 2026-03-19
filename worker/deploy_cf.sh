@@ -61,7 +61,7 @@ put_secret METRICS_BEARER_TOKEN "$METRICS_BEARER_TOKEN"
 [ -n "$NOTIFY_WEBHOOK" ] && put_secret NOTIFY_WEBHOOK "$NOTIFY_WEBHOOK"
 
 echo "=== Publish ==="
-$WR publish --env "$ENV"
+$WR deploy --env "$ENV"
 
 echo "=== Summary ==="
 echo "Worker auth token:   $WORKER_AUTH_TOKEN"

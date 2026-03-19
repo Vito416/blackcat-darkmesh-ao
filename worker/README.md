@@ -64,6 +64,12 @@ Build/Deploy
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production`
 - Load/perf smoke: `docker run --rm --network host -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker.js` (expects miniflare at :8787 with HMAC secrets).
+- CF deploy (WSL):  
+  1) `export CLOUDFLARE_API_TOKEN=<token>` (scopes: Workers Scripts Edit, KV Edit, User Details Read).  
+  2) `export CLOUDFLARE_ACCOUNT_ID=<your account id>` (CF Dashboard → Workers & Pages → Overview).  
+  3) `cp wrangler.toml.example wrangler.toml` (not tracked; gitignored).  
+  4) `./deploy_cf.sh` (vytvoří KV, vygeneruje náhodné secrets, nasadí).  
+  5) Worker URL a secrets se vypíšou na konci skriptu.
 
 Local testing
 - Vitest/Miniflare run with in-memory KV/D1 (`TEST_IN_MEMORY_KV=1` in `wrangler.toml`) to avoid local SQLite locks.

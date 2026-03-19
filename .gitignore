@@ -6,3 +6,4 @@ arweave/snapshots/*
 metrics/
 dev/schema-bundles/
 legacy/
+worker/wrangler.toml
