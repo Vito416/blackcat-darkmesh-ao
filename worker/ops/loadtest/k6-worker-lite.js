@@ -3,7 +3,8 @@ import crypto from 'k6/crypto'
 import { check, sleep } from 'k6'
 
 // Lite profile tuned for Cloudflare free limits
-const BASE = __ENV.WORKER_BASE_URL || 'https://blackcat-inbox-production.vitek-pasek.workers.dev'
+// Provide your own target URL via WORKER_BASE_URL; default keeps traffic local/miniflare.
+const BASE = __ENV.WORKER_BASE_URL || 'http://localhost:8787'
 const INBOX_HMAC_SECRET = __ENV.INBOX_HMAC_SECRET || ''
 const NOTIFY_HMAC_SECRET = __ENV.NOTIFY_HMAC_SECRET || ''
 const WORKER_AUTH_TOKEN = __ENV.WORKER_AUTH_TOKEN || ''
@@ -18,6 +19,7 @@ export const options = {
       duration: '60s',
       preAllocatedVUs: 5,
       maxVUs: 20,
+      exec: 'inbox',
     },
     notify: {
       executor: 'constant-arrival-rate',
@@ -26,6 +28,7 @@ export const options = {
       duration: '60s',
       preAllocatedVUs: 3,
       maxVUs: 10,
+      exec: 'notify',
     },
   },
   thresholds: {
@@ -33,9 +36,39 @@ export const options = {
   },
 }
 
+// k6 crypto.hmac uses a different key handling than Node; implement HMAC-SHA256 manually
 function hmac(secret, body) {
   if (!secret) return ''
-  return crypto.hmac('sha256', body, secret, 'hex')
+  const toBytes = (str) => {
+    const out = new Uint8Array(str.length)
+    for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i)
+    return out
+  }
+  const concat = (a, b) => {
+    const out = new Uint8Array(a.length + b.length)
+    out.set(a, 0)
+    out.set(b, a.length)
+    return out
+  }
+  const toHex = (bytes) => Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')
+
+  let key = toBytes(secret)
+  if (key.length > 64) {
+    key = new Uint8Array(crypto.sha256(key, 'binary'))
+  }
+  if (key.length < 64) {
+    const padded = new Uint8Array(64)
+    padded.set(key)
+    key = padded
+  }
+
+  const oKeyPad = key.map((b) => b ^ 0x5c)
+  const iKeyPad = key.map((b) => b ^ 0x36)
+  const msgBytes = toBytes(body)
+
+  const inner = new Uint8Array(crypto.sha256(concat(iKeyPad, msgBytes), 'binary'))
+  const outer = new Uint8Array(crypto.sha256(concat(oKeyPad, inner), 'binary'))
+  return toHex(outer)
 }
 
 export function inbox() {

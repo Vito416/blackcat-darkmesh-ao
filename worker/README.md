@@ -30,7 +30,7 @@ API (baseline)
 - `GET /inbox/:subject/:nonce` → 200 `{ payload, exp }`; deletes after read.
 - `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <WORKER_AUTH_TOKEN>` (`FORGET_TOKEN` still accepted for legacy configs).
 - `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
-- `GET /health` — liveness check, returns `{ status: \"ok\" }`.
+- `GET /health` — liveness check, returns `{ status: "ok" }`.
 - `GET /metrics` — Prometheus text; protect via `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN`.
 - `scheduled` (cron) – deletes expired items, cleans malformed entries.
 
@@ -65,8 +65,22 @@ Build/Deploy
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production` (or use deploy script below). Cloudflare Workers need `compatibility_flags = ["nodejs_compat"]` (already in `wrangler.toml.example`) to resolve `buffer`.
 - Load/perf smoke: `docker run --rm --network host -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker.js` (expects miniflare at :8787 with HMAC secrets).
-- Lite k6 profile (for CF free tier):  
-  `docker run --rm -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker-lite.js \\\n    -e WORKER_BASE_URL=https://blackcat-inbox-production.vitek-pasek.workers.dev \\\n    -e INBOX_HMAC_SECRET=<secret> -e NOTIFY_HMAC_SECRET=<secret> -e WORKER_AUTH_TOKEN=<token> -e LITE_MODE=1`
+- Lite k6 profile (for CF free tier):
+  `docker run --rm -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker-lite.js \
+    -e WORKER_BASE_URL=https://<your-worker>.workers.dev \
+    -e INBOX_HMAC_SECRET=<secret> -e NOTIFY_HMAC_SECRET=<secret> -e WORKER_AUTH_TOKEN=<token> -e LITE_MODE=1`
+
+Production-like smoke (CF Free) — 2026-03-19
+- Profile: k6 lite (10 rps /inbox, 5 rps /notify, 60s), `LITE_MODE=1`, rate limit defaults 50 req / 60s.
+- Result: 899 total, 898/899 checks OK; 1 inbox call rate-limited (expected). p95 latency 268ms, max 747ms. `http_req_failed` high only because 429s count as failures—adjust threshold if needed.
+- Command used (from `worker/`):
+  `docker run --rm -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker-lite.js \
+     -e WORKER_BASE_URL=https://<your-worker>.workers.dev \
+     -e INBOX_HMAC_SECRET=$INBOX_HMAC_SECRET \
+     -e NOTIFY_HMAC_SECRET=$NOTIFY_HMAC_SECRET \
+     -e WORKER_AUTH_TOKEN=$WORKER_AUTH_TOKEN \
+     -e LITE_MODE=1`
+
 - CF deploy (WSL):  
   1) `export CLOUDFLARE_API_TOKEN=<token>` (scopes: Workers Scripts Edit, KV Edit, User Details Read).  
   2) `export CLOUDFLARE_ACCOUNT_ID=<your account id>` (CF Dashboard → Workers & Pages → Overview).  
