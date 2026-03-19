@@ -11,6 +11,15 @@ type InboxItem = {
 
 const encoder = new TextEncoder()
 
+// Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
+let inboxKey: CryptoKey | null = null
+let inboxSecretCached: string | null = null
+let notifyKey: CryptoKey | null = null
+let notifySecretCached: string | null = null
+
+const LOG_LEVEL = (globalThis as any).LOG_LEVEL || process.env.LOG_LEVEL || 'info' // info|error|debug
+const LITE_MODE = process.env.LITE_MODE === '1'
+
 const app = new Hono<{ Bindings: Env }>()
 
 // Simple in-memory KV shim for tests to avoid SQLite locks in Miniflare
@@ -123,7 +132,15 @@ app.use('*', async (c, next) => {
 
 app.get('/health', (c) => c.json({ status: 'ok', now: new Date().toISOString() }))
 
-function logEvent(name: string, extra?: Record<string, any>) {
+type LogLevel = 'debug' | 'info' | 'error'
+function logAllowed(level: LogLevel) {
+  if (LOG_LEVEL === 'debug') return true
+  if (LOG_LEVEL === 'info') return level !== 'debug'
+  return level === 'error'
+}
+
+function logEvent(name: string, extra?: Record<string, any>, level: LogLevel = 'info') {
+  if (!logAllowed(level)) return
   const payload = { ts: new Date().toISOString(), event: name, ...extra }
   try {
     console.log(JSON.stringify(payload))
@@ -315,15 +332,12 @@ async function verifyInboxSignature(c: any, body: string) {
     throw new HTTPException(401, { message: 'missing_signature' })
   }
   try {
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify']
-    )
+    if (!inboxKey || secret !== inboxSecretCached) {
+      inboxKey = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+      inboxSecretCached = secret
+    }
     const signatureBytes = hexToBytes(sig.trim().toLowerCase())
-    const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
+    const ok = await crypto.subtle.verify('HMAC', inboxKey, signatureBytes, encoder.encode(body))
     if (!ok) {
       throw new HTTPException(401, { message: 'invalid_signature' })
     }
@@ -347,15 +361,12 @@ async function verifyNotifySignature(c: any, body: string) {
     throw new HTTPException(401, { message: 'missing_signature' })
   }
   try {
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify']
-    )
+    if (!notifyKey || secret !== notifySecretCached) {
+      notifyKey = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+      notifySecretCached = secret
+    }
     const signatureBytes = hexToBytes(sig.trim().toLowerCase())
-    const ok = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(body))
+    const ok = await crypto.subtle.verify('HMAC', notifyKey, signatureBytes, encoder.encode(body))
     if (!ok) {
       inc('worker_notify_hmac_invalid_total')
       throw new HTTPException(401, { message: 'invalid_signature' })
@@ -369,7 +380,7 @@ async function verifyNotifySignature(c: any, body: string) {
 app.post('/inbox', async (c) => {
   const raw = await c.req.text()
   await verifyInboxSignature(c, raw)
-  const body = JSON.parse(raw) as { subject: string; nonce: string; payload: string; ttlSeconds?: number }
+  const body = JSON.parse(raw || '{}') as { subject: string; nonce: string; payload: string; ttlSeconds?: number }
   if (!body.subject || !body.nonce || !body.payload) {
     throw new HTTPException(400, { message: 'missing_fields' })
   }
@@ -494,7 +505,7 @@ app.post('/notify', async (c) => {
     throw new HTTPException(400, { message: 'invalid_webhook_url' })
   }
   const hashKey = `${body.to || webhook || raw}|${webhook ? 'webhook' : body.to ? 'email' : 'notify'}`
-  const dedupeTtl = parseInt(c.env.NOTIFY_DEDUPE_TTL || '300', 10)
+  const dedupeTtl = LITE_MODE ? 0 : parseInt(c.env.NOTIFY_DEDUPE_TTL || '300', 10)
   if (dedupeTtl > 0 && hashKey) {
     const hash = await crypto.subtle.digest('SHA-256', encoder.encode(hashKey))
     const hex = Array.from(new Uint8Array(hash))

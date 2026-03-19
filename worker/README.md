@@ -56,6 +56,8 @@ Env/config
 - `NOTIFY_FROM` (default from address for SendGrid)
 - `REQUIRE_SECRETS` (prod: fail fast if WORKER_AUTH_TOKEN/INBOX_HMAC_SECRET/NOTIFY_HMAC_SECRET unset)
 - `REQUIRE_METRICS_AUTH` (prod: 500 /metrics if auth secrets not configured)
+- `LITE_MODE` (optional): when `1`, notify dedup is disabled (saves KV writes for CF free tier).
+- `LOG_LEVEL` (debug|info|error): default `info`; `error` suppresses info logs.
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).
@@ -63,6 +65,8 @@ Build/Deploy
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production` (or use deploy script below). Cloudflare Workers need `compatibility_flags = ["nodejs_compat"]` (already in `wrangler.toml.example`) to resolve `buffer`.
 - Load/perf smoke: `docker run --rm --network host -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker.js` (expects miniflare at :8787 with HMAC secrets).
+- Lite k6 profile (for CF free tier):  
+  `docker run --rm -v $PWD:/repo -w /repo grafana/k6 run ops/loadtest/k6-worker-lite.js \\\n    -e WORKER_BASE_URL=https://blackcat-inbox-production.vitek-pasek.workers.dev \\\n    -e INBOX_HMAC_SECRET=<secret> -e NOTIFY_HMAC_SECRET=<secret> -e WORKER_AUTH_TOKEN=<token> -e LITE_MODE=1`
 - CF deploy (WSL):  
   1) `export CLOUDFLARE_API_TOKEN=<token>` (scopes: Workers Scripts Edit, KV Edit, User Details Read).  
   2) `export CLOUDFLARE_ACCOUNT_ID=<your account id>` (CF Dashboard → Workers & Pages → Overview).  
