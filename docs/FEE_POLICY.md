@@ -334,6 +334,14 @@ Default principle:
 - Founder Fee remains payable unless the founder expressly waives or transfers it;
 - Steward Fee may be added for ecosystem maintenance, support, or future development.
 
+Unless a more protective rule is published, any Steward Fee or future development fee should be interpreted and administered under the same baseline accessibility, anti-capture, anti-decay, integrated-system, and non-exclusionary enforcement rules that apply to the Founder Fee for the same ordinary deployment class.
+
+Accordingly, a Steward Fee should not be used to:
+
+- recreate a duplicate unavoidable payment surface for the same ordinary covered deployment;
+- bypass the affordability threshold through support, maintenance, package, control-plane, or compatibility capture;
+- or convert ordinary continued operation into a premium-only path without a genuine differentiated coverage class published in good faith.
+
 ## 9. Good-faith exceptions
 
 The final commercial policy may include discretionary waiver programs, for example:

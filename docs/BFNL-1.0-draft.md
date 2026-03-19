@@ -116,6 +116,8 @@ A duly designated Steward may:
 
 However, a Steward Fee does not replace the Founder Fee unless the founder expressly states so in a signed Founder Notice.
 
+Any Steward Fee, development fee, maintenance fee, registry-operation fee, or similar successor charge is intended to remain subject to the same Accessibility Principle, Founder Accessibility Declaration, Non-Exclusionary Enforcement Covenant, Covered System interpretation, anti-capture rules, and prospective-only fairness guardrails that apply to the Founder Fee, unless a later published rule is more protective of ordinary operators.
+
 The default rule is cumulative:
 
 - Founder Fee continues to be owed; and

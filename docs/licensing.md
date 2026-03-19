@@ -52,6 +52,7 @@ Recommended clause design:
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
 - **Founder priority preserved**: the steward's right to collect additional fees must not remove the founder's reserved fee unless the founder explicitly waives or transfers that right in writing.
+- **Steward-fee symmetry**: any future steward or development fee should inherit the same accessibility, anti-capture, anti-decay, prospective-only, and non-exclusionary limits as the founder fee for the same ordinary deployment class, unless a later rule is more protective of operators.
 
 This gives you what you asked for:
 - future maintainers can be funded,
@@ -127,6 +128,10 @@ The fee policy should say something close to this:
 And for successor stewardship:
 
 "The founder may authorize a future steward to collect an additional development or maintenance fee for the continued operation of the ecosystem. Such authorization does not remove or replace the founder's reserved Founder Fee unless the founder expressly states so in a signed notice."
+
+And for future steward or development fees:
+
+"Any future Steward Fee, development fee, maintenance fee, or registry-operation fee for an ordinary deployment class should be interpreted and administered under the same Accessibility Principle, anti-capture rules, anti-decay rules, and non-exclusionary enforcement limits that apply to the Founder Fee, unless a later published rule is more protective of ordinary operators."
 
 And for inflation indexation:
 

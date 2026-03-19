@@ -99,6 +99,15 @@ Response:
 - registry separation in `REGISTRY_TERMS.md`;
 - integrated-system and anti-capture rules in `SYSTEM_SCOPE.md`.
 
+### 2.9A Steward-fee asymmetry
+
+Risk:
+- promise accessibility limits for the founder fee, but let a future steward or development fee bypass those same limits in practice.
+
+Response:
+- steward-fee symmetry language in the license and `FEE_POLICY.md`;
+- integrated-system and non-exclusionary rules applied to both fee surfaces.
+
 ### 2.10 Opaque valuation manipulation
 
 Risk:
