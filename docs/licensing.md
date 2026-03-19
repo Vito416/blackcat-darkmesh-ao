@@ -34,6 +34,8 @@ Recommended clause design:
 - **Valuation rule**: the fee policy should define the settlement timestamp and a public valuation method hierarchy so equivalent-value payments can actually be proved in a repeatable way.
 - **Accessibility guardrail**: the founder fee should not be increased beyond a level that materially harms accessibility of the solution for typical hosting operators, website operators, e-shop operators, and comparable SMEs.
 - **Founder intent on successors**: lawful successors may enforce valid rights, but ambiguous monetization or enforcement questions should be resolved in a way that does not disproportionately suppress smaller or weaker participants in the ecosystem.
+- **Non-exclusionary enforcement covenant**: enforcement should be good-faith and proportional, with cure-first treatment for smaller operators acting in substantial good faith, while preserving strong remedies for fraud or willful evasion.
+- **Default affordability threshold**: ordinary schedules should be tied to a concrete affordability ceiling, for example no more than 5% of the publicly observable first-year baseline operating cost of a comparable small operator for the relevant deployment class.
 - **Proof of Payment**: a valid Arweave txid with required tags is the evidence of compliance.
 - **Non-waivable by default**: no operator may run the software in production without paying the Founder Fee unless the founder (or founder-controlled entity) publishes an explicit written waiver.
 - **Successor Steward option**: the founder may designate a future steward or governing entity by a signed notice. That steward may impose an additional maintenance or registry fee for future development.
@@ -69,6 +71,7 @@ This should not live in one file alone. The defensible package is:
   - Liquid Settlement Asset
   - Accessibility Principle
   - Founder Accessibility Declaration
+  - Non-Exclusionary Enforcement Covenant
   - Successor Value Standard
   - Founder Concept and Network Contribution
   - Steward Fee
@@ -118,6 +121,10 @@ And for accessibility:
 And for successor enforcement:
 
 "The founder expressly declares that this model is intended to preserve accessibility for the broadest reasonable class of interested operators. Lawful successors may enforce valid fee rights and may seek lawful compensation, but ambiguous fee, remedy, or enforcement questions should be interpreted in a manner that does not disproportionately burden, suppress, or price out smaller or economically weaker participants if such participants form part of the relevant ecosystem at that time."
+
+And for non-exclusionary enforcement:
+
+"Except in cases of fraud, willful evasion, repeated refusal to cure, abuse of official marks, or malicious conduct, enforcement of the Founder Fee should ordinarily proceed through notice, cure, prospective compliance, or another proportional remedy before exclusionary measures are sought. The licensing model is intended to protect valid founder economics, not to weaponize ambiguity or fee pressure against smaller operators acting in substantial good faith."
 
 ## Hard truth: what the license cannot do
 No license is bulletproof in the absolute sense.

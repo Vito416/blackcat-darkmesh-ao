@@ -153,6 +153,34 @@ The intent of this clause is not to prevent preservation of real economic value,
 
 Where lawful successors later interpret, enforce, litigate, or renegotiate fee rights, this policy should be read as preserving their ability to seek valid payment and lawful compensation, but not as authorizing a strategy whose practical effect is to crush accessibility for smaller or economically weaker participants. The intended balance is enforceable founder economics without turning the fee model into a disproportionate burden on the weakest viable layer of the ecosystem.
 
+## 2F. Default affordability threshold
+
+Unless a narrower or more protective schedule is published, an ordinary Founder Fee for a standard single site, single shop, or similarly small deployment should be presumed materially inconsistent with the Accessibility Principle if it exceeds 5% of the publicly observable baseline first-year direct operating cost of a comparable small operator in the relevant market.
+
+For this purpose, baseline first-year direct operating cost may be estimated in good faith from public market data for items such as:
+
+- entry-level hosting or gateway capacity;
+- domain registration;
+- TLS or certificate cost where applicable;
+- ordinary storage and bandwidth;
+- and comparable unavoidable base operational costs for a minimal production deployment.
+
+This default affordability threshold is intended as a rebuttable ceiling for ordinary schedules, not as a floor. It may be adjusted downward by published policy, but should not be adjusted upward for ordinary schedules unless a separately negotiated enterprise arrangement or a clearly differentiated coverage class justifies different treatment.
+
+Any attempt to publish an ordinary fee above that default affordability threshold should be presumed inconsistent with the Founder Accessibility Declaration and the Non-Exclusionary Enforcement Covenant.
+
+## 2G. Good-faith and proportional enforcement
+
+Where an operator appears to be acting in substantial good faith and is reasonably capable of cure, the preferred enforcement path should ordinarily be:
+
+- notice;
+- cure opportunity;
+- correction of proof or metadata;
+- prospective compliance;
+- or a reasonable path to payment rather than immediate exclusion.
+
+This preference does not limit strong remedies against fraud, willful non-payment, deliberate evasion, or repeated refusal to cure.
+
 ## 3. Required tags
 
 Each payment transaction should include, at minimum:
