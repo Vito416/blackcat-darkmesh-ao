@@ -151,13 +151,19 @@
     description: "High number of inbox envelopes expired by janitor; check TTL vs processing lag."
 
 ## Scrape example
+Bearer (recommended in prod):
 ```
 scrape_configs:
   - job_name: worker
     static_configs:
-      - targets: ["worker.local:8787"]
+      - targets: ["<your-worker>.workers.dev"]
     metrics_path: /metrics
-    basic_auth:
-      username: ${WORKER_METRICS_USER}
-      password: ${WORKER_METRICS_PASS}
+    bearer_token: ${METRICS_BEARER_TOKEN}
+    scheme: https
+```
+Basic auth (for local/miniflare):
+```
+  basic_auth:
+    username: ${WORKER_METRICS_USER}
+    password: ${WORKER_METRICS_PASS}
 ```
