@@ -56,6 +56,11 @@ The active licensing bundle lives in `blackcat-darkmesh-ao/docs/`:
 
 Those files are intended to be read as one coordinated licensing system.
 
+Current operational note:
+- the current Founder Fee receiving address and the current Founder Notice authenticity reference temporarily use the same Ledger-backed Arweave identity;
+- that shared identity is currently `SRNyOyOGqC5xSekIZeuy1T3Fho14U3-NerC_jeDwn78`;
+- and the roles are intended to be separated later by valid Founder Notice without disturbing already valid payments.
+
 ## 5. Repository-local LICENSE files
 
 Every official git repository currently present under `BLACKCAT_MESH_NEXUS` should carry the same active BFNL 1.0 text in its root `LICENSE` file.
