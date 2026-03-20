@@ -1,0 +1,59 @@
+name = "blackcat-inbox"
+main = "src/index.ts"
+compatibility_date = "2024-08-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
+
+[vars]
+INBOX_TTL_DEFAULT = "3600"
+INBOX_TTL_MAX = "86400"
+RATE_LIMIT_MAX = "50"
+RATE_LIMIT_WINDOW = "60"
+REPLAY_TTL = "600"
+SUBJECT_MAX_ENVELOPES = "10"
+PAYLOAD_MAX_BYTES = "16384"
+NOTIFY_RATE_MAX = "20"
+NOTIFY_RATE_WINDOW = "60"
+NOTIFY_FROM = "no-reply@example.com"
+NOTIFY_SUBJECT_MAX = "20"
+NOTIFY_SUBJECT_WINDOW = "60"
+TEST_IN_MEMORY_KV = "0"
+REQUIRE_SECRETS = "1"
+REQUIRE_METRICS_AUTH = "1"
+AUTH_REQUIRE_SIGNATURE = "1"
+AUTH_REQUIRE_NONCE = "1"
+DISABLE_JANITOR = "0"
+
+[triggers]
+# Run janitor at most once an hour (set DISABLE_JANITOR=1 to skip completely)
+crons = ["0 * * * *"]
+
+[[kv_namespaces]]
+binding = "INBOX_KV"
+id = "0a00b23608a2417690d6f8a84c49ca72"
+
+[env.production.vars]
+INBOX_TTL_DEFAULT = "3600"
+INBOX_TTL_MAX = "86400"
+RATE_LIMIT_MAX = "50"
+RATE_LIMIT_WINDOW = "60"
+REPLAY_TTL = "600"
+SUBJECT_MAX_ENVELOPES = "10"
+PAYLOAD_MAX_BYTES = "16384"
+NOTIFY_RATE_MAX = "20"
+NOTIFY_RATE_WINDOW = "60"
+NOTIFY_FROM = "no-reply@example.com"
+TEST_IN_MEMORY_KV = "0"
+REQUIRE_SECRETS = "1"
+REQUIRE_METRICS_AUTH = "1"
+NOTIFY_SUBJECT_MAX = "20"
+NOTIFY_SUBJECT_WINDOW = "60"
+AUTH_REQUIRE_SIGNATURE = "1"
+AUTH_REQUIRE_NONCE = "1"
+DISABLE_JANITOR = "0"
+
+[env.production]
+  [[env.production.kv_namespaces]]
+  binding = "INBOX_KV"
+  id = "0a00b23608a2417690d6f8a84c49ca72"
