@@ -17,8 +17,11 @@ let inboxSecretCached: string | null = null
 let notifyKey: CryptoKey | null = null
 let notifySecretCached: string | null = null
 
-const LOG_LEVEL = (globalThis as any).LOG_LEVEL || process.env.LOG_LEVEL || 'info' // info|error|debug
-const LITE_MODE = process.env.LITE_MODE === '1'
+const LOG_LEVEL =
+  (globalThis as any).LOG_LEVEL ||
+  (typeof process !== 'undefined' && process.env?.LOG_LEVEL) ||
+  'info' // info|error|debug
+const LITE_MODE = (typeof process !== 'undefined' && process.env?.LITE_MODE === '1') || false
 
 const app = new Hono<{ Bindings: Env }>()
 
