@@ -622,6 +622,7 @@ app.post('/notify', async (c) => {
   if (webhook) {
     const u = new URL(webhook)
     if (!hostAllowed(u, c.env.NOTIFY_WEBHOOK_ALLOWLIST)) {
+      inc('worker_notify_host_blocked_total')
       throw new HTTPException(403, { message: 'webhook_host_not_allowed' })
     }
   }

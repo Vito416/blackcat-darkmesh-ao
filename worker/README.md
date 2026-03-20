@@ -46,6 +46,7 @@ Env/config
 - `WORKER_AUTH_TOKEN` (Bearer guard for /forget and /notify; `FORGET_TOKEN` still accepted for backward compatibility)
 - `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN` (protect /metrics)
 - `SENDGRID_KEY` / `NOTIFY_WEBHOOK` (optional)
+- `NOTIFY_WEBHOOK_ALLOWLIST` (comma-separated hostnames allowed for webhook URLs; empty = allow all; **set in prod**)
 - `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` (per-IP for inbox/notify)
 - `SUBJECT_MAX_ENVELOPES` (max live envelopes per subject)
 - `PAYLOAD_MAX_BYTES` (reject oversized payloads)
@@ -101,7 +102,7 @@ Local testing
 
 Env vars (extra)
 - `TEST_IN_MEMORY_KV` — dev/test only; ignored in production (only value `1` enables the in-memory shim).
-- Metrics exposed (examples): `worker_inbox_put_total`, `worker_inbox_replay_total`, `worker_rate_limit_blocked_total`, `worker_inbox_expired_total`, `worker_forget_deleted_total`, `worker_notify_rate_blocked_total`, `worker_metrics_auth_blocked_total`, `worker_metrics_auth_ok_total`, `worker_notify_hmac_invalid_total`, `worker_notify_hmac_optional` (gauge).
+- Metrics exposed (examples): `worker_inbox_put_total`, `worker_inbox_replay_total`, `worker_rate_limit_blocked_total`, `worker_inbox_expired_total`, `worker_forget_deleted_total`, `worker_notify_rate_blocked_total`, `worker_metrics_auth_blocked_total`, `worker_metrics_auth_ok_total`, `worker_notify_hmac_invalid_total`, `worker_notify_hmac_optional` (gauge), `worker_notify_subject_blocked_total`, `worker_notify_breaker_open_total`, `worker_notify_host_blocked_total`.
 - Rate-limit tuning: defaults now 300 req / 60s per IP (≈5 rps). Raise in env if your SLA needs more headroom.
 
 Runbook snippets
@@ -115,5 +116,12 @@ Runbook snippets
     bearer_token: ${METRICS_BEARER_TOKEN}
     static_configs: [{ targets: ['<your-worker>.workers.dev'] }]
   ```
-  Suggested alerts: `increase(worker_rate_limit_blocked_total[5m]) > 100`, `increase(worker_inbox_replay_total[5m]) > 50`, `increase(worker_notify_hmac_invalid_total[5m]) > 10`.
+  Suggested alerts:  
+  - `increase(worker_rate_limit_blocked_total[5m]) > 100`  
+  - `increase(worker_inbox_replay_total[5m]) > 50`  
+  - `increase(worker_notify_hmac_invalid_total[5m]) > 10`  
+  - `increase(worker_notify_subject_blocked_total[5m]) > 20` (spray/abuse)  
+  - `increase(worker_notify_breaker_open_total[5m]) > 5` (PSP/webhook failing)  
+  - `gauge(worker_inbox_janitor_enabled) == 0` (cron disabled unexpectedly)  
+  - `increase(worker_notify_host_blocked_total[5m]) > 0` (SSRF/invalid webhook host attempts)
 - Notify live check: set `NOTIFY_WEBHOOK=https://httpbin.org/status/200` (or real endpoint) and run the chaos profile’s `notifyFail` with a 200 URL to validate dedupe/retries; keep `LITE_MODE=1` for CF Free.
