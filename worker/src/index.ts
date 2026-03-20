@@ -119,8 +119,8 @@ function normalizeTestEnv(env: Env) {
     env.INBOX_HMAC_SECRET = 'stress-secret'
   }
   if (env.NOTIFY_HMAC_OPTIONAL === undefined) {
-    // Keep HMAC required when a secret is provided, default to optional for ad-hoc test runs
-    env.NOTIFY_HMAC_OPTIONAL = env.NOTIFY_HMAC_SECRET ? '0' : '1'
+    // Prefer HMAC required; allow optional only when explicitly requested
+    env.NOTIFY_HMAC_OPTIONAL = env.NOTIFY_HMAC_SECRET ? '0' : '0'
   }
   if (!useMemoryKv(env)) {
     if (!env.AUTH_REQUIRE_SIGNATURE) env.AUTH_REQUIRE_SIGNATURE = '1'
@@ -249,6 +249,35 @@ async function notifyRateLimit(c: any) {
   }
 }
 
+// Guard against subject spray per IP: count unique subjects per window
+async function subjectSprayGuard(c: any, ip: string, subject: string) {
+  const max = parseInt(c.env.UNIQUE_SUBJECT_MAX_PER_IP || '20', 10)
+  const windowSec = parseInt(c.env.UNIQUE_SUBJECT_WINDOW || c.env.RATE_LIMIT_WINDOW || '60', 10)
+  if (max <= 0) return
+  const kv = kvFor(c)
+  const subjectKey = `rlsub:${ip}:${subject}`
+  const counterKey = `rlsubcount:${ip}`
+  const ttl = windowSec + 5
+  const now = nowSeconds()
+  const seen = await kv.get(subjectKey)
+  if (!seen) {
+    const rawCnt = await kv.get(counterKey)
+    let count = 0
+    if (rawCnt) {
+      const parsed = JSON.parse(rawCnt) as { count: number; reset: number }
+      if (parsed.reset && now < parsed.reset) {
+        count = parsed.count || 0
+      }
+    }
+    if (count >= max) {
+      inc('worker_notify_subject_blocked_total')
+      throw new HTTPException(429, { message: 'notify_subject_spray' })
+    }
+    await kv.put(subjectKey, '1', { expirationTtl: ttl })
+    await kv.put(counterKey, JSON.stringify({ count: count + 1, reset: now + ttl }), { expirationTtl: ttl })
+  }
+}
+
 function replayWindow(c: any) {
   const ttl = parseInt(c.env.REPLAY_TTL || '600', 10)
   if (!Number.isFinite(ttl) || ttl <= 0) {
@@ -342,6 +371,11 @@ function validatePayloadSize(c: any, payload: string) {
   }
 }
 
+function webhookTimeoutMs(env: Env) {
+  const val = parseInt(env.HTTP_TIMEOUT_MS || '8000', 10)
+  return val > 0 ? val : 8000
+}
+
 function validateEmail(email?: string) {
   if (!email) return false
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
@@ -355,6 +389,24 @@ function validateUrl(url?: string) {
   } catch {
     return false
   }
+}
+
+// basic SSRF guard: host allowlist + private-range deny
+function hostAllowed(u: URL, allowlistRaw?: string) {
+  const host = u.hostname.toLowerCase()
+  const allow = (allowlistRaw || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)
+  // deny obvious internal/metadata ranges by hostname
+  const denyHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'metadata.google.internal']
+  if (denyHosts.includes(host)) return false
+  const isPrivateIp =
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^127\./.test(host)
+  if (isPrivateIp) return false
+  if (allow.length === 0) return true
+  return allow.some((a) => host === a || host.endsWith('.' + a))
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -471,12 +523,20 @@ app.post('/forget', async (c) => {
   const prefix = `${body.subject}:`
   const replayPrefix = `replay:${body.subject}:`
   const kv = kvFor(c)
-  const list = await kv.list({ prefix })
-  const replayList = await kv.list({ prefix: replayPrefix })
+  const maxKeys = parseInt(c.env.FORGET_MAX_KEYS || '500', 10)
+  const list = await kv.list({ prefix, limit: maxKeys + 1 })
+  const replayList = await kv.list({ prefix: replayPrefix, limit: maxKeys + 1 })
+  if (list.keys.length > maxKeys || replayList.keys.length > maxKeys) {
+    throw new HTTPException(429, { message: 'forget_too_many_keys' })
+  }
   const deleted = list.keys.length
   const replayDeleted = replayList.keys.length
-  await Promise.all(list.keys.map((k) => kv.delete(k.name)))
-  await Promise.all(replayList.keys.map((k) => kv.delete(k.name)))
+  for (const k of list.keys) {
+    c.executionCtx.waitUntil(kv.delete(k.name))
+  }
+  for (const k of replayList.keys) {
+    c.executionCtx.waitUntil(kv.delete(k.name))
+  }
   logEvent('forget', { subject: body.subject, deleted, replayDeleted })
   inc('worker_forget_deleted_total', deleted)
   inc('worker_forget_replay_deleted_total', replayDeleted)
@@ -553,6 +613,12 @@ app.post('/notify', async (c) => {
   if (webhook && !validateUrl(webhook)) {
     throw new HTTPException(400, { message: 'invalid_webhook_url' })
   }
+  if (webhook) {
+    const u = new URL(webhook)
+    if (!hostAllowed(u, c.env.NOTIFY_WEBHOOK_ALLOWLIST)) {
+      throw new HTTPException(403, { message: 'webhook_host_not_allowed' })
+    }
+  }
   const hashKey = `${body.to || webhook || raw}|${webhook ? 'webhook' : body.to ? 'email' : 'notify'}`
   const dedupeTtl = LITE_MODE ? 0 : parseInt(c.env.NOTIFY_DEDUPE_TTL || '300', 10)
   if (dedupeTtl > 0 && hashKey) {
@@ -570,8 +636,11 @@ app.post('/notify', async (c) => {
   }
   const kv = kvFor(c)
   const subjectKey = body.to || webhook || clientIp(c)
+  await subjectSprayGuard(c, clientIp(c), subjectKey)
+  await notifySubjectLimit(c, subjectKey)
   const maxRetry = parseInt(c.env.NOTIFY_RETRY_MAX || '3', 10)
   const backoffMs = parseInt(c.env.NOTIFY_RETRY_BACKOFF_MS || '300', 10)
+  const timeoutMs = webhookTimeoutMs(c.env as any)
   const breakerThreshold = parseInt(c.env.NOTIFY_BREAKER_THRESHOLD || '5', 10)
   const breakerCooldown = parseInt(c.env.NOTIFY_BREAKER_COOLDOWN || '300', 10)
   const headerBreakerKey = c.req.header('x-breaker-key')?.trim()
@@ -652,7 +721,20 @@ app.post('/notify', async (c) => {
   async function sendWithRetry(fn: () => Promise<Response>, label: string) {
     let attempt = 0
     while (attempt < Math.max(1, maxRetry)) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
       const resp = await fn()
+        .then((r) => {
+          clearTimeout(timer)
+          return r
+        })
+        .catch((e) => {
+          clearTimeout(timer)
+          if ((e as any).name === 'AbortError') {
+            return new Response('', { status: 599 })
+          }
+          throw e
+        })
       if (resp.ok) return resp
       attempt++
       if (attempt < maxRetry) {
@@ -721,14 +803,20 @@ export default {
     const kv = useMemoryKv(env) ? kvFor({ env }) : env.INBOX_KV
     const prefixes = ['', 'replay:']
     let deleted = 0
-    for (const prefix of prefixes) {
-      let cursor: string | undefined
-      do {
-        const page = await kv.list({ prefix, cursor, limit: 1000 })
-        for (const k of page.keys) {
-          const raw = await kv.get(k.name)
-          if (!raw) continue
-          try {
+  for (const prefix of prefixes) {
+    let cursor: string | undefined
+    let processed = 0
+    do {
+      const page = await kv.list({ prefix, cursor, limit: 1000 })
+      for (const k of page.keys) {
+        processed++
+        if (processed > parseInt((env.MAX_JANITOR_KEYS as any) || '2000', 10)) {
+          logEvent('janitor_cap_reached', { prefix, cursor, processed })
+          return
+        }
+        const raw = await kv.get(k.name)
+        if (!raw) continue
+        try {
             const item = JSON.parse(raw) as InboxItem
             if (item.exp && item.exp < now) {
               ctx.waitUntil(kv.delete(k.name))

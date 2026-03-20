@@ -24,6 +24,12 @@ REQUIRE_METRICS_AUTH = "1"
 AUTH_REQUIRE_SIGNATURE = "1"
 AUTH_REQUIRE_NONCE = "1"
 DISABLE_JANITOR = "0"
+HTTP_TIMEOUT_MS = "8000"
+UNIQUE_SUBJECT_MAX_PER_IP = "20"
+UNIQUE_SUBJECT_WINDOW = "60"
+FORGET_MAX_KEYS = "500"
+MAX_JANITOR_KEYS = "2000"
+# NOTIFY_WEBHOOK_ALLOWLIST can be comma-separated hostnames (e.g. "hooks.slack.com,api.mycorp.com")
 
 [triggers]
 # Run janitor hourly by default; set DISABLE_JANITOR=1 to skip
@@ -52,6 +58,12 @@ REQUIRE_METRICS_AUTH = "1"
 AUTH_REQUIRE_SIGNATURE = "1"
 AUTH_REQUIRE_NONCE = "1"
 DISABLE_JANITOR = "0"
+HTTP_TIMEOUT_MS = "8000"
+UNIQUE_SUBJECT_MAX_PER_IP = "20"
+UNIQUE_SUBJECT_WINDOW = "60"
+FORGET_MAX_KEYS = "500"
+MAX_JANITOR_KEYS = "2000"
+# NOTIFY_WEBHOOK_ALLOWLIST can be comma-separated hostnames (e.g. "hooks.slack.com,api.mycorp.com")
 
 # Required secrets (set via `wrangler secret put ...`, not here):
 # - INBOX_HMAC_SECRET
