@@ -287,6 +287,39 @@ function subjectLimit(c: any, count: number) {
   }
 }
 
+async function notifySubjectLimit(c: any, subjectKey: string) {
+  const max = parseInt(c.env.NOTIFY_SUBJECT_MAX || '20', 10)
+  const windowSec = parseInt(c.env.NOTIFY_SUBJECT_WINDOW || c.env.NOTIFY_RATE_WINDOW || '60', 10)
+  if (max <= 0) return
+  const kv = kvFor(c)
+  const rk = `notify:subj:${subjectKey}`
+  const ttl = windowSec + 5
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const raw = await kv.get(rk)
+      const now = nowSeconds()
+      if (raw) {
+        const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
+        if (reset && now < reset && count >= max) {
+          inc('worker_notify_subject_blocked_total')
+          throw new HTTPException(429, { message: 'notify_subject_limit' })
+        }
+        const next = {
+          count: reset && now < reset ? count + 1 : 1,
+          reset: reset && now < reset ? reset : now + ttl,
+        }
+        await kv.put(rk, JSON.stringify(next), { expirationTtl: ttl })
+      } else {
+        await kv.put(rk, JSON.stringify({ count: 1, reset: now + ttl }), { expirationTtl: ttl })
+      }
+      return
+    } catch (e) {
+      if (!isSqliteBusy(e) || attempt === 2) throw e
+      await sleep(5 * (attempt + 1))
+    }
+  }
+}
+
 async function currentSubjectCount(c: any, subj: string) {
   const kv = kvFor(c)
   const list = await kv.list({ prefix: `${subj}:`, limit: 50 })
@@ -524,6 +557,8 @@ app.post('/notify', async (c) => {
     }
     await kv.put(`notify:hash:${hex}`, '1', { expirationTtl: dedupeTtl })
   }
+  const kv = kvFor(c)
+  const subjectKey = body.to || webhook || clientIp(c)
   const maxRetry = parseInt(c.env.NOTIFY_RETRY_MAX || '3', 10)
   const backoffMs = parseInt(c.env.NOTIFY_RETRY_BACKOFF_MS || '300', 10)
   const breakerThreshold = parseInt(c.env.NOTIFY_BREAKER_THRESHOLD || '5', 10)
@@ -538,8 +573,6 @@ app.post('/notify', async (c) => {
         : body.to
           ? 'sendgrid'
           : 'notify'
-  const kv = kvFor(c)
-
   async function breakerState() {
     const rawState = await kv.get(`notify:breaker:${breakerKey}`)
     if (rawState) {
@@ -603,6 +636,7 @@ app.post('/notify', async (c) => {
     }
   }
 
+  await notifySubjectLimit(c, subjectKey)
   await breakerAllows()
   async function sendWithRetry(fn: () => Promise<Response>, label: string) {
     let attempt = 0
