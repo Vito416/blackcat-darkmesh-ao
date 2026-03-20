@@ -534,11 +534,14 @@ app.post('/forget', async (c) => {
   }
   const deleted = list.keys.length
   const replayDeleted = replayList.keys.length
+  const canWait = c.executionCtx && typeof c.executionCtx.waitUntil === 'function'
   for (const k of list.keys) {
-    c.executionCtx.waitUntil(kv.delete(k.name))
+    if (canWait) c.executionCtx.waitUntil(kv.delete(k.name))
+    else await kv.delete(k.name)
   }
   for (const k of replayList.keys) {
-    c.executionCtx.waitUntil(kv.delete(k.name))
+    if (canWait) c.executionCtx.waitUntil(kv.delete(k.name))
+    else await kv.delete(k.name)
   }
   logEvent('forget', { subject: body.subject, deleted, replayDeleted })
   inc('worker_forget_deleted_total', deleted)
