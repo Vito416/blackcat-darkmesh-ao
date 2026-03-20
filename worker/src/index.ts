@@ -103,6 +103,14 @@ function requireSecret(env: Env, key: keyof Env | string, message?: string) {
   }
 }
 
+function ensureProdSecrets(env: Env) {
+  if (!secretsEnforced(env)) return
+  requireSecret(env, 'INBOX_HMAC_SECRET', 'missing_secret:INBOX_HMAC_SECRET')
+  if (env.NOTIFY_HMAC_OPTIONAL !== '1') {
+    requireSecret(env, 'NOTIFY_HMAC_SECRET', 'missing_secret:NOTIFY_HMAC_SECRET')
+  }
+}
+
 // Provide safe defaults for tests/stress when optional auth is allowed
 function normalizeTestEnv(env: Env) {
   if (!env.FORGET_TOKEN && env.WORKER_AUTH_TOKEN) env.FORGET_TOKEN = env.WORKER_AUTH_TOKEN
@@ -126,6 +134,7 @@ function normalizeTestEnv(env: Env) {
 // Basic CORS (tighten origin in production)
 app.use('*', async (c, next) => {
   normalizeTestEnv(c.env as any)
+  ensureProdSecrets(c.env as any)
   c.header('Access-Control-Allow-Origin', '*')
   c.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Signature')
@@ -327,7 +336,7 @@ async function currentSubjectCount(c: any, subj: string) {
 }
 
 function validatePayloadSize(c: any, payload: string) {
-  const maxBytes = parseInt(c.env.PAYLOAD_MAX_BYTES || '65536', 10)
+  const maxBytes = parseInt(c.env.PAYLOAD_MAX_BYTES || '16384', 10)
   if (maxBytes > 0 && new TextEncoder().encode(payload).length > maxBytes) {
     throw new HTTPException(413, { message: 'payload_too_large' })
   }
@@ -515,6 +524,8 @@ app.get('/metrics', async (c) => {
     if (method === 'basic') inc('worker_metrics_auth_ok_basic_total')
   }
   gauge('worker_notify_hmac_optional', c.env.NOTIFY_HMAC_OPTIONAL === '1' ? 1 : 0)
+  // surfacing janitor/list pressure for alerting
+  gauge('worker_inbox_janitor_enabled', c.env.DISABLE_JANITOR === '1' ? 0 : 1)
   return c.text(toProm(), 200, { 'content-type': 'text/plain; version=0.0.4' })
 })
 
