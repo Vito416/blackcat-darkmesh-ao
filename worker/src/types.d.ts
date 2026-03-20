@@ -25,6 +25,7 @@ export interface Env {
   METRICS_BASIC_USER?: string
   METRICS_BASIC_PASS?: string
   METRICS_BEARER_TOKEN?: string
+  DISABLE_JANITOR?: string
   TEST_IN_MEMORY_KV?: number | string
   REQUIRE_SECRETS?: string
   REQUIRE_METRICS_AUTH?: string

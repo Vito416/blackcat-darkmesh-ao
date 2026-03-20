@@ -114,8 +114,13 @@ function normalizeTestEnv(env: Env) {
     // Keep HMAC required when a secret is provided, default to optional for ad-hoc test runs
     env.NOTIFY_HMAC_OPTIONAL = env.NOTIFY_HMAC_SECRET ? '0' : '1'
   }
-  if (!env.AUTH_REQUIRE_SIGNATURE) env.AUTH_REQUIRE_SIGNATURE = '0'
-  if (!env.AUTH_REQUIRE_NONCE) env.AUTH_REQUIRE_NONCE = '0'
+  if (!useMemoryKv(env)) {
+    if (!env.AUTH_REQUIRE_SIGNATURE) env.AUTH_REQUIRE_SIGNATURE = '1'
+    if (!env.AUTH_REQUIRE_NONCE) env.AUTH_REQUIRE_NONCE = '1'
+  } else {
+    if (!env.AUTH_REQUIRE_SIGNATURE) env.AUTH_REQUIRE_SIGNATURE = '0'
+    if (!env.AUTH_REQUIRE_NONCE) env.AUTH_REQUIRE_NONCE = '0'
+  }
 }
 
 // Basic CORS (tighten origin in production)
@@ -524,8 +529,9 @@ app.post('/notify', async (c) => {
   const breakerThreshold = parseInt(c.env.NOTIFY_BREAKER_THRESHOLD || '5', 10)
   const breakerCooldown = parseInt(c.env.NOTIFY_BREAKER_COOLDOWN || '300', 10)
   const headerBreakerKey = c.req.header('x-breaker-key')?.trim()
+  const allowedBreakerKeys = ['stripe', 'paypal', 'gopay', 'webhook', 'sendgrid', 'notify']
   const breakerKey =
-    headerBreakerKey && headerBreakerKey.length > 0
+    headerBreakerKey && headerBreakerKey.length > 0 && allowedBreakerKeys.includes(headerBreakerKey)
       ? headerBreakerKey
       : webhook
         ? 'webhook'
@@ -662,6 +668,10 @@ app.post('/notify', async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (env.DISABLE_JANITOR === '1') {
+      logEvent('janitor_skip', { reason: 'disabled' })
+      return
+    }
     const now = Math.floor(Date.now() / 1000)
     const kv = useMemoryKv(env) ? kvFor({ env }) : env.INBOX_KV
     const prefixes = ['', 'replay:']
