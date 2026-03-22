@@ -9,6 +9,7 @@ const baseEnv = {
   NOTIFY_RETRY_BACKOFF_MS: '0',
   NOTIFY_BREAKER_THRESHOLD: '1',
   NOTIFY_BREAKER_COOLDOWN: '300',
+  NOTIFY_WEBHOOK_ALLOWLIST: 'example.com',
 }
 
 async function req(body: any, envOverrides: Record<string, any> = {}, headers: Record<string, string> = {}) {

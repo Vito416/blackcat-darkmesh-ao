@@ -397,7 +397,10 @@ function validateUrl(url?: string) {
 // basic SSRF guard: host allowlist + private-range deny
 function hostAllowed(u: URL, allowlistRaw?: string) {
   const host = u.hostname.toLowerCase()
-  const allow = (allowlistRaw || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean)
+  const allow = (allowlistRaw || '')
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean)
   // deny obvious internal/metadata ranges by hostname
   const denyHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'metadata.google.internal']
   if (denyHosts.includes(host)) return false
@@ -408,7 +411,8 @@ function hostAllowed(u: URL, allowlistRaw?: string) {
     /^169\.254\./.test(host) ||
     /^127\./.test(host)
   if (isPrivateIp) return false
-  if (allow.length === 0) return true
+  if (allow.length === 0) return false // fail closed: allowlist required
+  if (allow.includes('*')) return true
   return allow.some((a) => host === a || host.endsWith('.' + a))
 }
 
@@ -488,6 +492,7 @@ app.post('/inbox', async (c) => {
   }
   const kv = kvFor(c)
   await rateLimit(c)
+  await subjectSprayGuard(c, clientIp(c), body.subject)
   try {
     await checkReplay(c, body.subject, body.nonce)
   } catch (e) {
@@ -529,20 +534,37 @@ app.post('/forget', async (c) => {
   const maxKeys = parseInt(c.env.FORGET_MAX_KEYS || '500', 10)
   const list = await kv.list({ prefix, limit: maxKeys + 1 })
   const replayList = await kv.list({ prefix: replayPrefix, limit: maxKeys + 1 })
-  if (list.keys.length > maxKeys || replayList.keys.length > maxKeys) {
-    throw new HTTPException(429, { message: 'forget_too_many_keys' })
-  }
-  const deleted = list.keys.length
-  const replayDeleted = replayList.keys.length
   const canWait = c.executionCtx && typeof c.executionCtx.waitUntil === 'function'
-  for (const k of list.keys) {
-    if (canWait) c.executionCtx.waitUntil(kv.delete(k.name))
-    else await kv.delete(k.name)
+  const overflow = list.keys.length > maxKeys || replayList.keys.length > maxKeys
+  const inboxKeys = overflow ? list.keys.slice(0, maxKeys) : list.keys
+  const replayKeys = overflow ? replayList.keys.slice(0, maxKeys) : replayList.keys
+  const deleted = inboxKeys.length
+  const replayDeleted = replayKeys.length
+  const deleteKeys = async (keys: { name: string }[]) => {
+    for (const k of keys) {
+      if (canWait) c.executionCtx.waitUntil(kv.delete(k.name))
+      else await kv.delete(k.name)
+    }
   }
-  for (const k of replayList.keys) {
-    if (canWait) c.executionCtx.waitUntil(kv.delete(k.name))
-    else await kv.delete(k.name)
+  const runDeletes = async () => {
+    await deleteKeys(inboxKeys)
+    await deleteKeys(replayKeys)
   }
+  if (overflow) {
+    await runDeletes()
+    logEvent('forget_overflow', {
+      subject: body.subject,
+      deleted,
+      replayDeleted,
+      seen: list.keys.length,
+      replaySeen: replayList.keys.length,
+      maxKeys,
+    })
+    inc('worker_forget_deleted_total', deleted)
+    inc('worker_forget_replay_deleted_total', replayDeleted)
+    return c.json({ status: 'error', message: 'forget_too_many_keys', deleted, replayDeleted }, 429)
+  }
+  await runDeletes()
   logEvent('forget', { subject: body.subject, deleted, replayDeleted })
   inc('worker_forget_deleted_total', deleted)
   inc('worker_forget_replay_deleted_total', replayDeleted)
@@ -643,7 +665,8 @@ app.post('/notify', async (c) => {
   }
   const kv = kvFor(c)
   const subjectKey = body.to || webhook || clientIp(c)
-  await subjectSprayGuard(c, clientIp(c), subjectKey)
+  const sprayKey = body.subject || subjectKey
+  await subjectSprayGuard(c, clientIp(c), sprayKey)
   await notifySubjectLimit(c, subjectKey)
   const maxRetry = parseInt(c.env.NOTIFY_RETRY_MAX || '3', 10)
   const backoffMs = parseInt(c.env.NOTIFY_RETRY_BACKOFF_MS || '300', 10)
@@ -725,23 +748,25 @@ app.post('/notify', async (c) => {
 
   await notifySubjectLimit(c, subjectKey)
   await breakerAllows()
-  async function sendWithRetry(fn: () => Promise<Response>, label: string) {
+  async function sendWithRetry(fn: (signal: AbortSignal) => Promise<Response>, label: string) {
     let attempt = 0
-    while (attempt < Math.max(1, maxRetry)) {
+    const maxAttempts = Math.max(1, maxRetry)
+    while (attempt < maxAttempts) {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
-      const resp = await fn()
-        .then((r) => {
+      let resp: Response
+      try {
+        resp = await fn(controller.signal)
+      } catch (e) {
+        if ((e as any).name === 'AbortError') {
+          resp = new Response('', { status: 599 })
+        } else {
           clearTimeout(timer)
-          return r
-        })
-        .catch((e) => {
-          clearTimeout(timer)
-          if ((e as any).name === 'AbortError') {
-            return new Response('', { status: 599 })
-          }
           throw e
-        })
+        }
+      } finally {
+        clearTimeout(timer)
+      }
       if (resp.ok) return resp
       attempt++
       if (attempt < maxRetry) {
@@ -758,11 +783,12 @@ app.post('/notify', async (c) => {
   // webhook first (either body.webhookUrl or env NOTIFY_WEBHOOK)
   if (webhook) {
     const resp = await sendWithRetry(
-      () =>
+      (signal) =>
         fetch(webhook, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ to: body.to, subject: body.subject, text: body.text, html: body.html, data: body.data }),
+          signal,
         }),
       'notify_webhook'
     )
@@ -774,7 +800,7 @@ app.post('/notify', async (c) => {
   // SendGrid fallback
   if (c.env.SENDGRID_KEY && body.to) {
     const resp = await sendWithRetry(
-      () =>
+      (signal) =>
         fetch('https://api.sendgrid.com/v3/mail/send', {
           method: 'POST',
           headers: {
@@ -787,6 +813,7 @@ app.post('/notify', async (c) => {
             subject: body.subject || 'Notification',
             content: [{ type: body.html ? 'text/html' : 'text/plain', value: body.html || body.text || '' }],
           }),
+          signal,
         }),
       'notify_sendgrid'
     )

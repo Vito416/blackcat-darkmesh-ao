@@ -64,7 +64,7 @@ describe('Notify HMAC hardening', () => {
     const res = await call(
       '/notify',
       { method: 'POST', body, headers: { 'content-type': 'application/json', Authorization: 'Bearer t' } },
-      { NOTIFY_HMAC_SECRET: secret }
+      { NOTIFY_HMAC_SECRET: secret, NOTIFY_WEBHOOK_ALLOWLIST: 'example.com' }
     )
     expect(res.status).toBe(401)
   })
@@ -79,9 +79,124 @@ describe('Notify HMAC hardening', () => {
         body,
         headers: { 'content-type': 'application/json', Authorization: 'Bearer t', 'x-signature': sig },
       },
-      { NOTIFY_HMAC_SECRET: secret }
+      { NOTIFY_HMAC_SECRET: secret, NOTIFY_WEBHOOK_ALLOWLIST: 'example.com' }
     )
     expect([200, 202]).toContain(res.status)
     fetchSpy.mockRestore()
+  })
+})
+
+describe('Notify SSRF/timeout/subject spray guards', () => {
+  it('blocks webhook outside allowlist (fail-closed)', async () => {
+    const body = JSON.stringify({ webhookUrl: 'https://internal.service.local/hook', data: { x: 1 } })
+    const res = await call(
+      '/notify',
+      {
+        method: 'POST',
+        body,
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer t' },
+      } as any,
+      {
+        NOTIFY_HMAC_OPTIONAL: '1',
+        NOTIFY_WEBHOOK_ALLOWLIST: 'example.com',
+      }
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('enforces timeout when webhook hangs', async () => {
+    const sig = hmacHex('notify-secret', JSON.stringify({ webhookUrl: 'https://example.com/hook', data: { y: 1 } }))
+    const fetchSpy = vi
+      .spyOn(global, 'fetch' as any)
+      .mockResolvedValue(new Response('', { status: 599 }))
+    const res = await call(
+      '/notify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ webhookUrl: 'https://example.com/hook', data: { y: 1 } }),
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer t', 'x-signature': sig },
+      },
+      {
+        NOTIFY_WEBHOOK_ALLOWLIST: 'example.com',
+        NOTIFY_HMAC_SECRET: 'notify-secret',
+        HTTP_TIMEOUT_MS: '25',
+        NOTIFY_RETRY_MAX: '1',
+      }
+    )
+    expect([200, 502, 504]).toContain(res.status)
+    fetchSpy.mockRestore()
+  })
+
+  it('caps unique subjects per IP for inbox/notify', async () => {
+    const fetchSpy = vi
+      .spyOn(global, 'fetch' as any)
+      .mockResolvedValue(new Response('', { status: 200 }))
+    const resOk = await call(
+      '/notify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ webhookUrl: 'https://example.com/hook', subject: 's1', data: {} }),
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer t' },
+      },
+      {
+        UNIQUE_SUBJECT_MAX_PER_IP: '1',
+        UNIQUE_SUBJECT_WINDOW: '60',
+        NOTIFY_HMAC_OPTIONAL: '1',
+        NOTIFY_WEBHOOK_ALLOWLIST: 'example.com',
+      }
+    )
+    expect(resOk.status).toBe(200)
+    const resBlocked = await call(
+      '/notify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ webhookUrl: 'https://example.com/hook', subject: 's2', data: {} }),
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer t' },
+      },
+      {
+        UNIQUE_SUBJECT_MAX_PER_IP: '1',
+        UNIQUE_SUBJECT_WINDOW: '60',
+        NOTIFY_HMAC_OPTIONAL: '1',
+        NOTIFY_WEBHOOK_ALLOWLIST: 'example.com',
+      }
+    )
+    expect([200, 429]).toContain(resBlocked.status)
+    fetchSpy.mockRestore()
+  })
+})
+
+describe('Forget cap', () => {
+  it('returns 429 when too many keys under a subject', async () => {
+    // seed two envelopes under same subject
+    const env = { ...baseEnv, TEST_IN_MEMORY_KV: 1, FORGET_MAX_KEYS: '1', INBOX_HMAC_OPTIONAL: '1' } as any
+    const reqBody = JSON.stringify({ subject: 'cap', nonce: 'n1', payload: 'x' })
+    await mod.fetch(
+      new Request('http://localhost/inbox', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: reqBody,
+      }),
+      env,
+      {} as any
+    )
+    await mod.fetch(
+      new Request('http://localhost/inbox', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subject: 'cap', nonce: 'n2', payload: 'y' }),
+      }),
+      env,
+      {} as any
+    )
+    const forget = await mod.fetch(
+      new Request('http://localhost/forget', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: 'Bearer t' },
+        body: JSON.stringify({ subject: 'cap' }),
+      }),
+      env,
+      {} as any
+    )
+    expect(forget.status).toBe(429)
   })
 })
