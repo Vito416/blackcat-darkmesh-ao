@@ -11,6 +11,8 @@
     "test:stress": "npx vitest run test/stress.test.ts"
   },
   "dependencies": {
+    "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "^1.4.0",
     "hono": "^4.3.0"
   },
   "devDependencies": {

@@ -29,4 +29,6 @@ export interface Env {
   TEST_IN_MEMORY_KV?: number | string
   REQUIRE_SECRETS?: string
   REQUIRE_METRICS_AUTH?: string
+  WORKER_ED25519_PRIV_HEX?: string
+  WORKER_SIGNATURE_REF?: string
 }

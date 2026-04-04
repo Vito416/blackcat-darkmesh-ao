@@ -3,6 +3,8 @@ import { HTTPException } from 'hono/http-exception'
 import type { Env } from './types'
 import { gauge, inc, toProm } from './metrics'
 import { Buffer } from 'node:buffer'
+import * as ed25519 from '@noble/ed25519'
+import { sha512 } from '@noble/hashes/sha512'
 
 type InboxItem = {
   payload: string
@@ -10,6 +12,8 @@ type InboxItem = {
 }
 
 const encoder = new TextEncoder()
+// noble/ed25519 requires a SHA-512 implementation to be wired explicitly.
+ed25519.etc.sha512Sync = (msg) => sha512(msg)
 
 // Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
 let inboxKey: CryptoKey | null = null
@@ -107,10 +111,23 @@ function requireSecret(env: Env, key: keyof Env | string, message?: string) {
 }
 
 function ensureProdSecrets(env: Env) {
-  if (!secretsEnforced(env)) return
+  const prodLike =
+    env.CF_ENV === 'production' ||
+    env.ENVIRONMENT === 'production' ||
+    env.NODE_ENV === 'production' ||
+    env.DEPLOY_ENV === 'production'
+  if (!secretsEnforced(env)) {
+    if (prodLike) {
+      throw new HTTPException(500, { message: 'secrets_not_enforced_in_prod' })
+    }
+    return
+  }
   requireSecret(env, 'INBOX_HMAC_SECRET', 'missing_secret:INBOX_HMAC_SECRET')
   if (env.NOTIFY_HMAC_OPTIONAL !== '1') {
     requireSecret(env, 'NOTIFY_HMAC_SECRET', 'missing_secret:NOTIFY_HMAC_SECRET')
+  }
+  if (prodLike && useMemoryKv(env)) {
+    throw new HTTPException(500, { message: 'memory_kv_not_allowed_in_prod' })
   }
 }
 
@@ -309,11 +326,55 @@ async function checkReplay(c: any, subj: string, nonce: string) {
   }
 }
 
+async function signRateLimit(c: any) {
+  const max = parseInt(c.env.SIGN_RATE_LIMIT_MAX || c.env.RATE_LIMIT_MAX || '20', 10)
+  const windowSec = parseInt(c.env.SIGN_RATE_LIMIT_WINDOW || c.env.RATE_LIMIT_WINDOW || '60', 10)
+  if (max <= 0) return
+  const ip = clientIp(c)
+  const rk = `rl:sign:${ip}`
+  const kv = kvFor(c)
+  const ttl = windowSec + 5
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const raw = await kv.get(rk)
+      const now = nowSeconds()
+      if (raw) {
+        const { count, reset } = JSON.parse(raw) as { count: number; reset: number }
+        if (reset && now < reset && count >= max) {
+          throw new HTTPException(429, { message: 'rate_limited' })
+        }
+        const next = {
+          count: reset && now < reset ? count + 1 : 1,
+          reset: reset && now < reset ? reset : now + ttl,
+        }
+        await kv.put(rk, JSON.stringify(next), { expirationTtl: ttl })
+      } else {
+        await kv.put(rk, JSON.stringify({ count: 1, reset: now + ttl }), { expirationTtl: ttl })
+      }
+      return
+    } catch (e) {
+      if (!isSqliteBusy(e) || attempt === 2) throw e
+      await sleep(5 * (attempt + 1))
+    }
+  }
+}
+
 // simple token check for forget/notify
 function requireToken(c: any) {
   const tokenEnv = c.env.WORKER_AUTH_TOKEN || c.env.FORGET_TOKEN
   if (!tokenEnv) {
     requireSecret(c.env, 'WORKER_AUTH_TOKEN', 'missing_auth_token')
+  }
+  const token = c.req.header('Authorization') || c.req.header('authorization') || ''
+  if (tokenEnv && token !== `Bearer ${tokenEnv}`) {
+    throw new HTTPException(401, { message: 'unauthorized' })
+  }
+}
+
+function requireSignToken(c: any) {
+  const tokenEnv = c.env.WORKER_SIGN_TOKEN || c.env.WORKER_AUTH_TOKEN
+  if (!tokenEnv) {
+    requireSecret(c.env, 'WORKER_SIGN_TOKEN', 'missing_sign_token')
   }
   const token = c.req.header('Authorization') || c.req.header('authorization') || ''
   if (tokenEnv && token !== `Bearer ${tokenEnv}`) {
@@ -427,6 +488,38 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes
 }
 
+function stableStringify(value: any): string {
+  if (value === null || value === undefined) return 'null'
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (typeof value === 'object') {
+    const keys = Object.keys(value).sort()
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function canonicalDetachedMessage(cmd: any): string {
+  const parts = [
+    cmd.action || cmd.Action || '',
+    cmd.tenant || cmd.Tenant || '',
+    cmd.actor || cmd.Actor || '',
+    cmd.timestamp || cmd.ts || '',
+    cmd.nonce || cmd.Nonce || '',
+    stableStringify(cmd.payload || cmd.Payload || {}),
+    cmd.requestId || cmd['Request-Id'] || ''
+  ]
+  return parts.join('|')
+}
+
+async function signCommand(env: Env, cmd: any) {
+  const privHex = env.WORKER_ED25519_PRIV_HEX
+  requireSecret(env, 'WORKER_ED25519_PRIV_HEX', 'missing_secret:WORKER_ED25519_PRIV_HEX')
+  if (!privHex) throw new HTTPException(500, { message: 'missing_secret:WORKER_ED25519_PRIV_HEX' })
+  const message = canonicalDetachedMessage(cmd)
+  const sig = await ed25519.sign(Buffer.from(message), hexToBytes(privHex))
+  return Buffer.from(sig).toString('hex')
+}
+
 async function verifyInboxSignature(c: any, body: string) {
   const secret = c.env.INBOX_HMAC_SECRET
   const optional = c.env.INBOX_HMAC_OPTIONAL === '1'
@@ -508,6 +601,43 @@ app.post('/inbox', async (c) => {
   logEvent('inbox_put', { subject: body.subject })
   inc('worker_inbox_put_total')
   return c.json({ status: 'OK', exp }, 201)
+})
+
+// Sign a write command using the worker's Ed25519 key (for AO verification).
+// Requires Authorization token and WORKER_ED25519_PRIV_HEX secret set.
+app.post('/sign', async (c) => {
+  requireSignToken(c)
+  await signRateLimit(c)
+  const body = await c.req.json<any>()
+  if (!body || typeof body !== 'object') {
+    throw new HTTPException(400, { message: 'invalid_body' })
+  }
+  const allowedKeys = new Set(['action','Action','tenant','Tenant','actor','Actor','timestamp','ts','nonce','Nonce','payload','Payload','requestId','Request-Id'])
+  for (const key of Object.keys(body)) {
+    if (!allowedKeys.has(key)) {
+      throw new HTTPException(400, { message: 'unknown_field' })
+    }
+  }
+  const nonce = body.nonce || body.Nonce
+  if (!nonce || typeof nonce !== 'string' || nonce.length > 128) {
+    throw new HTTPException(400, { message: 'missing_nonce' })
+  }
+  const ts = body.timestamp || body.ts
+  const tsNum = typeof ts === 'string' ? parseInt(ts, 10) : ts
+  const windowSec = parseInt(c.env.SIGN_TS_WINDOW || '300', 10)
+  const now = Math.floor(Date.now() / 1000)
+  if (!tsNum || Math.abs(now - tsNum) > windowSec) {
+    throw new HTTPException(400, { message: 'stale_timestamp' })
+  }
+  await checkReplay(c, `sign:${nonce}`, windowSec + 30)
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(body))
+  const maxBytes = parseInt(c.env.SIGN_MAX_BYTES || '4096', 10)
+  if (maxBytes > 0 && payloadBytes.length > maxBytes) {
+    throw new HTTPException(413, { message: 'payload_too_large' })
+  }
+  const signature = await signCommand(c.env, body)
+  const signatureRef = c.env.WORKER_SIGNATURE_REF || 'worker-ed25519'
+  return c.json({ signature, signatureRef })
 })
 
 app.get('/inbox/:subject/:nonce', async (c) => {
