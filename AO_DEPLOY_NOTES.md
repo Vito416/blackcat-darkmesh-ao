@@ -530,3 +530,103 @@ Immediate next step (required before hard code conclusions):
 3. only if `{badmap,failure}` persists after PID finalization, treat as code/protocol defect and continue deep RCA.
 
 ---
+
+## 4.14) 2026-04-08 — RCA on `field 'handle'` + runtime rebuild fix
+
+What changed in behavior:
+- Previous site/catalog/access PIDs (`lqO...`, `u8UT...`, `Ae389...`) no longer show the old immediate runtime error after send transport, but strict deep tests still failed at runtime with:
+  - `[string "__lua_webassembly__"]:12: attempt to call a nil value (field 'handle')`
+  - reports:
+    - `tmp/deep-site-strict-rerun2-2026-04-08.json`
+    - `tmp/deep-catalog-strict-rerun2-2026-04-08.json`
+    - `tmp/deep-access-strict-rerun2-2026-04-08.json`
+
+Root-cause analysis:
+- Working reference module `n6kD3...` contains runtime symbols including:
+  - `function process.handle(msg, _)`
+  - `Handlers.evaluate`
+- Broken modules (`NXj...`, `EL5...`, `j29...`) did not contain `process.handle` in the same runtime shape.
+- This explains the failure path in `__lua_webassembly__` when wrapper calls `process.handle(...)`.
+
+Fix applied in tooling:
+- Updated `scripts/deploy/rebuild_wasm_from_runtime.sh`:
+  - for non-`registry` targets, synthesize `dist/<target>/process.lua` from `dist/registry/process.lua` by changing the terminal return to:
+    - `return require("ao.<target>.process")`
+  - keep build via `p3rmaw3b/ao:0.1.5 ao-build-module`
+  - add post-build symbol guard for `function process.handle`
+
+Rebuilt + republished corrected modules:
+- site module: `_M8Jtd8ckB7sGz-WnE-CWRUaMxUFAtoroLRl_Y0OMmE`
+- catalog module: `tnX5BvXIFUifbK14uwEEuT01rDiNryaQ2QaBKn16QlU`
+- access module: `SGQFtJFSHrFN0nfVK78vhLz268yUh5oaDodBomLfAFg`
+
+Spawned fresh PIDs (extended mode):
+- site PID: `oEoIekXNQ9J1NhcGn68KcqQvVTvzf_8t2l6UuFbUTXg`
+- catalog PID: `JuSaLfHiddVaBO8pn23a8wPQ_MJijHiTx-ihF5FQbzc`
+- access PID: `G3QCBpF8JRmE6bRUx7WrZ0X-1kscGpj49dPMnruOeD4`
+
+Immediate post-spawn deep tests (strict):
+- reports:
+  - `tmp/deep-site-fixed-strict-2026-04-08.json`
+  - `tmp/deep-catalog-fixed-strict-2026-04-08.json`
+  - `tmp/deep-access-fixed-strict-2026-04-08.json`
+- current status right after spawn:
+  - send transport mostly `200` on `push`, intermittent `500` on `push-1`
+  - `slot/current` and `compute` still `500` with `{badmap,failure}` on fresh PIDs
+  - fresh PID tx status still `Not Found` at check time; modules were already mined (`2 confirmations`)
+
+Readback diagnostic for fresh site PID:
+- `tmp/diag-site-fixed-2026-04-08.json`
+- confirms `compute`/`ao.result` failure path with:
+  - `details: {badmap,failure}`
+  - stack in `hb_maps:merge/3` -> `hb_ao:resolve_stage/4`
+
+Control checks proving runtime/actions are valid:
+- strict on mature registry PID `As9s...` passes for:
+  - registry profile (`tmp/deep-registry-as9s-strict-rerun3-2026-04-08.json`)
+  - site profile (`tmp/deep-site-on-as9s-2026-04-08.json`)
+  - catalog profile (`tmp/deep-catalog-on-as9s-rerun2-2026-04-08.json`)
+  - access profile (`tmp/deep-access-on-as9s-2026-04-08.json`)
+- strict on fresh registry-ref PID `tXFX...` also passes:
+  - `tmp/deep-registry-tXFX-strict-rerun-2026-04-08.json`
+
+Current interpretation:
+- `field 'handle'` blocker was a real build/runtime-shape issue and is fixed in rebuild tooling.
+- Remaining blocker on the newly spawned site/catalog/access PIDs is the familiar fresh-spawn readback/resolve-stage `{badmap,failure}` while PID txs are still not visible on L1.
+- Next required action: wait PID maturity/finalization window and rerun strict deep tests on `oEo...`, `JuSa...`, `G3Q...` before concluding code-level regression.
+
+---
+
+## 4.15) 2026-04-09 — Post-wait strict rerun (fixed site/catalog/access PIDs)
+
+Rerun target set:
+- site PID: `oEoIekXNQ9J1NhcGn68KcqQvVTvzf_8t2l6UuFbUTXg`
+- catalog PID: `JuSaLfHiddVaBO8pn23a8wPQ_MJijHiTx-ihF5FQbzc`
+- access PID: `G3QCBpF8JRmE6bRUx7WrZ0X-1kscGpj49dPMnruOeD4`
+- push URLs: `https://push.forward.computer`, `https://push-1.forward.computer`
+
+Strict deep-test results:
+- Site strict: **PASS** on both push nodes
+  - report: `tmp/deep-site-fixed-strict-2026-04-09.json`
+- Catalog strict:
+  - first run had one transient compute failure on `push` (`ListCategories`, one-off HTTP 500)
+    - report: `tmp/deep-catalog-fixed-strict-2026-04-09.json`
+  - immediate rerun: **PASS** on both push nodes
+    - report: `tmp/deep-catalog-fixed-strict-rerun-2026-04-09.json`
+- Access strict: **PASS** on both push nodes
+  - report: `tmp/deep-access-fixed-strict-2026-04-09.json`
+
+Current interpretation:
+- `field 'handle'` runtime blocker is resolved for site/catalog/access builds deployed from the fixed runtime rebuild flow.
+- Fresh PID readback is now healthy on both push nodes for strict action suites.
+- Occasional transient compute 500 may still occur during propagation windows; rerun confirms no persistent functional blocker.
+
+L1 status snapshot at rerun time:
+- fixed modules (`_M8J...`, `tnX5...`, `SGQF...`) are mined/finalized.
+- PID tx status endpoint (`arweave.net/tx/<PID>/status`) for `oEo...`, `JuSa...`, `G3QC...` still returns `Not Found` at this point, despite successful strict runtime execution on push.
+
+Operational recommendation:
+- Treat site/catalog/access runtime path as **unblocked** for deep testing and integration.
+- Keep a small retry policy in CI deep gate for occasional transient compute errors (single-attempt flake), while failing on reproducible multi-run failures.
+
+---
