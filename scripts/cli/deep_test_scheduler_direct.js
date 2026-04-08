@@ -85,6 +85,14 @@ function signHmacHex(msg, secret) {
   return crypto.createHmac('sha256', secret).update(payload).digest('hex')
 }
 
+function attachOptionalSignature(msg, authSignatureSecret) {
+  if (!authSignatureSecret) return msg
+  return {
+    ...msg,
+    Signature: signHmacHex(msg, authSignatureSecret)
+  }
+}
+
 function registryMessages({ authSignatureSecret }) {
   const now = Date.now()
   const siteId = `site-${now}`
@@ -100,16 +108,117 @@ function registryMessages({ authSignatureSecret }) {
       'Actor-Role': role,
       ...extra
     }
-    if (authSignatureSecret) {
-      msg.Signature = signHmacHex(msg, authSignatureSecret)
-    }
-    return msg
+    return attachOptionalSignature(msg, authSignatureSecret)
   }
 
   const messages = [
     base('RegisterSite', 1, { 'Site-Id': siteId, Config: { version: 'v1' } }),
     base('BindDomain', 2, { 'Site-Id': siteId, Host: host }),
     base('GetSiteByHost', 3, { Host: host })
+  ]
+
+  return messages.map((payload) => ({
+    envelopeAction: payload.Action,
+    action: payload.Action,
+    requestId: payload['Request-Id'],
+    data: JSON.stringify(payload)
+  }))
+}
+
+function siteMessages({ authSignatureSecret }) {
+  const now = Date.now()
+  const siteId = `site-${now}`
+  const routePath = '/health'
+  const pageId = `page-${now}`
+  const role = 'admin'
+
+  const base = (action, idx, extra = {}) => {
+    const msg = {
+      Action: action,
+      'Request-Id': `req-site-${now}-${idx}`,
+      'Actor-Role': role,
+      'Schema-Version': '1.0',
+      ...extra
+    }
+    return attachOptionalSignature(msg, authSignatureSecret)
+  }
+
+  const messages = [
+    base('UpsertRoute', 1, { 'Site-Id': siteId, Path: routePath, 'Page-Id': pageId }),
+    base('ResolveRoute', 2, { 'Site-Id': siteId, Path: routePath }),
+    base('GetPublishStatus', 3, { 'Site-Id': siteId })
+  ]
+
+  return messages.map((payload) => ({
+    envelopeAction: payload.Action,
+    action: payload.Action,
+    requestId: payload['Request-Id'],
+    data: JSON.stringify(payload)
+  }))
+}
+
+function catalogMessages({ authSignatureSecret }) {
+  const now = Date.now()
+  const siteId = `site-${now}`
+  const categoryId = `cat-${now}`
+  const role = 'catalog-admin'
+
+  const base = (action, idx, extra = {}) => {
+    const msg = {
+      Action: action,
+      'Request-Id': `req-catalog-${now}-${idx}`,
+      'Actor-Role': role,
+      'Schema-Version': '1.0',
+      ...extra
+    }
+    return attachOptionalSignature(msg, authSignatureSecret)
+  }
+
+  const messages = [
+    base('UpsertCategory', 1, {
+      'Site-Id': siteId,
+      'Category-Id': categoryId,
+      Payload: { name: 'Diagnostic category' },
+      Products: {}
+    }),
+    base('GetCategory', 2, { 'Site-Id': siteId, 'Category-Id': categoryId }),
+    base('ListCategories', 3, { 'Site-Id': siteId, Limit: 10 })
+  ]
+
+  return messages.map((payload) => ({
+    envelopeAction: payload.Action,
+    action: payload.Action,
+    requestId: payload['Request-Id'],
+    data: JSON.stringify(payload)
+  }))
+}
+
+function accessMessages({ authSignatureSecret }) {
+  const now = Date.now()
+  const subject = `subject-${now}`
+  const asset = `asset-${now}`
+  const role = 'admin'
+
+  const base = (action, idx, extra = {}) => {
+    const msg = {
+      Action: action,
+      'Request-Id': `req-access-${now}-${idx}`,
+      'Actor-Role': role,
+      'Schema-Version': '1.0',
+      ...extra
+    }
+    return attachOptionalSignature(msg, authSignatureSecret)
+  }
+
+  const messages = [
+    base('PutProtectedAssetRef', 1, {
+      Asset: asset,
+      Ref: `ar://${'a'.repeat(43)}`,
+      Visibility: 'protected'
+    }),
+    base('GrantEntitlement', 2, { Subject: subject, Asset: asset, Policy: 'read' }),
+    base('HasEntitlement', 3, { Subject: subject, Asset: asset }),
+    base('GetProtectedAssetRef', 4, { Asset: asset })
   ]
 
   return messages.map((payload) => ({
@@ -325,8 +434,8 @@ async function main() {
     `tmp/deep-test-scheduler-direct-${profile}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
   )
 
-  if (!['registry', 'write'].includes(profile)) {
-    throw new Error(`Unsupported --profile "${profile}" (use registry|write)`)
+  if (!['registry', 'write', 'site', 'catalog', 'access'].includes(profile)) {
+    throw new Error(`Unsupported --profile "${profile}" (use registry|write|site|catalog|access)`)
   }
 
   const jwk = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
@@ -357,11 +466,18 @@ async function main() {
       })
     }
     fs.writeFileSync('tmp/writecmd-signed-live.json', JSON.stringify(sendPayloads, null, 2))
-  } else {
+  } else if (profile === 'registry') {
     const authSignatureSecret =
       cleanEnv(arg('auth-signature-secret', process.env.AUTH_SIGNATURE_SECRET)) ||
       cleanEnv(secrets.AUTH_SIGNATURE_SECRET)
     sendPayloads = registryMessages({ authSignatureSecret })
+  } else {
+    const authSignatureSecret =
+      cleanEnv(arg('auth-signature-secret', process.env.AUTH_SIGNATURE_SECRET)) ||
+      cleanEnv(secrets.AUTH_SIGNATURE_SECRET)
+    if (profile === 'site') sendPayloads = siteMessages({ authSignatureSecret })
+    else if (profile === 'catalog') sendPayloads = catalogMessages({ authSignatureSecret })
+    else sendPayloads = accessMessages({ authSignatureSecret })
   }
 
   const report = {

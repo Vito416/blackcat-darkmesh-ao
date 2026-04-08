@@ -464,7 +464,69 @@ Local verification status after fixes:
   - `scripts/verify/pii_scrub.lua`
   - `tests/integration/ingest_apply_spec.lua`
   - `tests/integration/schema_validation_spec.lua`
-  - `tests/security/rate_limit_replay_spec.lua`
-  - `tests/security/pii_regression_spec.lua`
+- `tests/security/rate_limit_replay_spec.lua`
+- `tests/security/pii_regression_spec.lua`
+
+---
+
+## 4.13) 2026-04-08 — Option 1+2 execution (commit + strict gate expansion)
+
+Completed `1)`:
+- Committed strict-gate stability work:
+  - commit: `c70d6ba`
+  - files:
+    - `AO_DEPLOY_NOTES.md`
+    - `scripts/cli/deep_test_scheduler_direct.js`
+
+Completed `2)` (strict gate expansion runbook execution):
+- Extended `deep_test_scheduler_direct.js` profiles:
+  - added `site`, `catalog`, `access` profiles
+  - each profile now sends process-native actions (scheduler-direct ANS104 path)
+
+- Built + published WASM modules:
+  - `blackcat-ao-site` -> module `NXj_vpBKQ4OPZmE_bKsUVZhrdYaeFZg4WyXx4NYxSmE`
+  - `blackcat-ao-catalog` -> module `EL5Gx_PSoKQuGvekB0sG1kZcGaoHF7euze4IU5e89rQ`
+  - `blackcat-ao-access` -> module `j29e0kyr7ylMAuVc379kL39fM4qr_sZsob28sOgH9kw`
+
+- Spawned fresh PIDs:
+  - site PID: `lqOQgjj1NCGwJdv5_d2OZF1XoZuqYATt9aKt6YTLqzE`
+  - catalog PID: `u8UTjPaLZtneZ1q6fRYEKpFVXJQ5cTfTFudyhtgqn98`
+  - access PID: `Ae389A8v75E_BKJvD_tYZdD-XHqmJ3Biq9Y1knIFXOM`
+
+- Deep tests executed:
+  - `tmp/deep-site-strict.json` (strict)
+  - `tmp/deep-catalog-info.json` (info)
+  - `tmp/deep-access-info.json` (info)
+  - all new PIDs currently fail compute/readback
+
+Observed blocker signature (consistent across new PIDs):
+- `/compute=<slot>` -> HTTP 500
+- response details: `{badmap,failure}`
+- stacktrace starts in:
+  - `hb_maps:merge/3`
+  - `hb_ao:resolve_stage/4`
+- `slot/current` on new PIDs is also 500
+
+Control checks:
+- Legacy mature registry PID still passes:
+  - `As9sJWuYQcbXF7RronbIDUPqAenGKUvzld4xlN75fcM`
+  - report: `tmp/deep-registry-now-info.json` (all pass)
+- Fresh spawn from known-good module also fails:
+  - module `n6kD3aibbIMn-zOaH9gYIMkxDjp1p9-aVPM3NQMzGMI`
+  - PID `tXFXLeFN9I4VbohJ0xmq0VsznVpNIhikE70F10zZ_zM`
+  - report: `tmp/deep-registry-ref-info.json` (compute 500)
+
+Interpretation:
+- This is currently a **fresh-spawn readback/resolve-stage blocker** on push/CU path.
+- It is not isolated to one process family (`site/catalog/access`), and reproduces even on fresh registry spawns.
+
+Current state of L1 confirmation:
+- New module TXs already show arweave status `200`.
+- New PID TXs currently still `404` on `arweave.net/tx/<PID>/status`.
+
+Immediate next step (required before hard code conclusions):
+1. wait for PID finalization/index maturity;
+2. rerun strict deep tests against the same PIDs;
+3. only if `{badmap,failure}` persists after PID finalization, treat as code/protocol defect and continue deep RCA.
 
 ---
