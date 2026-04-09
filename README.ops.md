@@ -1,21 +1,22 @@
 # Ops Quick Guide (AO + Write + Worker)
 
 ## Local test commands
-- AO/Write smoke: `docker compose -f docker-compose.test.yml run --rm ao-write-test`
-  - Runs luacheck, `scripts/verify/ingest_smoke.lua`, and bundler export.
-- Worker tests: `docker compose -f docker-compose.test.yml run --rm worker-test`
-  - Uses in-memory KV/D1 (`TEST_IN_MEMORY_KV=1`) to avoid SQLite locks.
+- AO preflight: `scripts/verify/preflight.sh`
+  - Runs schema checks, luacheck, and AO verification scripts.
+- AO smoke (minimal): `lua5.4 scripts/verify/ingest_smoke.lua`
+- Worker tests (in-memory): `cd worker && npm ci --ignore-scripts && TEST_IN_MEMORY_KV=1 MINIFLARE_KV_PERSIST=false MINIFLARE_D1_PERSIST=:memory: npm test -- --testTimeout=30000 --reporter=basic --pool=forks --maxConcurrency=1 --run test/metrics-auth.test.ts test/security-pen.test.ts test/notify.test.ts`
 - End-to-end compose smoke (Write → Gateway → Worker):
   - `DOCKER_CONFIG=/tmp docker compose -f docs/docker-compose-e2e.yml up --build`
-  - Mountuje lokální sibling repa (write/gateway/worker) a spouští: outbox HMAC smoke, gateway /metrics auth + webhook pen-test, worker /metrics auth + HMAC pen-test + notify breaker/dedupe.
-  - Po doběhu zůstávají logy v docker outputu; stopne se automaticky při chybě některého servisu.
-- End-to-end notify smoke (volitelné, pokud chceš prověřit celý řetězec):
-  - Doplnit do `docs/docker-compose-e2e.yml` kroky: Write emit /notify event → Gateway forward → Worker /notify; použít test webhook URL nebo stub fetch.
-  - Před spuštěním nastav `NOTIFY_HMAC_SECRET` a `NOTIFY_RATE_MAX=1` v worker env pro striktní ověření.
+  - Uses sibling repos (`blackcat-darkmesh-write`, `blackcat-darkmesh-gateway`, `worker`) and runs outbox HMAC smoke, gateway auth/webhook checks, and worker auth/notify checks.
+  - Logs stay in compose output; the run stops on the first failing service.
+- End-to-end notify smoke (optional):
+  - Extend `docs/docker-compose-e2e.yml` with an explicit Write `/notify` emit and Gateway→Worker forward flow using a test webhook URL or stub fetch.
+  - Set `NOTIFY_HMAC_SECRET` and `NOTIFY_RATE_MAX=1` in worker env for strict validation.
 
 ## CI
-- `.github/workflows/darkmesh-worker-tests.yml` — Vitest suite for the worker. Badge: `![Worker Tests](https://github.com/blackcatacademy/blackcat-darkmesh-ao/actions/workflows/darkmesh-worker-tests.yml/badge.svg)`
-- `.github/workflows/darkmesh-ao-write.yml` — luacheck + ingest_smoke + bundler for AO/Write. Badge: `![AO Write Tests](https://github.com/blackcatacademy/blackcat-darkmesh-ao/actions/workflows/darkmesh-ao-write.yml/badge.svg)`
+- `.github/workflows/ci.yml` — main AO workflow (lint/verify flow).
+- `.github/workflows/darkmesh-worker-tests.yml` — dedicated worker Vitest suite.
+- `.github/workflows/darkmesh-ao-write.yml` — optional AO/Write embedded test flow; this job now auto-skips when the embedded write test layout is not present in this repo.
 
 ## Bundler/export
 - Set env paths before running exports:
@@ -35,4 +36,4 @@
 - Remove test images after runs (optional): `docker rmi node:20-bookworm-slim` and `docker image prune -f`.
 
 ## Troubleshooting
-- `SQLITE_BUSY` during worker tests: ensure `TEST_IN_MEMORY_KV=1` is set (default in `wrangler.toml`), or rerun via Docker compose which sets it automatically.
+- `SQLITE_BUSY` during worker tests: ensure `TEST_IN_MEMORY_KV=1` is set (default in `worker/wrangler.toml`), or run tests with in-memory D1/KV env overrides.

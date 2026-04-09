@@ -1,6 +1,6 @@
 # Contributing
 
-This repository is **proprietary**. External contributions are accepted only with prior written permission from Black Cat Academy s. r. o.
+This repository is source-available under `BFNL-1.0` (it is not an OSI open-source project). By submitting a contribution, you agree to the active contributor terms in `docs/CONTRIBUTOR_TERMS.md`.
 
 ## Working model
 - Branches: `main` (releasable), `develop` (integration), `feature/*`, `adr/*`, `release/*`.

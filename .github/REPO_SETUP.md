@@ -2,7 +2,7 @@
 
 For maintainers configuring this repository in GitHub.
 
-- **Visibility & license**: keep the repo private/proprietary; reference `LICENSE` in the repo description.
+- **Visibility & license**: keep the repository visibility aligned with the active source-available model (`BFNL-1.0`), and reference `LICENSE` plus `docs/licensing.md` in the repo description/about text.
 - **Default branch**: `main`; create `develop` for integration work.
 - **Branch protection**:
   - Require PRs to target `develop` or `main`.

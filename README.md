@@ -3,7 +3,7 @@
 
 ![AO Banner](.github/blackcat-darkmesh-ao-banner.jpg)
 
-AO-first backend layer for Blackcat Darkmesh. This repository hosts the AO processes, message contracts, schemas, Arweave manifests, and runbooks that power the permaweb runtime. Code is commercially restricted; non-commercial use is allowed for transparency.
+AO-first backend layer for Blackcat Darkmesh. This repository hosts AO processes, message contracts, schemas, Arweave manifests, and runbooks that power the permaweb runtime. Source is available under `BFNL-1.0`: audit, local development, and testing are allowed, while production/network operation is conditional on founder-fee compliance (see `LICENSE` and `docs/licensing.md`).
 
 ## Scope
 - In scope: AO processes for public state (site registry, routing, public read model, audit metadata, permission registry), schemas, Arweave manifests/snapshots, deploy/verify/export scripts, fixtures, CI workflows.
@@ -162,7 +162,7 @@ To be listed as a verified participant (gateway/site/shop) in the shared mesh, s
   - `Contact: email_or_pgp`
 - Optional proof-of-domain: TXT `blackcat-verify=<txid>` or signed challenge served from the domain.
 
-What you get: inclusion in the public registry, priority support/SLA, and a tamper-evident record. Source code is public for audit and development, but future production-use terms are expected to reserve a founder fee for official network use.
+What you get: inclusion in the public registry, priority support/SLA, and a tamper-evident record. Production/network rights are governed by the already-active `BFNL-1.0` model, with fee scope and payment proof rules defined in `docs/FEE_POLICY.md` and the founder notices in `docs/notices/`.
 
 The intended policy is that this fee remains a very small, fair, one-time contribution not only for registry/support, but also as recognition of the founder's original concept, ecosystem bootstrap, and motivation for continued development.
 
