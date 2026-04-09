@@ -70,6 +70,7 @@ jobs:
       - name: Preflight (schemas + Lua syntax + deps)
         env:
           RUN_DEPS_CHECK: 1
+          RUN_INTEGRITY_REGISTRY_SPEC: 1
           AUTH_REQUIRE_SIGNATURE: 1  # fail-closed: require libsodium/openssl present
           AUTH_SIGNATURE_SECRET: test-ci-secret
         run: |
