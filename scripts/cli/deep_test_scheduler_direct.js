@@ -259,18 +259,34 @@ function integrityMessages({ authSignatureSecret }) {
       'Policy-Hash': `policy-${now}`,
       Activate: true
     }),
-    base('GetTrustedRoot', 2, { 'Component-Id': componentId }),
-    base('GetIntegritySnapshot', 3),
-    base('SetIntegrityPolicyPause', 4, {
+    base('SetIntegrityAuthority', 2, {
+      Root: `auth-root-${now}`,
+      Upgrade: `auth-upgrade-${now}`,
+      Emergency: `auth-emergency-${now}`,
+      Reporter: `auth-reporter-${now}`,
+      'Signature-Refs': [`sig-root-${now}`, `sig-upgrade-${now}`]
+    }),
+    base('AppendIntegrityAuditCommitment', 3, {
+      'Seq-From': 1,
+      'Seq-To': 9,
+      'Merkle-Root': `merkle-${now}`,
+      'Meta-Hash': `audit-meta-${now}`,
+      'Reporter-Ref': `auth-reporter-${now}`
+    }),
+    base('GetTrustedRoot', 4, { 'Component-Id': componentId }),
+    base('GetIntegrityAuthority', 5),
+    base('GetIntegrityAuditState', 6),
+    base('GetIntegritySnapshot', 7),
+    base('SetIntegrityPolicyPause', 8, {
       Paused: true,
       Reason: 'deep-test-maintenance'
     }),
-    base('GetIntegrityPolicy', 5),
-    base('RevokeTrustedRelease', 6, {
+    base('GetIntegrityPolicy', 9),
+    base('RevokeTrustedRelease', 10, {
       Root: root,
       Reason: 'deep-test-revocation'
     }),
-    base('PublishTrustedRelease', 7, {
+    base('PublishTrustedRelease', 11, {
       'Component-Id': componentId,
       Version: `${version}-next`,
       Root: rootNext,
@@ -279,8 +295,8 @@ function integrityMessages({ authSignatureSecret }) {
       'Policy-Hash': `policy-${now + 1}`,
       Activate: true
     }),
-    base('GetTrustedReleaseByRoot', 8, { Root: rootNext }),
-    base('GetIntegritySnapshot', 9)
+    base('GetTrustedReleaseByRoot', 12, { Root: rootNext }),
+    base('GetIntegritySnapshot', 13)
   ]
 
   return messages.map((payload) => ({

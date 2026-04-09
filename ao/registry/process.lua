@@ -28,6 +28,10 @@ local allowed_actions = {
   "GetTrustedRoot",
   "SetIntegrityPolicyPause",
   "GetIntegrityPolicy",
+  "SetIntegrityAuthority",
+  "GetIntegrityAuthority",
+  "AppendIntegrityAuditCommitment",
+  "GetIntegrityAuditState",
   "GetIntegritySnapshot",
   "FlagResolver",
   "UnflagResolver",
@@ -44,6 +48,8 @@ local role_policy = {
   PublishTrustedRelease = { "admin", "registry-admin" },
   RevokeTrustedRelease = { "admin", "registry-admin" },
   SetIntegrityPolicyPause = { "admin", "registry-admin" },
+  SetIntegrityAuthority = { "admin", "registry-admin" },
+  AppendIntegrityAuditCommitment = { "admin", "registry-admin" },
   FlagResolver = { "admin", "registry-admin" },
   UnflagResolver = { "admin", "registry-admin" },
   GetResolverFlags = { "admin", "registry-admin" },
@@ -76,6 +82,7 @@ local state = persist.load("registry_state", {
       emergency = "authority-emergency-unset",
       reporter = "authority-reporter-unset",
       signatureRefs = { "authority-root-unset" },
+      updatedAt = nil,
     },
     audit = {
       seqFrom = 0,
@@ -990,6 +997,220 @@ function handlers.GetIntegrityPolicy(msg)
     pauseReason = state.integrity.policy.pauseReason,
     maxCheckInAgeSec = state.integrity.policy.maxCheckInAgeSec,
     updatedAt = state.integrity.policy.updatedAt,
+  }
+end
+
+function handlers.SetIntegrityAuthority(msg)
+  local required = { "Root", "Upgrade", "Emergency", "Reporter" }
+  local ok, missing = validation.require_fields(msg, required)
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Root",
+    "Upgrade",
+    "Emergency",
+    "Reporter",
+    "Signature-Refs",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local checks = {
+    { field = "Root", value = msg.Root },
+    { field = "Upgrade", value = msg.Upgrade },
+    { field = "Emergency", value = msg.Emergency },
+    { field = "Reporter", value = msg.Reporter },
+  }
+  for _, c in ipairs(checks) do
+    local ok_len, err_len = validation.check_length(c.value, 256, c.field)
+    if not ok_len then
+      return codec.error("INVALID_INPUT", err_len, { field = c.field })
+    end
+  end
+
+  local signature_refs = msg["Signature-Refs"]
+  if signature_refs == nil then
+    signature_refs = { msg.Root }
+  elseif type(signature_refs) == "string" then
+    signature_refs = { signature_refs }
+  elseif type(signature_refs) ~= "table" then
+    return codec.error("INVALID_INPUT", "Signature-Refs must be string or array", {
+      field = "Signature-Refs",
+    })
+  end
+  if #signature_refs == 0 then
+    return codec.error("INVALID_INPUT", "Signature-Refs cannot be empty", {
+      field = "Signature-Refs",
+    })
+  end
+  for idx, ref in ipairs(signature_refs) do
+    local ok_ref, err_ref = validation.check_length(ref, 256, "Signature-Refs")
+    if not ok_ref then
+      return codec.error("INVALID_INPUT", err_ref, { field = ("Signature-Refs[%d]"):format(idx) })
+    end
+  end
+
+  state.integrity.authority.root = msg.Root
+  state.integrity.authority.upgrade = msg.Upgrade
+  state.integrity.authority.emergency = msg.Emergency
+  state.integrity.authority.reporter = msg.Reporter
+  state.integrity.authority.signatureRefs = signature_refs
+  state.integrity.authority.updatedAt = now_iso()
+
+  audit.record("registry", "SetIntegrityAuthority", msg, nil, {
+    root = msg.Root,
+    reporter = msg.Reporter,
+    signatures = #signature_refs,
+  })
+  return codec.ok {
+    root = state.integrity.authority.root,
+    upgrade = state.integrity.authority.upgrade,
+    emergency = state.integrity.authority.emergency,
+    reporter = state.integrity.authority.reporter,
+    signatureRefs = state.integrity.authority.signatureRefs,
+    updatedAt = state.integrity.authority.updatedAt,
+  }
+end
+
+function handlers.GetIntegrityAuthority(msg)
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  return codec.ok {
+    root = state.integrity.authority.root,
+    upgrade = state.integrity.authority.upgrade,
+    emergency = state.integrity.authority.emergency,
+    reporter = state.integrity.authority.reporter,
+    signatureRefs = state.integrity.authority.signatureRefs,
+    updatedAt = state.integrity.authority.updatedAt,
+  }
+end
+
+function handlers.AppendIntegrityAuditCommitment(msg)
+  local required = { "Seq-From", "Seq-To", "Merkle-Root", "Meta-Hash", "Reporter-Ref" }
+  local ok, missing = validation.require_fields(msg, required)
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Seq-From",
+    "Seq-To",
+    "Merkle-Root",
+    "Meta-Hash",
+    "Reporter-Ref",
+    "Accepted-At",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local seq_from = tonumber(msg["Seq-From"])
+  local seq_to = tonumber(msg["Seq-To"])
+  if not seq_from or not seq_to then
+    return codec.error("INVALID_INPUT", "Seq-From and Seq-To must be numbers")
+  end
+  if seq_from < 1 or seq_to < seq_from then
+    return codec.error("INVALID_INPUT", "Invalid audit sequence range", {
+      seqFrom = seq_from,
+      seqTo = seq_to,
+    })
+  end
+  if state.integrity.audit.seqTo > 0 and seq_from <= state.integrity.audit.seqTo then
+    return codec.error("VERSION_CONFLICT", "Audit sequence overlaps existing range", {
+      currentSeqTo = state.integrity.audit.seqTo,
+      seqFrom = seq_from,
+      seqTo = seq_to,
+    })
+  end
+
+  local fields = {
+    { field = "Merkle-Root", value = msg["Merkle-Root"] },
+    { field = "Meta-Hash", value = msg["Meta-Hash"] },
+    { field = "Reporter-Ref", value = msg["Reporter-Ref"] },
+  }
+  for _, f in ipairs(fields) do
+    local ok_len, err_len = validation.check_length(f.value, 256, f.field)
+    if not ok_len then
+      return codec.error("INVALID_INPUT", err_len, { field = f.field })
+    end
+  end
+
+  local accepted_at = msg["Accepted-At"] or now_iso()
+  local ok_time, err_time = validation.check_length(accepted_at, 64, "Accepted-At")
+  if not ok_time then
+    return codec.error("INVALID_INPUT", err_time, { field = "Accepted-At" })
+  end
+
+  state.integrity.audit.seqFrom = seq_from
+  state.integrity.audit.seqTo = seq_to
+  state.integrity.audit.merkleRoot = msg["Merkle-Root"]
+  state.integrity.audit.metaHash = msg["Meta-Hash"]
+  state.integrity.audit.reporterRef = msg["Reporter-Ref"]
+  state.integrity.audit.acceptedAt = accepted_at
+
+  audit.record("registry", "AppendIntegrityAuditCommitment", msg, nil, {
+    seqFrom = seq_from,
+    seqTo = seq_to,
+  })
+  return codec.ok {
+    seqFrom = state.integrity.audit.seqFrom,
+    seqTo = state.integrity.audit.seqTo,
+    merkleRoot = state.integrity.audit.merkleRoot,
+    metaHash = state.integrity.audit.metaHash,
+    reporterRef = state.integrity.audit.reporterRef,
+    acceptedAt = state.integrity.audit.acceptedAt,
+  }
+end
+
+function handlers.GetIntegrityAuditState(msg)
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  return codec.ok {
+    seqFrom = state.integrity.audit.seqFrom,
+    seqTo = state.integrity.audit.seqTo,
+    merkleRoot = state.integrity.audit.merkleRoot,
+    metaHash = state.integrity.audit.metaHash,
+    reporterRef = state.integrity.audit.reporterRef,
+    acceptedAt = state.integrity.audit.acceptedAt,
   }
 end
 

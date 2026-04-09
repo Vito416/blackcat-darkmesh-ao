@@ -140,5 +140,5 @@ Available profiles:
 - `site`
 - `catalog`
 - `access`
-- `integrity` (trusted release / policy pause / snapshot lifecycle)
+- `integrity` (trusted release + authority + audit commitment + policy pause + snapshot lifecycle)
 - `write` (worker-signed write command probes)
