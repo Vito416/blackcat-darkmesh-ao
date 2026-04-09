@@ -553,6 +553,18 @@ do
   assert_status(release_conflict, "ERROR", "publish trusted release conflict status")
   assert_code(release_conflict, "VERSION_CONFLICT", "publish trusted release conflict code")
 
+  local bad_publish_format = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "bad version!",
+    Root = "root bad",
+    ["Uri-Hash"] = "uri bad",
+    ["Meta-Hash"] = "meta bad",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_publish_format, "ERROR", "publish trusted release invalid format status")
+  assert_code(bad_publish_format, "INVALID_INPUT", "publish trusted release invalid format code")
+
   local bad_pause = registry.route(with_req {
     Action = "SetIntegrityPolicyPause",
     Paused = "not-bool",
@@ -572,6 +584,18 @@ do
   })
   assert_status(bad_authority, "ERROR", "set integrity authority invalid status")
   assert_code(bad_authority, "INVALID_INPUT", "set integrity authority invalid code")
+
+  local bad_authority_format = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-1",
+    Upgrade = "auth-upgrade-1",
+    Emergency = "auth/emergency",
+    Reporter = "auth-reporter-1",
+    ["Signature-Refs"] = { "sig-root-1" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_authority_format, "ERROR", "set integrity authority invalid format status")
+  assert_code(bad_authority_format, "INVALID_INPUT", "set integrity authority invalid format code")
 
   local deny_authority = registry.route(with_req {
     Action = "SetIntegrityAuthority",
@@ -595,6 +619,31 @@ do
   })
   assert_status(audit_conflict, "ERROR", "append integrity audit conflict status")
   assert_code(audit_conflict, "VERSION_CONFLICT", "append integrity audit conflict code")
+
+  local audit_format = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 8.5,
+    ["Seq-To"] = 9,
+    ["Merkle-Root"] = "merkle-2",
+    ["Meta-Hash"] = "audit-meta-2",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_format, "ERROR", "append integrity audit invalid format status")
+  assert_code(audit_format, "INVALID_INPUT", "append integrity audit invalid format code")
+
+  local audit_time_format = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 9,
+    ["Seq-To"] = 10,
+    ["Merkle-Root"] = "merkle-3",
+    ["Meta-Hash"] = "audit-meta-3",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Accepted-At"] = "not-a-time",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_time_format, "ERROR", "append integrity audit invalid timestamp status")
+  assert_code(audit_time_format, "INVALID_INPUT", "append integrity audit invalid timestamp code")
 
   local deny_publish = registry.route(with_req {
     Action = "PublishTrustedRelease",

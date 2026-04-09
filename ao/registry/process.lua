@@ -504,24 +504,59 @@ local function read_component_id(msg)
   return msg["Component-Id"] or "gateway"
 end
 
+local function validate_token_field(value, field, max_len, pattern)
+  local ok_len, err_len = validation.check_length(value, max_len, field)
+  if not ok_len then
+    return false, err_len
+  end
+  local text = tostring(value)
+  if text == "" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  if pattern and not text:match(pattern) then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function validate_iso8601_utc(value, field)
+  local ok_len, err_len = validation.check_length(value, 64, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if type(value) ~= "string" or not value:match "^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function validate_positive_integer(value, field)
+  local num = tonumber(value)
+  if not num or num <= 0 or num ~= math.floor(num) then
+    return false, ("invalid_number:%s"):format(field)
+  end
+  return true, num
+end
+
 local function validate_integrity_release_fields(component_id, version, root, uri_hash, meta_hash)
-  local ok_component, err_component = validation.check_length(component_id, 96, "Component-Id")
+  local ok_component, err_component =
+    validate_token_field(component_id, "Component-Id", 96, "^[%w%-%._]+$")
   if not ok_component then
     return false, err_component, "Component-Id"
   end
-  local ok_version, err_version = validation.check_length(version, 128, "Version")
+  local ok_version, err_version = validate_token_field(version, "Version", 128, "^[%w%-%._]+$")
   if not ok_version then
     return false, err_version, "Version"
   end
-  local ok_root, err_root = validation.check_length(root, 256, "Root")
+  local ok_root, err_root = validate_token_field(root, "Root", 256, "^[%w%-%._]+$")
   if not ok_root then
     return false, err_root, "Root"
   end
-  local ok_uri, err_uri = validation.check_length(uri_hash, 256, "Uri-Hash")
+  local ok_uri, err_uri = validate_token_field(uri_hash, "Uri-Hash", 256, "^[%w%-%._]+$")
   if not ok_uri then
     return false, err_uri, "Uri-Hash"
   end
-  local ok_meta, err_meta = validation.check_length(meta_hash, 256, "Meta-Hash")
+  local ok_meta, err_meta = validate_token_field(meta_hash, "Meta-Hash", 256, "^[%w%-%._]+$")
   if not ok_meta then
     return false, err_meta, "Meta-Hash"
   end
@@ -615,13 +650,14 @@ function handlers.PublishTrustedRelease(msg)
     return codec.error("INVALID_INPUT", err_fields, { field = err_field })
   end
   local published_at = msg["Published-At"] or now_iso()
-  local ok_pub_len, err_pub_len = validation.check_length(published_at, 64, "Published-At")
+  local ok_pub_len, err_pub_len = validate_iso8601_utc(published_at, "Published-At")
   if not ok_pub_len then
     return codec.error("INVALID_INPUT", err_pub_len, { field = "Published-At" })
   end
   local policy_hash = msg["Policy-Hash"]
   if policy_hash ~= nil then
-    local ok_policy_len, err_policy_len = validation.check_length(policy_hash, 256, "Policy-Hash")
+    local ok_policy_len, err_policy_len =
+      validate_token_field(policy_hash, "Policy-Hash", 256, "^[%w%-%._]+$")
     if not ok_policy_len then
       return codec.error("INVALID_INPUT", err_policy_len, { field = "Policy-Hash" })
     end
@@ -631,7 +667,7 @@ function handlers.PublishTrustedRelease(msg)
   if err_max_age then
     return codec.error("INVALID_INPUT", err_max_age, { field = "Max-CheckIn-Age-Sec" })
   end
-  if max_age and max_age <= 0 then
+  if max_age and (max_age <= 0 or max_age ~= math.floor(max_age)) then
     return codec.error(
       "INVALID_INPUT",
       "invalid_number:Max-CheckIn-Age-Sec",
@@ -821,6 +857,15 @@ function handlers.GetTrustedReleaseByVersion(msg)
 
   local component_id = read_component_id(msg)
   local key = release_key(component_id, msg.Version)
+  local ok_component, err_component =
+    validate_token_field(component_id, "Component-Id", 96, "^[%w%-%._]+$")
+  if not ok_component then
+    return codec.error("INVALID_INPUT", err_component, { field = "Component-Id" })
+  end
+  local ok_version, err_version = validate_token_field(msg.Version, "Version", 128, "^[%w%-%._]+$")
+  if not ok_version then
+    return codec.error("INVALID_INPUT", err_version, { field = "Version" })
+  end
   local release = state.integrity.releases[key]
   if not release then
     return codec.error("NOT_FOUND", "Trusted release not found", {
@@ -852,6 +897,10 @@ function handlers.GetTrustedReleaseByRoot(msg)
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
   local key = state.integrity.roots[msg.Root]
+  local ok_root, err_root = validate_token_field(msg.Root, "Root", 256, "^[%w%-%._]+$")
+  if not ok_root then
+    return codec.error("INVALID_INPUT", err_root, { field = "Root" })
+  end
   local release = key and state.integrity.releases[key] or nil
   if not release then
     return codec.error("NOT_FOUND", "Trusted release not found", { root = msg.Root })
@@ -922,7 +971,7 @@ function handlers.SetIntegrityPolicyPause(msg)
   end
   if msg["Policy-Hash"] ~= nil then
     local ok_policy_hash, err_policy_hash =
-      validation.check_length(msg["Policy-Hash"], 256, "Policy-Hash")
+      validate_token_field(msg["Policy-Hash"], "Policy-Hash", 256, "^[%w%-%._]+$")
     if not ok_policy_hash then
       return codec.error("INVALID_INPUT", err_policy_hash, { field = "Policy-Hash" })
     end
@@ -936,7 +985,7 @@ function handlers.SetIntegrityPolicyPause(msg)
     if err_age then
       return codec.error("INVALID_INPUT", err_age, { field = "Max-CheckIn-Age-Sec" })
     end
-    if max_age <= 0 then
+    if max_age <= 0 or max_age ~= math.floor(max_age) then
       return codec.error(
         "INVALID_INPUT",
         "invalid_number:Max-CheckIn-Age-Sec",
@@ -1032,7 +1081,7 @@ function handlers.SetIntegrityAuthority(msg)
     { field = "Reporter", value = msg.Reporter },
   }
   for _, c in ipairs(checks) do
-    local ok_len, err_len = validation.check_length(c.value, 256, c.field)
+    local ok_len, err_len = validate_token_field(c.value, c.field, 256, "^[%w%-%._]+$")
     if not ok_len then
       return codec.error("INVALID_INPUT", err_len, { field = c.field })
     end
@@ -1054,7 +1103,7 @@ function handlers.SetIntegrityAuthority(msg)
     })
   end
   for idx, ref in ipairs(signature_refs) do
-    local ok_ref, err_ref = validation.check_length(ref, 256, "Signature-Refs")
+    local ok_ref, err_ref = validate_token_field(ref, "Signature-Refs", 256, "^[%w%-%._]+$")
     if not ok_ref then
       return codec.error("INVALID_INPUT", err_ref, { field = ("Signature-Refs[%d]"):format(idx) })
     end
@@ -1132,12 +1181,15 @@ function handlers.AppendIntegrityAuditCommitment(msg)
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
 
-  local seq_from = tonumber(msg["Seq-From"])
-  local seq_to = tonumber(msg["Seq-To"])
-  if not seq_from or not seq_to then
-    return codec.error("INVALID_INPUT", "Seq-From and Seq-To must be numbers")
+  local ok_seq_from, seq_from = validate_positive_integer(msg["Seq-From"], "Seq-From")
+  if not ok_seq_from then
+    return codec.error("INVALID_INPUT", seq_from, { field = "Seq-From" })
   end
-  if seq_from < 1 or seq_to < seq_from then
+  local ok_seq_to, seq_to = validate_positive_integer(msg["Seq-To"], "Seq-To")
+  if not ok_seq_to then
+    return codec.error("INVALID_INPUT", seq_to, { field = "Seq-To" })
+  end
+  if seq_to < seq_from then
     return codec.error("INVALID_INPUT", "Invalid audit sequence range", {
       seqFrom = seq_from,
       seqTo = seq_to,
@@ -1157,14 +1209,14 @@ function handlers.AppendIntegrityAuditCommitment(msg)
     { field = "Reporter-Ref", value = msg["Reporter-Ref"] },
   }
   for _, f in ipairs(fields) do
-    local ok_len, err_len = validation.check_length(f.value, 256, f.field)
+    local ok_len, err_len = validate_token_field(f.value, f.field, 256, "^[%w%-%._]+$")
     if not ok_len then
       return codec.error("INVALID_INPUT", err_len, { field = f.field })
     end
   end
 
   local accepted_at = msg["Accepted-At"] or now_iso()
-  local ok_time, err_time = validation.check_length(accepted_at, 64, "Accepted-At")
+  local ok_time, err_time = validate_iso8601_utc(accepted_at, "Accepted-At")
   if not ok_time then
     return codec.error("INVALID_INPUT", err_time, { field = "Accepted-At" })
   end
