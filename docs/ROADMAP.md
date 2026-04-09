@@ -1,6 +1,8 @@
 # AO / Write roadmap (aligned to v2 architecture)
 
 ## AO (public truth)
+- Integrity registry: trusted release publication, authority rotation, audit
+  commitments, policy pause, and snapshot query surface for gateway rollout.
 - Registry/router hardening: domains ↔ site mapping, active version pointers,
   resolver allowlist, cache keys.
 - Public state ingestion: apply publish events from `blackcat-darkmesh-write`,
@@ -26,11 +28,19 @@
   SMTP/PSP/OTP integrations inside the repo.
 
 ## Delivery order (suggested)
-1) AO ingestion + publish history + resolver allowlist.
+1) AO integrity registry surface + ingestion + publish history + resolver allowlist.
 2) Write command validation/idempotency + publish orchestration.
 3) Public read surface completeness (pages/layout/navigation/catalog + locale/SEO).
 4) Audit/receipts exposure and ops metrics.
 5) Performance + cache hardening.
+
+## v1.4.0 milestone
+- `v1.4.0` is the integrity rollout checkpoint:
+  - registry module/PID finalized
+  - integrity deep profile passes on both push nodes
+  - gateway consumes trusted snapshot/policy state without fallback ambiguity
+- If any integrity gate fails, hold the rollout and keep the policy paused until
+  the root/policy/audit state is consistent again.
 
 ## Next TODO (gateway/worker alignment)
 - Verify HMAC on outbox/apply events from Write (OUTBOX_HMAC_SECRET) before mutating public state.
