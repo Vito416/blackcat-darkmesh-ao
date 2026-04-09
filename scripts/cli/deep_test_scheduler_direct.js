@@ -229,6 +229,84 @@ function accessMessages({ authSignatureSecret }) {
   }))
 }
 
+function integrityMessages({ authSignatureSecret }) {
+  const now = Date.now()
+  const role = 'registry-admin'
+  const componentId = 'gateway'
+  const version = `1.2.${String(now).slice(-4)}`
+  const root = `root-${now}`
+  const rootNext = `root-${now + 1}`
+
+  const base = (action, idx, extra = {}) => {
+    const msg = {
+      Action: action,
+      'Request-Id': `req-integrity-${now}-${idx}`,
+      Nonce: `nonce-${Math.random().toString(36).slice(2, 10)}`,
+      ts: Math.floor(Date.now() / 1000),
+      'Actor-Role': role,
+      ...extra
+    }
+    return attachOptionalSignature(msg, authSignatureSecret)
+  }
+
+  const messages = [
+    base('PublishTrustedRelease', 1, {
+      'Component-Id': componentId,
+      Version: version,
+      Root: root,
+      'Uri-Hash': `uri-${now}`,
+      'Meta-Hash': `meta-${now}`,
+      'Policy-Hash': `policy-${now}`,
+      Activate: true
+    }),
+    base('SetIntegrityAuthority', 2, {
+      Root: `auth-root-${now}`,
+      Upgrade: `auth-upgrade-${now}`,
+      Emergency: `auth-emergency-${now}`,
+      Reporter: `auth-reporter-${now}`,
+      'Signature-Refs': [`sig-root-${now}`, `sig-upgrade-${now}`]
+    }),
+    base('AppendIntegrityAuditCommitment', 3, {
+      'Seq-From': 1,
+      'Seq-To': 9,
+      'Merkle-Root': `merkle-${now}`,
+      'Meta-Hash': `audit-meta-${now}`,
+      'Reporter-Ref': `auth-reporter-${now}`
+    }),
+    base('GetTrustedRoot', 4, { 'Component-Id': componentId }),
+    base('GetIntegrityAuthority', 5),
+    base('GetIntegrityAuditState', 6),
+    base('GetIntegritySnapshot', 7),
+    base('SetIntegrityPolicyPause', 8, {
+      Paused: true,
+      Reason: 'deep-test-maintenance'
+    }),
+    base('GetIntegrityPolicy', 9),
+    base('RevokeTrustedRelease', 10, {
+      Root: root,
+      Reason: 'deep-test-revocation'
+    }),
+    base('PublishTrustedRelease', 11, {
+      'Component-Id': componentId,
+      Version: `${version}-next`,
+      Root: rootNext,
+      'Uri-Hash': `uri-${now + 1}`,
+      'Meta-Hash': `meta-${now + 1}`,
+      'Policy-Hash': `policy-${now + 1}`,
+      Activate: true
+    }),
+    base('GetTrustedReleaseByRoot', 12, { Root: rootNext }),
+    base('GetIntegritySnapshot', 13)
+  ]
+
+  return messages.map((payload) => ({
+    envelopeAction: payload.Action,
+    action: payload.Action,
+    requestId: payload['Request-Id'],
+    data: JSON.stringify(payload)
+  }))
+}
+
 function detachedWriteMessage(cmd) {
   const parts = [
     cmd.action || '',
@@ -434,8 +512,10 @@ async function main() {
     `tmp/deep-test-scheduler-direct-${profile}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
   )
 
-  if (!['registry', 'write', 'site', 'catalog', 'access'].includes(profile)) {
-    throw new Error(`Unsupported --profile "${profile}" (use registry|write|site|catalog|access)`)
+  if (!['registry', 'write', 'site', 'catalog', 'access', 'integrity'].includes(profile)) {
+    throw new Error(
+      `Unsupported --profile "${profile}" (use registry|write|site|catalog|access|integrity)`
+    )
   }
 
   const jwk = JSON.parse(fs.readFileSync(walletPath, 'utf8'))
@@ -477,7 +557,8 @@ async function main() {
       cleanEnv(secrets.AUTH_SIGNATURE_SECRET)
     if (profile === 'site') sendPayloads = siteMessages({ authSignatureSecret })
     else if (profile === 'catalog') sendPayloads = catalogMessages({ authSignatureSecret })
-    else sendPayloads = accessMessages({ authSignatureSecret })
+    else if (profile === 'access') sendPayloads = accessMessages({ authSignatureSecret })
+    else sendPayloads = integrityMessages({ authSignatureSecret })
   }
 
   const report = {

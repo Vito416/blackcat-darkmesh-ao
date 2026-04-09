@@ -62,6 +62,12 @@ if command -v lua5.4 >/dev/null 2>&1; then
   SKIP_CATALOG=1 \
   SKIP_ACCESS=1 \
   lua5.4 "$ROOT_DIR/scripts/verify/contracts.lua"
+  if [ "${RUN_INTEGRITY_REGISTRY_SPEC:-0}" = "1" ]; then
+    echo "[verify] integrity registry lifecycle spec"
+    METRICS_ENABLED=0 \
+    METRICS_DISABLED=1 \
+    lua5.4 "$ROOT_DIR/scripts/verify/integrity_registry_spec.lua"
+  fi
   if [ "${RUN_FUZZ:-0}" -eq 1 ]; then
     echo "[verify] fuzz/property tests"
     lua5.4 "$ROOT_DIR/scripts/verify/fuzz.lua"

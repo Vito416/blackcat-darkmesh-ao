@@ -393,6 +393,287 @@ do
   })
   assert_status(bad_flag, "ERROR", "bad flag status")
   assert_code(bad_flag, "INVALID_INPUT", "bad flag code")
+
+  -- Integrity release lifecycle (P0.1)
+  local publish_rel = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.0",
+    Root = "root-abc",
+    ["Uri-Hash"] = "uri-123",
+    ["Meta-Hash"] = "meta-456",
+    ["Policy-Hash"] = "policy-789",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(publish_rel, "OK", "publish trusted release status")
+  assert_eq(publish_rel.payload.release.root, "root-abc", "publish trusted release root")
+  assert_eq(publish_rel.payload.activeRoot, "root-abc", "publish trusted release active root")
+
+  local get_root = registry.route(with_req {
+    Action = "GetTrustedRoot",
+    ["Component-Id"] = "gateway",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_root, "OK", "get trusted root status")
+  assert_eq(get_root.payload.root, "root-abc", "get trusted root value")
+
+  local by_version = registry.route(with_req {
+    Action = "GetTrustedReleaseByVersion",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.0",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(by_version, "OK", "get trusted release by version status")
+  assert_eq(by_version.payload.release.metaHash, "meta-456", "trusted release by version payload")
+
+  local by_root = registry.route(with_req {
+    Action = "GetTrustedReleaseByRoot",
+    Root = "root-abc",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(by_root, "OK", "get trusted release by root status")
+  assert_eq(by_root.payload.release.version, "1.2.0", "trusted release by root payload")
+
+  local set_authority = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-1",
+    Upgrade = "auth-upgrade-1",
+    Emergency = "auth-emergency-1",
+    Reporter = "auth-reporter-1",
+    ["Signature-Refs"] = { "sig-root-1", "sig-upgrade-1" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(set_authority, "OK", "set integrity authority status")
+  assert_eq(set_authority.payload.reporter, "auth-reporter-1", "set integrity authority reporter")
+
+  local get_authority = registry.route(with_req {
+    Action = "GetIntegrityAuthority",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_authority, "OK", "get integrity authority status")
+  assert_eq(get_authority.payload.root, "auth-root-1", "get integrity authority root")
+  assert_eq(
+    get_authority.payload.signatureRefs[2],
+    "sig-upgrade-1",
+    "get integrity authority signatures"
+  )
+
+  local append_audit = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 1,
+    ["Seq-To"] = 7,
+    ["Merkle-Root"] = "merkle-1",
+    ["Meta-Hash"] = "audit-meta-1",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(append_audit, "OK", "append integrity audit commitment status")
+  assert_eq(append_audit.payload.seqTo, 7, "append integrity audit commitment seqTo")
+
+  local get_audit = registry.route(with_req {
+    Action = "GetIntegrityAuditState",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_audit, "OK", "get integrity audit status")
+  assert_eq(get_audit.payload.merkleRoot, "merkle-1", "get integrity audit merkle root")
+
+  local pause_on = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = true,
+    Reason = "maintenance",
+    ["Max-CheckIn-Age-Sec"] = 120,
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(pause_on, "OK", "set integrity pause status")
+  assert_eq(pause_on.payload.paused, true, "set integrity pause value")
+  assert_eq(pause_on.payload.maxCheckInAgeSec, 120, "set integrity pause max age")
+
+  local get_policy = registry.route(with_req {
+    Action = "GetIntegrityPolicy",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_policy, "OK", "get integrity policy status")
+  assert_eq(get_policy.payload.paused, true, "get integrity policy paused")
+
+  local snap_ok = registry.route(with_req {
+    Action = "GetIntegritySnapshot",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(snap_ok, "OK", "integrity snapshot status")
+  assert_eq(snap_ok.payload.release.root, "root-abc", "integrity snapshot root")
+  assert_eq(snap_ok.payload.policy.activePolicyHash, "policy-789", "integrity snapshot policy hash")
+  assert_eq(snap_ok.payload.authority.root, "auth-root-1", "integrity snapshot authority root")
+  assert_eq(snap_ok.payload.audit.seqTo, 7, "integrity snapshot audit seqTo")
+
+  local revoke = registry.route(with_req {
+    Action = "RevokeTrustedRelease",
+    Root = "root-abc",
+    Reason = "compromised",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(revoke, "OK", "revoke trusted release status")
+  assert_truthy(revoke.payload.release.revokedAt, "revoke trusted release timestamp")
+  assert_eq(revoke.payload.paused, true, "revoke trusted release pauses policy")
+
+  local snap_revoked = registry.route(with_req {
+    Action = "GetIntegritySnapshot",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(snap_revoked, "ERROR", "integrity snapshot revoked status")
+  assert_code(snap_revoked, "NOT_FOUND", "integrity snapshot revoked code")
+
+  local publish_next = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.1",
+    Root = "root-def",
+    ["Uri-Hash"] = "uri-124",
+    ["Meta-Hash"] = "meta-457",
+    ["Policy-Hash"] = "policy-790",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(publish_next, "OK", "publish next trusted release status")
+
+  local snap_next = registry.route(with_req {
+    Action = "GetIntegritySnapshot",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(snap_next, "OK", "integrity snapshot after republish status")
+  assert_eq(snap_next.payload.release.root, "root-def", "integrity snapshot after republish root")
+
+  local release_conflict = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.1",
+    Root = "root-mismatch",
+    ["Uri-Hash"] = "uri-999",
+    ["Meta-Hash"] = "meta-999",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(release_conflict, "ERROR", "publish trusted release conflict status")
+  assert_code(release_conflict, "VERSION_CONFLICT", "publish trusted release conflict code")
+
+  local bad_publish_format = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "bad version!",
+    Root = "root bad",
+    ["Uri-Hash"] = "uri bad",
+    ["Meta-Hash"] = "meta bad",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_publish_format, "ERROR", "publish trusted release invalid format status")
+  assert_code(bad_publish_format, "INVALID_INPUT", "publish trusted release invalid format code")
+
+  local bad_pause = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = "not-bool",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_pause, "ERROR", "set integrity pause invalid status")
+  assert_code(bad_pause, "INVALID_INPUT", "set integrity pause invalid code")
+
+  local bad_authority = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-bad",
+    Upgrade = "auth-upgrade-bad",
+    Emergency = "auth-emergency-bad",
+    Reporter = "auth-reporter-bad",
+    ["Signature-Refs"] = {},
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_authority, "ERROR", "set integrity authority invalid status")
+  assert_code(bad_authority, "INVALID_INPUT", "set integrity authority invalid code")
+
+  local bad_authority_format = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-1",
+    Upgrade = "auth-upgrade-1",
+    Emergency = "auth/emergency",
+    Reporter = "auth-reporter-1",
+    ["Signature-Refs"] = { "sig-root-1" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_authority_format, "ERROR", "set integrity authority invalid format status")
+  assert_code(bad_authority_format, "INVALID_INPUT", "set integrity authority invalid format code")
+
+  local deny_authority = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-deny",
+    Upgrade = "auth-upgrade-deny",
+    Emergency = "auth-emergency-deny",
+    Reporter = "auth-reporter-deny",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(deny_authority, "ERROR", "set integrity authority forbidden status")
+  assert_code(deny_authority, "FORBIDDEN", "set integrity authority forbidden code")
+
+  local audit_conflict = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 7,
+    ["Seq-To"] = 8,
+    ["Merkle-Root"] = "merkle-overlap",
+    ["Meta-Hash"] = "audit-meta-overlap",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_conflict, "ERROR", "append integrity audit conflict status")
+  assert_code(audit_conflict, "VERSION_CONFLICT", "append integrity audit conflict code")
+
+  local audit_format = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 8.5,
+    ["Seq-To"] = 9,
+    ["Merkle-Root"] = "merkle-2",
+    ["Meta-Hash"] = "audit-meta-2",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_format, "ERROR", "append integrity audit invalid format status")
+  assert_code(audit_format, "INVALID_INPUT", "append integrity audit invalid format code")
+
+  local audit_time_format = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 9,
+    ["Seq-To"] = 10,
+    ["Merkle-Root"] = "merkle-3",
+    ["Meta-Hash"] = "audit-meta-3",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Accepted-At"] = "not-a-time",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_time_format, "ERROR", "append integrity audit invalid timestamp status")
+  assert_code(audit_time_format, "INVALID_INPUT", "append integrity audit invalid timestamp code")
+
+  local deny_publish = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.2",
+    Root = "root-deny",
+    ["Uri-Hash"] = "uri-deny",
+    ["Meta-Hash"] = "meta-deny",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(deny_publish, "ERROR", "publish trusted release forbidden status")
+  assert_code(deny_publish, "FORBIDDEN", "publish trusted release forbidden code")
+
+  local idem_first = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = false,
+    ["Actor-Role"] = "registry-admin",
+    ["Request-Id"] = "rid-integrity-pause",
+  })
+  local idem_second = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = true,
+    ["Actor-Role"] = "registry-admin",
+    ["Request-Id"] = "rid-integrity-pause",
+  })
+  assert_eq(
+    idem_second.payload.paused,
+    idem_first.payload.paused,
+    "set integrity pause idempotent keeps first response"
+  )
 end
 
 -- Site tests
