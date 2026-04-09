@@ -3,16 +3,14 @@ name: darkmesh-ao-write
 on:
   push:
     paths:
-      - "blackcat-darkmesh-ao/**"
       - "blackcat-darkmesh-write/**"
       - "Dockerfile.ao-write-test"
-      - "docker-compose.test.yml"
+      - ".github/workflows/darkmesh-ao-write.yml"
   pull_request:
     paths:
-      - "blackcat-darkmesh-ao/**"
       - "blackcat-darkmesh-write/**"
       - "Dockerfile.ao-write-test"
-      - "docker-compose.test.yml"
+      - ".github/workflows/darkmesh-ao-write.yml"
   workflow_dispatch:
 
 permissions: { contents: read }
@@ -20,15 +18,34 @@ permissions: { contents: read }
 jobs:
   ao-write:
     runs-on: ubuntu-latest
-    env:
-      OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST || secrets.OUTBOX_HMAC_SECRET }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Detect embedded write workspace
+        id: detect
+        shell: bash
+        run: |
+          if [ -f "Dockerfile.ao-write-test" ] && [ -d "blackcat-darkmesh-write/ao" ]; then
+            echo "enabled=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip (workspace does not contain embedded write test setup)
+        if: steps.detect.outputs.enabled != '1'
+        run: |
+          echo "Skipping darkmesh-ao-write: Dockerfile.ao-write-test or blackcat-darkmesh-write/ao is missing in this repo layout."
+
       - name: Build ao-write-test image
+        if: steps.detect.outputs.enabled == '1'
         run: docker build -f Dockerfile.ao-write-test -t ao-write-ci .
+
       - name: Run luacheck + ingest_smoke + bundler
+        if: steps.detect.outputs.enabled == '1'
+        env:
+          OUTBOX_HMAC_SECRET: ${{ secrets.OUTBOX_HMAC_SECRET_TEST || secrets.OUTBOX_HMAC_SECRET }}
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \

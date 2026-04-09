@@ -3,12 +3,12 @@ name: darkmesh-worker-tests
 on:
   push:
     paths:
-      - "blackcat-darkmesh-ao/worker/**"
-      - "docker-compose.test.yml"
+      - "worker/**"
+      - ".github/workflows/darkmesh-worker-tests.yml"
   pull_request:
     paths:
-      - "blackcat-darkmesh-ao/worker/**"
-      - "docker-compose.test.yml"
+      - "worker/**"
+      - ".github/workflows/darkmesh-worker-tests.yml"
   workflow_dispatch:
 
 permissions: { contents: read }
@@ -19,7 +19,7 @@ jobs:
     container: node:20-bullseye
     defaults:
       run:
-        working-directory: blackcat-darkmesh-ao/worker
+        working-directory: worker
     steps:
       - uses: actions/checkout@v6
         with:
