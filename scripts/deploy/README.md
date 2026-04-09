@@ -120,3 +120,25 @@ scripts/deploy/wait_finalized.sh <PID_TX_ID>
 - Keep module/PID tracking in `AO_DEPLOY_NOTES.md`.
 - Use progressive spawn order from the deploy runbook.
 - Respect finalization windows to avoid false diagnostics.
+
+## Deep test profiles (scheduler direct)
+
+Use `scripts/cli/deep_test_scheduler_direct.js` for post-spawn sanity checks against push nodes.
+
+```bash
+node scripts/cli/deep_test_scheduler_direct.js \
+  --profile integrity \
+  --pid <REGISTRY_PID> \
+  --wallet wallet.json \
+  --urls https://push.forward.computer,https://push-1.forward.computer \
+  --auth-signature-secret "$AUTH_SIGNATURE_SECRET" \
+  --execution-mode strict
+```
+
+Available profiles:
+- `registry`
+- `site`
+- `catalog`
+- `access`
+- `integrity` (trusted release / policy pause / snapshot lifecycle)
+- `write` (worker-signed write command probes)

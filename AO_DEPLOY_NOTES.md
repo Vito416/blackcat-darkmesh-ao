@@ -675,3 +675,27 @@ Remaining follow-up:
 - Gateway client currently expects raw snapshot JSON. If AO endpoint returns codec envelope (`{status,payload}`), add payload-unwrapping on gateway side before cutover (or expose dedicated raw snapshot endpoint).
 
 ---
+
+## 4.17) 2026-04-09 — integrity deep-test profile added
+
+To keep post-spawn diagnostics repeatable, `scripts/cli/deep_test_scheduler_direct.js` now supports `--profile integrity`.
+
+What it exercises:
+- `PublishTrustedRelease`
+- `GetTrustedRoot`
+- `GetIntegritySnapshot`
+- `SetIntegrityPolicyPause`
+- `GetIntegrityPolicy`
+- `RevokeTrustedRelease`
+- re-publish (`PublishTrustedRelease` with next version/root)
+- `GetTrustedReleaseByRoot`
+- final `GetIntegritySnapshot`
+
+Docs update:
+- Added usage example to `scripts/deploy/README.md` under "Deep test profiles (scheduler direct)".
+- Added integrity contract actions to top-level `README.md` message contract section.
+
+Operational intent:
+- Run `--profile integrity` immediately after registry spawn/finalization to catch trusted-root/policy/snapshot regressions before gateway rollout.
+
+---
