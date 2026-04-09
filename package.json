@@ -1,0 +1,27 @@
+{
+  "name": "blackcat-darkmesh-ao",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bundle:ao": "node scripts/build-ao-bundles.mjs --all",
+    "bundle:ao:registry": "node scripts/build-ao-bundles.mjs --target registry",
+    "bundle:ao:site": "node scripts/build-ao-bundles.mjs --target site",
+    "bundle:ao:catalog": "node scripts/build-ao-bundles.mjs --target catalog",
+    "bundle:ao:access": "node scripts/build-ao-bundles.mjs --target access",
+    "bundle:ao:ingest": "node scripts/build-ao-bundles.mjs --target ingest",
+    "build:ao-wasm": "hyperengine build",
+    "smoke:wasm": "hyperengine smoke",
+    "ao:publish": "node scripts/deploy/publish_lua_module.mjs",
+    "ao:spawn": "node scripts/deploy/spawn_process_tn.mjs"
+  },
+  "devDependencies": {
+    "@memetic-block/hyperengine": "github:memetic-block/hyperengine",
+    "@permaweb/aos": "^1.2.18"
+  },
+  "dependencies": {
+    "@permaweb/aoconnect": "^0.0.93",
+    "arbundles": "^0.11.2",
+    "arweave": "^1.15.7"
+  }
+}

@@ -1,10 +1,24 @@
 -- Simple analytics/risk/subscription helpers (secretless, future-proof).
 -- Counts via metrics and optionally appends NDJSON to METRICS_LOG.
 
-local cjson = require "cjson"
+local json_ok, json = pcall(require, "cjson.safe")
+if not json_ok then
+  json_ok, json = pcall(require, "cjson")
+end
 local metrics = require "ao.shared.metrics"
 
 local Analytics = {}
+
+local function encode_json(value)
+  if not (json_ok and json and json.encode) then
+    return nil
+  end
+  local ok, encoded = pcall(json.encode, value)
+  if not ok then
+    return nil
+  end
+  return encoded
+end
 
 local function write_log(ev)
   local path = os.getenv "METRICS_LOG"
@@ -16,7 +30,12 @@ local function write_log(ev)
     return
   end
   ev.ts = os.date "!%Y-%m-%dT%H:%M:%SZ"
-  f:write(cjson.encode(ev))
+  local payload = encode_json(ev)
+  if not payload then
+    f:close()
+    return
+  end
+  f:write(payload)
   f:write "\n"
   f:close()
 end

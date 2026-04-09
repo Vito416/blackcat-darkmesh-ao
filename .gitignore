@@ -3,6 +3,9 @@ arweave/manifests/*.json
 arweave/manifests/*.log
 arweave/manifests/*
 arweave/snapshots/*
+dist/
+node_modules/
+tmp/
 metrics/
 dev/schema-bundles/
 legacy/

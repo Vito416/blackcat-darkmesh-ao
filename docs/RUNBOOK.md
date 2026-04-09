@@ -2,9 +2,12 @@
 
 ## Start / Stop
 - Load env from `ops/env.prod.example` (signature/rate-limit/metrics paths).
-- Start AO processes under your supervisor (e.g., `lua5.4 ao/registry/process.lua`
-  etc.). Ensure `METRICS_PROM_PATH` and `AUTH_RATE_LIMIT_SQLITE` paths are
-  writable.
+- Process modules in `ao/*/process.lua` currently expose `route` for test/runtime
+  embedding; they are not a complete push scheduler deployment wrapper by
+  themselves.
+- Use the deployment flow in `docs/runbooks/deploy.md` and track concrete module
+  and PID rollout in `AO_DEPLOY_NOTES.md`.
+- Ensure `METRICS_PROM_PATH` and `AUTH_RATE_LIMIT_SQLITE` paths are writable.
 - The write command layer runs from the `blackcat-darkmesh-write` repo. See that
   repo’s runbook for its start/stop steps.
 

@@ -109,8 +109,15 @@ npx arkb deploy "dev/schema-bundles/schema-bundle-*.tar.gz" --content-type appli
 - Bash (Linux/WSL):
 ```
 ./scripts/setup/build_schema_bundle.sh
-npx arkb deploy ./dev/schema-bundles/schema-bundle-*.tar.gz --content-type application/gzip   # dev snapshot
+  npx arkb deploy ./dev/schema-bundles/schema-bundle-*.tar.gz --content-type application/gzip   # dev snapshot
 ```
+
+AO process Lua bundles (for push module publish/spawn flow):
+```bash
+npm install
+node scripts/build-ao-bundles.mjs --all
+```
+See `scripts/deploy/README.md` for publish/spawn/finalization helpers.
 
 Handy CLI helpers:
 - List collections: `python scripts/setup/schema_helper.py list`
@@ -133,6 +140,9 @@ Handy CLI helpers:
 
 ### Ops runbook
 See `docs/RUNBOOK.md` for start/stop, health checks, key rotation, outbox HMAC, Arweave deploy verification, and incident response procedures.
+
+### Deployment notes
+Active deployment planning/tracking lives in `AO_DEPLOY_NOTES.md` (work scope, spawn order, finalization policy, and rollout checklist).
 
 ### Write-bridge observability (from `blackcat-darkmesh-write`)
 When you deploy the write bridge alongside this repo, enable its logging so AO ops can audit downstream delivery:
