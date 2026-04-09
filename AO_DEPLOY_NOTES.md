@@ -630,3 +630,48 @@ Operational recommendation:
 - Keep a small retry policy in CI deep gate for occasional transient compute errors (single-attempt flake), while failing on reproducible multi-run failures.
 
 ---
+
+## 4.16) 2026-04-09 — P0.1 integrity registry contract surface (implemented)
+
+Scope completed in `ao/registry/process.lua`:
+- Added integrity actions:
+  - `PublishTrustedRelease`
+  - `RevokeTrustedRelease`
+  - `GetTrustedReleaseByVersion`
+  - `GetTrustedReleaseByRoot`
+  - `GetTrustedRoot`
+  - `SetIntegrityPolicyPause`
+  - `GetIntegrityPolicy`
+  - `GetIntegritySnapshot`
+- Added role-policy gates for mutating integrity actions (`admin` / `registry-admin`).
+- Added persisted integrity state with migration-safe bootstrapping (`ensure_integrity_state`) so older persisted state does not break new handlers.
+
+Behavior details:
+- Release publish stores normalized release records (`componentId`, `version`, `root`, `uriHash`, `metaHash`, `publishedAt`) with conflict checks.
+- Revoke marks release `revokedAt`/`revokedReason` and automatically pauses integrity policy if the active root is revoked (fail-closed posture).
+- Snapshot returns stable structure:
+  - `release`
+  - `policy`
+  - `authority`
+  - `audit`
+- Snapshot fails with `NOT_FOUND` when no active trusted release exists (or active release is revoked), avoiding false trust.
+
+Contract verification updates:
+- Extended `scripts/verify/contracts.lua` registry block with P0.1 lifecycle tests:
+  - publish/query/root lookup
+  - pause policy set/get
+  - snapshot success path
+  - revoke + snapshot blocked path
+  - republish recovery path
+  - forbidden role path
+  - conflict path
+  - idempotency on policy write (`Request-Id` replay)
+- Local execution result:
+  - `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 lua5.4 scripts/verify/contracts.lua` -> `contract tests passed`
+- Formatting result:
+  - `stylua --check ao/registry/process.lua scripts/verify/contracts.lua` -> pass
+
+Remaining follow-up:
+- Gateway client currently expects raw snapshot JSON. If AO endpoint returns codec envelope (`{status,payload}`), add payload-unwrapping on gateway side before cutover (or expose dedicated raw snapshot endpoint).
+
+---
