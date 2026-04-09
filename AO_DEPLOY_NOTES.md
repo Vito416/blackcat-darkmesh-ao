@@ -699,3 +699,28 @@ Operational intent:
 - Run `--profile integrity` immediately after registry spawn/finalization to catch trusted-root/policy/snapshot regressions before gateway rollout.
 
 ---
+
+## 4.18) 2026-04-09 — authority + audit commitment workflow hardening
+
+Extended integrity registry contract surface (same v1.4.0 PR scope):
+- Added authority actions:
+  - `SetIntegrityAuthority`
+  - `GetIntegrityAuthority`
+- Added audit commitment actions:
+  - `AppendIntegrityAuditCommitment`
+  - `GetIntegrityAuditState`
+
+Behavior notes:
+- `SetIntegrityAuthority` validates required signer refs and stores `updatedAt`.
+- `AppendIntegrityAuditCommitment` enforces monotonic sequence progression (`Seq-From` must be greater than previous `seqTo`) and returns conflict on overlap.
+- `GetIntegritySnapshot` now naturally reflects rotated authority + latest audit commitment state.
+
+Diagnostics/ops updates:
+- Integrity deep profile in `scripts/cli/deep_test_scheduler_direct.js` now includes authority setup and audit commitment append/read checks.
+- Deploy docs updated to reflect expanded integrity profile lifecycle.
+
+Verification:
+- `node --check scripts/cli/deep_test_scheduler_direct.js`
+- `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 lua5.4 scripts/verify/contracts.lua`
+
+---
