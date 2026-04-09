@@ -20,24 +20,13 @@ This notice makes the current licensing intent explicit:
 
 The following git repositories are currently included in the active covered-system rollout:
 
-- `blackcat-analytics`
-- `blackcat-auth`
-- `blackcat-auth-js`
-- `blackcat-config`
-- `blackcat-core`
-- `blackcat-crypto`
-- `blackcat-crypto-js`
-- `blackcat-crypto-manifests`
 - `blackcat-darkmesh-ao`
 - `blackcat-darkmesh-gateway`
 - `blackcat-darkmesh-web`
 - `blackcat-darkmesh-write`
-- `blackcat-gopay`
-- `blackcat-installer`
-- `blackcat-kernel-contracts`
-- `blackcat-mailing`
-- `blackcat-sessions`
 - `blackcat-templates`
+
+Previously separate backend/crypto repositories are now tracked as internalized packages and migration snapshots under `blackcat-darkmesh-gateway/` (for example `libs/legacy/`, `kernel-migration/`, and `security/crypto-manifests/`).
 
 Each of those repositories is intended to carry the same active BFNL 1.0 text in its root `LICENSE` file.
 
