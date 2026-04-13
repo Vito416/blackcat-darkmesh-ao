@@ -1,6 +1,6 @@
 name = "blackcat-inbox"
 main = "src/index.ts"
-compatibility_date = "2024-08-01"
+compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 preview_urls = false
@@ -25,6 +25,15 @@ REQUIRE_METRICS_AUTH = "1"
 AUTH_REQUIRE_SIGNATURE = "1"
 AUTH_REQUIRE_NONCE = "1"
 DISABLE_JANITOR = "0"
+AO_MODE = "mainnet"
+AO_HB_URL = "https://push.forward.computer"
+AO_HB_SCHEDULER = "n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo"
+GATEWAY_TEMPLATE_TOKEN_OPTIONAL = "0"
+GATEWAY_READ_TIMEOUT_MS = "30000"
+GATEWAY_WRITE_TIMEOUT_MS = "45000"
+GATEWAY_WRITE_RETRIES = "4"
+GATEWAY_WRITE_ACCEPT_EMPTY_RESULT = "1"
+GATEWAY_WRITE_AUTO_SIGN = "1"
 
 [triggers]
 # Run janitor at most once an hour (set DISABLE_JANITOR=1 to skip completely)
@@ -54,6 +63,17 @@ NOTIFY_WEBHOOK_ALLOWLIST = "httpbin.org"
 AUTH_REQUIRE_SIGNATURE = "1"
 AUTH_REQUIRE_NONCE = "1"
 DISABLE_JANITOR = "0"
+AO_MODE = "mainnet"
+AO_HB_URL = "https://push.forward.computer"
+AO_HB_SCHEDULER = "n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo"
+AO_SITE_PROCESS_ID = "Zv01GLNx1TBKxoswGi-tWoxNmgVYr1JSJJbjA3DDcJM"
+WRITE_PROCESS_ID = "KvIVdxIEj3x6-B8mzIErc2cqCDQpRET2U1uWmbhACoE"
+GATEWAY_TEMPLATE_TOKEN_OPTIONAL = "0"
+GATEWAY_READ_TIMEOUT_MS = "30000"
+GATEWAY_WRITE_TIMEOUT_MS = "45000"
+GATEWAY_WRITE_RETRIES = "4"
+GATEWAY_WRITE_ACCEPT_EMPTY_RESULT = "1"
+GATEWAY_WRITE_AUTO_SIGN = "1"
 
 [env.production]
   [[env.production.kv_namespaces]]

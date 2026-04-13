@@ -13,6 +13,7 @@
   "dependencies": {
     "@noble/ed25519": "^2.2.3",
     "@noble/hashes": "^1.4.0",
+    "@permaweb/aoconnect": "^0.0.93",
     "hono": "^4.3.0"
   },
   "devDependencies": {

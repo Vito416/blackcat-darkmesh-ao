@@ -31,6 +31,11 @@ API (baseline)
 - `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <WORKER_AUTH_TOKEN>` (`FORGET_TOKEN` still accepted for legacy configs).
 - `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
 - `GET /health` — liveness check, returns `{ status: "ok" }`.
+- `GET /api/health` — AO bridge readiness (site/write pid + wallet presence).
+- `POST /api/public/resolve-route` — AO read adapter for gateway template calls.
+- `POST /api/public/page` — AO read adapter for gateway template calls.
+- `POST /api/checkout/order` — write adapter (`CreateOrder`) with optional worker auto-sign.
+- `POST /api/checkout/payment-intent` — write adapter (`CreatePaymentIntent`) with optional worker auto-sign.
 - `GET /metrics` — Prometheus text; protect via `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN`.
 - `scheduled` (cron) – deletes expired items, cleans malformed entries.
 
@@ -59,6 +64,16 @@ Env/config
 - `REQUIRE_METRICS_AUTH` (prod: 500 /metrics if auth secrets not configured)
 - `LITE_MODE` (optional): when `1`, notify dedup is disabled (saves KV writes for CF free tier).
 - `LOG_LEVEL` (debug|info|error): default `info`; `error` suppresses info logs.
+- Gateway AO/write bridge vars:
+  - `AO_MODE`, `AO_HB_URL`, `AO_HB_SCHEDULER`
+  - `AO_SITE_PROCESS_ID`, `WRITE_PROCESS_ID`
+  - `AO_WALLET_JSON` (Arweave JWK JSON used for write transport)
+  - optional `AO_WALLET_PKCS8_B64` (base64 PKCS#8 private key; preferred when JWK import is restricted)
+  - `GATEWAY_TEMPLATE_TOKEN` or `GATEWAY_TEMPLATE_TOKEN_MAP` (site->token map)
+  - `GATEWAY_TEMPLATE_TOKEN_OPTIONAL` (default `0`, fail-closed)
+  - `GATEWAY_READ_TIMEOUT_MS`, `GATEWAY_WRITE_TIMEOUT_MS`, `GATEWAY_WRITE_RETRIES`
+  - `GATEWAY_WRITE_ACCEPT_EMPTY_RESULT` (default `1`)
+  - `GATEWAY_WRITE_AUTO_SIGN` (default `1`; when `0`, signatures must be provided by caller)
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).

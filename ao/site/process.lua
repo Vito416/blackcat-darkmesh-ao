@@ -1,4 +1,5 @@
 -- Site process handlers: routes, pages, layouts, navigation.
+-- luacheck: globals Handlers Send
 
 local codec = require "ao.shared.codec"
 local validation = require "ao.shared.validation"
@@ -84,6 +85,13 @@ local role_policy = {
   GetPublishLog = { "publisher", "admin", "support" },
   ExportPublishLog = { "admin" },
   GetPublishStatus = { "publisher", "admin", "support" },
+}
+
+local public_actions = {
+  ResolveRoute = true,
+  GetPage = true,
+  GetLayout = true,
+  GetNavigation = true,
 }
 
 -- pseudo-state for scaffolding
@@ -376,15 +384,22 @@ function handlers.ResolveRoute(msg)
 end
 
 function handlers.GetPage(msg)
-  local ok, missing = validation.require_fields(msg, { "Site-Id", "Page-Id" })
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
   if not ok then
     return codec.error("INVALID_INPUT", "Missing field", { missing = missing })
+  end
+  local requested_page_id = msg["Page-Id"]
+  local requested_slug = msg.Slug or msg.Path
+  if not requested_page_id and not requested_slug then
+    return codec.error("INVALID_INPUT", "Missing field", { missing = { "Page-Id|Slug" } })
   end
   local ok_extra, extras = validation.require_no_extras(msg, {
     "Action",
     "Request-Id",
     "Site-Id",
     "Page-Id",
+    "Slug",
+    "Path",
     "Version",
     "Locale",
     "Actor-Role",
@@ -398,9 +413,17 @@ function handlers.GetPage(msg)
   if not ok_len_site then
     return codec.error("INVALID_INPUT", err_site, { field = "Site-Id" })
   end
-  local ok_len_page, err_page = validation.check_length(msg["Page-Id"], 128, "Page-Id")
-  if not ok_len_page then
-    return codec.error("INVALID_INPUT", err_page, { field = "Page-Id" })
+  if requested_page_id then
+    local ok_len_page, err_page = validation.check_length(requested_page_id, 128, "Page-Id")
+    if not ok_len_page then
+      return codec.error("INVALID_INPUT", err_page, { field = "Page-Id" })
+    end
+  end
+  if requested_slug then
+    local ok_len_slug, err_slug = validation.check_length(requested_slug, 2048, "Slug")
+    if not ok_len_slug then
+      return codec.error("INVALID_INPUT", err_slug, { field = "Slug" })
+    end
   end
   if msg.Version then
     local ok_len_ver, err_ver = validation.check_length(msg.Version, 128, "Version")
@@ -410,14 +433,37 @@ function handlers.GetPage(msg)
   end
   local version = msg.Version or state.active_versions[msg["Site-Id"]] or "active"
   local locale = pick_locale(msg["Site-Id"], msg.Locale)
-  local cache_id = table.concat({ msg["Site-Id"], msg["Page-Id"], version, locale }, "|")
+  local cache_page = requested_page_id or tostring(requested_slug)
+  local cache_id = table.concat({ msg["Site-Id"], cache_page, version, locale }, "|")
   return with_cache("GetPage", cache_id, function()
-    local key = ids.page_key(msg["Site-Id"], msg["Page-Id"], version, locale)
-    local fallback = ids.page_key(msg["Site-Id"], msg["Page-Id"], version)
+    if not requested_page_id and requested_slug then
+      local locale_cfg = get_locale_cfg(msg["Site-Id"])
+      local route_path = tostring(requested_slug)
+      if route_path == "" then
+        route_path = "/"
+      end
+      if string.sub(route_path, 1, 1) ~= "/" then
+        route_path = "/" .. route_path
+      end
+      local _, normalized_path =
+        i18n.detect_locale(route_path, locale_cfg.supported, locale_cfg.default)
+      local key_locale = ids.route_key(msg["Site-Id"], normalized_path, locale)
+      local key_default = ids.route_key(msg["Site-Id"], normalized_path, locale_cfg.default)
+      local key_plain = ids.route_key(msg["Site-Id"], normalized_path)
+      local route = state.routes[key_locale] or state.routes[key_default] or state.routes[key_plain]
+      if not route or not route.pageId then
+        return false,
+          codec.error("NOT_FOUND", "Page not found", { path = requested_slug, version = version })
+      end
+      requested_page_id = route.pageId
+    end
+
+    local key = ids.page_key(msg["Site-Id"], requested_page_id, version, locale)
+    local fallback = ids.page_key(msg["Site-Id"], requested_page_id, version)
     local page = state.pages[key] or state.pages[fallback]
     if not page or page.archived then
       return false,
-        codec.error("NOT_FOUND", "Page not found", { pageId = msg["Page-Id"], version = version })
+        codec.error("NOT_FOUND", "Page not found", { pageId = requested_page_id, version = version })
     end
     -- enforce lazy/blur defaults on returned blocks (non-destructive)
     local content = page.content
@@ -432,7 +478,7 @@ function handlers.GetPage(msg)
     return true,
       {
         siteId = msg["Site-Id"],
-        pageId = msg["Page-Id"],
+        pageId = requested_page_id,
         version = version,
         locale = locale,
         content = content,
@@ -1826,22 +1872,29 @@ local function route(msg)
     return codec.missing_tags(missing)
   end
 
-  local ok_sec, sec_err = auth.enforce(msg)
-  if not ok_sec then
-    return codec.error("FORBIDDEN", sec_err)
-  end
-
-  local seen = idem.check(msg["Request-Id"])
-  if seen then
-    return seen
-  end
-
   local ok_action, err = validation.require_action(msg, allowed_actions)
   if not ok_action then
     if err == "unknown_action" then
       return codec.unknown_action(msg.Action)
     end
     return codec.error("MISSING_ACTION", "Action is required")
+  end
+
+  if public_actions[msg.Action] then
+    local ok_rl, rl_err = auth.check_rate_limit(msg)
+    if not ok_rl then
+      return codec.error("RATE_LIMITED", rl_err or "rate_limited")
+    end
+  else
+    local ok_sec, sec_err = auth.enforce(msg)
+    if not ok_sec then
+      return codec.error("FORBIDDEN", sec_err)
+    end
+  end
+
+  local seen = idem.check(msg["Request-Id"])
+  if seen then
+    return seen
   end
 
   local ok_hmac, hmac_err = auth.verify_outbox_hmac(msg)
@@ -1865,6 +1918,256 @@ local function route(msg)
   idem.record(msg["Request-Id"], resp)
   persist.save("site_state", state)
   return resp
+end
+
+local ok_json, cjson = pcall(require, "cjson.safe")
+local function json_quote(value)
+  local escaped = tostring(value)
+    :gsub("\\", "\\\\")
+    :gsub('"', '\\"')
+    :gsub("\b", "\\b")
+    :gsub("\f", "\\f")
+    :gsub("\n", "\\n")
+    :gsub("\r", "\\r")
+    :gsub("\t", "\\t")
+    :gsub("[%z\1-\31]", function(ch)
+      return string.format("\\u%04x", string.byte(ch))
+    end)
+  return '"' .. escaped .. '"'
+end
+
+local function is_array(tbl)
+  if type(tbl) ~= "table" then
+    return false, 0
+  end
+  local count = 0
+  local max = 0
+  for k in pairs(tbl) do
+    if type(k) ~= "number" or k < 1 or k % 1 ~= 0 then
+      return false, 0
+    end
+    if k > max then
+      max = k
+    end
+    count = count + 1
+  end
+  return count == max, max
+end
+
+local function encode_json_fallback(value, seen)
+  local t = type(value)
+  if t == "nil" then
+    return "null"
+  end
+  if t == "boolean" then
+    return value and "true" or "false"
+  end
+  if t == "number" then
+    if value ~= value or value == math.huge or value == -math.huge then
+      return "null"
+    end
+    return tostring(value)
+  end
+  if t == "string" then
+    return json_quote(value)
+  end
+  if t ~= "table" then
+    return json_quote(tostring(value))
+  end
+  seen = seen or {}
+  if seen[value] then
+    return json_quote "__cycle__"
+  end
+  seen[value] = true
+  local out = {}
+  local array_like, length = is_array(value)
+  if array_like then
+    for i = 1, length do
+      out[#out + 1] = encode_json_fallback(value[i], seen)
+    end
+    seen[value] = nil
+    return "[" .. table.concat(out, ",") .. "]"
+  end
+  local keys = {}
+  for key in pairs(value) do
+    keys[#keys + 1] = key
+  end
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+  for _, key in ipairs(keys) do
+    out[#out + 1] = json_quote(tostring(key)) .. ":" .. encode_json_fallback(value[key], seen)
+  end
+  seen[value] = nil
+  return "{" .. table.concat(out, ",") .. "}"
+end
+
+local function encode_json(value)
+  if ok_json and cjson then
+    local ok, encoded = pcall(cjson.encode, value)
+    if ok and type(encoded) == "string" then
+      return encoded
+    end
+  end
+  return encode_json_fallback(value, {})
+end
+
+local function tag_value(tags, key)
+  if type(tags) ~= "table" then
+    return nil
+  end
+  if tags[key] ~= nil then
+    return tags[key]
+  end
+  if tags[key:lower()] ~= nil then
+    return tags[key:lower()]
+  end
+  for _, entry in ipairs(tags) do
+    if type(entry) == "table" and (entry.name == key or entry.Name == key) then
+      return entry.value or entry.Value
+    end
+  end
+  return nil
+end
+
+local function parse_json_object(raw)
+  if type(raw) ~= "string" or raw == "" then
+    return nil
+  end
+  local ok, decoded = pcall(function()
+    if ok_json and cjson then
+      return cjson.decode(raw)
+    end
+    return nil
+  end)
+  if ok and type(decoded) == "table" then
+    return decoded
+  end
+  return nil
+end
+
+local function enrich_message(msg)
+  local envelope = (type(msg) == "table" and (msg.Body or msg.body)) or {}
+  local tags = msg.Tags or msg.tags or envelope.Tags or envelope.tags or {}
+  local data_obj = parse_json_object(msg.Data or msg.data) or parse_json_object(envelope.Data or envelope.data) or {}
+  local out = {}
+  for k, v in pairs(data_obj) do
+    out[k] = v
+  end
+  out.Action = out.Action or out.action or msg.Action or msg.action or envelope.Action or envelope.action
+    or tag_value(tags, "Action")
+  out["Request-Id"] = out["Request-Id"] or out.requestId or msg["Request-Id"] or msg.requestId
+    or envelope["Request-Id"] or envelope.requestId or tag_value(tags, "Request-Id")
+  out["Site-Id"] = out["Site-Id"] or out.siteId or msg["Site-Id"] or msg.siteId or envelope["Site-Id"]
+    or envelope.siteId or tag_value(tags, "Site-Id")
+  out.Path = out.Path or out.path or msg.Path or msg.path or envelope.Path or envelope.path or tag_value(tags, "Path")
+  out["Page-Id"] = out["Page-Id"] or out.pageId or msg["Page-Id"] or msg.pageId or envelope["Page-Id"]
+    or envelope.pageId or tag_value(tags, "Page-Id")
+  out["Layout-Id"] = out["Layout-Id"] or out.layoutId or msg["Layout-Id"] or msg.layoutId or envelope["Layout-Id"]
+    or envelope.layoutId or tag_value(tags, "Layout-Id")
+  out["Actor-Role"] = out["Actor-Role"] or out.actorRole or msg["Actor-Role"] or msg.actorRole
+    or envelope["Actor-Role"] or envelope.actorRole or tag_value(tags, "Actor-Role")
+  out["Schema-Version"] = out["Schema-Version"] or out.schemaVersion or msg["Schema-Version"] or msg.schemaVersion
+    or envelope["Schema-Version"] or envelope.schemaVersion or tag_value(tags, "Schema-Version")
+  out.Signature = out.Signature or out.signature or msg.Signature or msg.signature or envelope.Signature
+    or envelope.signature or tag_value(tags, "Signature")
+  out.Nonce = out.Nonce or out.nonce or msg.Nonce or msg.nonce or envelope.Nonce or envelope.nonce
+    or tag_value(tags, "Nonce")
+  out.ts = out.ts or out.timestamp or msg.ts or msg.timestamp or envelope.ts or envelope.timestamp
+    or tag_value(tags, "ts")
+  out.From = msg.From or msg.from
+  out.Tags = tags
+  return out, tags
+end
+
+local function resolve_reply_target(msg, tags)
+  local target = msg.From or msg.from or tag_value(tags, "Reply-To") or tag_value(tags, "ReplyTo")
+  if type(target) == "string" and target ~= "" then
+    return target
+  end
+  return nil
+end
+
+local function emit_response_json(json_text)
+  pcall(function()
+    if type(print) == "function" then
+      print(json_text)
+    end
+  end)
+  return json_text
+end
+
+local function safe_send(payload)
+  if type(Send) ~= "function" then
+    return false
+  end
+  local ok = pcall(function()
+    Send(payload)
+  end)
+  return ok
+end
+
+local function handle_site_action(msg)
+  local normalized, tags = enrich_message(msg or {})
+  local ok_route, route_result = pcall(route, normalized)
+  local resp = ok_route and route_result
+    or codec.error("HANDLER_CRASH", tostring(route_result or "site_handler_crash"))
+  local resp_json = encode_json(resp)
+  local reply_target = resolve_reply_target(msg or {}, tags)
+  if reply_target then
+    safe_send {
+      Target = reply_target,
+      Action = "Site-Command-Result",
+      Data = resp_json,
+    }
+  end
+  return emit_response_json(resp_json)
+end
+
+local function is_site_action(msg)
+  if type(msg) ~= "table" then
+    return false
+  end
+  local normalized = enrich_message(msg)
+  local action = normalized.Action
+  return type(action) == "string" and handlers[action] ~= nil
+end
+
+local has_handlers = type(Handlers) == "table" and type(Handlers.add) == "function"
+if has_handlers then
+  Handlers.add("Site-Action", is_site_action, handle_site_action)
+end
+
+local function fallback_handle(msg)
+  if is_site_action(msg) then
+    return handle_site_action(msg)
+  end
+  return nil
+end
+
+local previous_Handle = _G.Handle
+local previous_handle = _G.handle
+local function merged_global_handle(original, msg)
+  local routed = fallback_handle(msg)
+  if routed ~= nil then
+    return routed
+  end
+  if type(original) == "function" then
+    return original(msg)
+  end
+  return nil
+end
+
+_G.Handle = function(msg)
+  return merged_global_handle(previous_Handle, msg)
+end
+
+_G.handle = function(msg)
+  local original = previous_handle
+  if type(original) ~= "function" then
+    original = previous_Handle
+  end
+  return merged_global_handle(original, msg)
 end
 
 return {

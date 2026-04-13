@@ -14,6 +14,34 @@ je minimální smlouva pro aktuální scope (web + e‑shop + passwordless login
 - Sessions: validate by checking session hash in AO `sessions` (ingest keeps
   hashes only, žádné secret klíče).
 
+Gateway read note:
+- Typical flow is `GetSiteByHost` -> `ResolveRoute` -> `GetPage`.
+- `GetPage` accepts `Page-Id` (primary) and also `Slug`/`Path` fallback, so
+  templates can ask by route slug without exposing internal page IDs.
+
+### HTTP endpoint adapter for WEDOS/PHP bridge
+
+`blackcat-darkmesh-gateway` expects read endpoints:
+
+- `POST /api/public/resolve-route`
+- `POST /api/public/page`
+
+This repo now includes a small AO read adapter:
+
+```bash
+AO_SITE_PROCESS_ID=<site_pid> \
+AO_HB_URL=https://push.forward.computer \
+AO_HB_SCHEDULER=n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo \
+AO_PUBLIC_API_TOKEN=<optional_bearer_token> \
+node scripts/http/public_api_server.mjs
+```
+
+Defaults:
+- listens on `0.0.0.0:8788`
+- prefers `ao.dryrun` (non-mutating read)
+- optional scheduler fallback for degraded environments:
+  `AO_READ_FALLBACK_TO_SCHEDULER=1` (requires wallet for fallback path)
+
 ## Write (gateway → write)
 - Scoped commands:
   - `CreateOrder` (pseudonymní `Customer-Ref` hash, amount/currency/items).

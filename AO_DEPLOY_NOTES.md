@@ -1,9 +1,41 @@
 # AO Deploy Notes — blackcat-darkmesh-ao
 
-Last updated: 2026-04-08
+Last updated: 2026-04-13
 
 This file is the operational source of truth for shipping `blackcat-darkmesh-ao`
 to AO push endpoints (`push.forward.computer`, `push-1.forward.computer`).
+
+---
+
+## 4.23) 2026-04-13 — Cloudflare gateway bridge write transport unblocked
+
+Scope:
+- `worker/src/index.ts` write-path signer/runtime hardening for Cloudflare worker (`blackcat-inbox-production`).
+
+Root cause found:
+- In CF runtime, ANS-104 `ao.request` failed during formatting with:
+  - `Failed to format request for signing`
+  - cause: `DataError: Invalid RSA key in JSON Web Key; missing or invalid M`
+- This came from ao-core-libs ANS-104 verify path on worker runtime, not from process PID finalization.
+
+Implemented fix:
+- Custom signer for `ans104` now uses `create(..., passthrough: true)` and builds signed data-item bytes directly via `@dha-team/arbundles`.
+- Signer returns `{ id, raw }` for `ans104`, which bypasses the failing internal verify stage in ao-core-libs.
+- Write transport remains `ao.request(... signing-format=ans104, accept-bundle=true, require-codec=application/json)`.
+- Added robust slot extraction for push responses that return numeric slot fields and/or nested response payloads.
+
+Production-like probe results (worker URL):
+- `POST /api/checkout/order` now returns:
+  - `{ status: "OK", code: "ACCEPTED_ASYNC", ... }`
+- `POST /api/checkout/payment-intent` now returns:
+  - `{ status: "OK", code: "ACCEPTED_ASYNC", ... }`
+- This confirms gateway->worker->write push transport is no longer blocked by signer/runtime formatting.
+
+Read path follow-up (same run):
+- Replaced `ao.dryrun` bridge path with signed `ao.message` + `ao.result` (with compute fallback).
+- `POST /api/public/resolve-route` now returns deterministic envelope instead of internal error:
+  - `{ status: "ERROR", code: "NOT_FOUND", message: "not_found_or_empty_result" }` for unknown routes/site content.
+- `POST /api/public/page` now returns the same deterministic `NOT_FOUND` envelope for missing pages.
 
 ---
 
@@ -119,6 +151,30 @@ Adapter probe note (`scripts/http/public_api_server.mjs`):
 - `ao.dryrun` read path still returns `Error running dryrun` for `resolve-route` and `page`.
 - scheduler fallback mode can still return transport `500` / empty output depending on action.
 - This remains a readback normalization blocker for direct gateway read adapter cutover.
+
+## 4.22) 2026-04-13 — Cloudflare worker signer blocker (gateway bridge)
+
+Production URL under test:
+- `https://blackcat-inbox-production.vitek-pasek.workers.dev`
+
+Observed after multiple deploy/probe cycles:
+- `GET /api/health`: OK (`sitePid=Zv01...`, `writePid=KvIV...`, wallet present).
+- `POST /api/public/resolve-route`: still fails via `ao.dryrun` with `Error running dryrun` (known read-path issue).
+- `POST /api/checkout/order`: fails before transport with:
+  - `AOCoreError: Failed to format request for signing`
+  - cause: `DataError: Invalid RSA key in JSON Web Key; missing or invalid M`
+
+Signer diagnostics completed:
+- JWK wallet shape in worker env is valid (`kty=RSA`, fields `n/e/d/p/q/dp/dq/qi` present).
+- Attempted signer strategies in worker runtime:
+  1. `createSigner` / `createDataItemSigner` from `@permaweb/aoconnect`
+  2. custom WebCrypto JWK signer
+  3. custom PKCS#8 signer (with `AO_WALLET_PKCS8_B64` secret)
+- Runtime still resolves to JWK-import failure inside aoconnect request formatting path.
+
+Conclusion:
+- Current Cloudflare runtime path still cannot reliably produce ANS-104 signed push messages for write transport in this worker shape.
+- Gateway bridge remains blocked on signer/runtime compatibility (not on PID finalization or AO tags).
 
 ## 4.10) 2026-04-08 — Post-limit continuation (new module/PID matrix)
 
