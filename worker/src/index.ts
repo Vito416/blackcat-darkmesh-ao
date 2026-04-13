@@ -27,6 +27,12 @@ type GatewayTemplateCallInput = {
 }
 
 type GatewayTokenMap = Record<string, string>
+type SignPolicyRuleMap = Record<string, string[]>
+type SignPolicyMap = Record<string, SignPolicyRuleMap>
+type SignPolicyConfig = {
+  sites?: SignPolicyMap
+  signatureRefs?: SignPolicyMap
+}
 
 const encoder = new TextEncoder()
 // noble/ed25519 requires a SHA-512 implementation to be wired explicitly.
@@ -593,6 +599,169 @@ function parseTokenMap(raw: string): GatewayTokenMap | null {
   } catch {
     return null
   }
+}
+
+function parseSignPolicyMap(rawValue: unknown): SignPolicyMap | null {
+  if (rawValue === undefined || rawValue === null) return null
+  const record = asRecord(rawValue)
+  if (!record) return null
+  const map: SignPolicyMap = {}
+  for (const [selectorRaw, actionsRaw] of Object.entries(record)) {
+    const selector = trimString(selectorRaw)
+    if (!selector) return null
+    const actionRecord = asRecord(actionsRaw)
+    if (!actionRecord) return null
+    const actionMap: SignPolicyRuleMap = {}
+    for (const [actionRaw, rolesRaw] of Object.entries(actionRecord)) {
+      const action = trimString(actionRaw)
+      if (!action) return null
+      if (!Array.isArray(rolesRaw)) return null
+      const roles = Array.from(
+        new Set(
+          rolesRaw
+            .map((role) => trimString(role))
+            .filter((role) => !!role),
+        ),
+      )
+      if (roles.length === 0) return null
+      actionMap[action] = roles
+    }
+    map[selector] = actionMap
+  }
+  return map
+}
+
+function parseSignPolicy(raw: string): SignPolicyConfig | null {
+  try {
+    const parsed = JSON.parse(raw)
+    const record = asRecord(parsed)
+    if (!record) return null
+
+    const policy: SignPolicyConfig = {}
+    if (Object.prototype.hasOwnProperty.call(record, 'sites')) {
+      const sites = parseSignPolicyMap(record.sites)
+      if (!sites) return null
+      policy.sites = sites
+    }
+    if (Object.prototype.hasOwnProperty.call(record, 'signatureRefs')) {
+      const signatureRefs = parseSignPolicyMap(record.signatureRefs)
+      if (!signatureRefs) return null
+      policy.signatureRefs = signatureRefs
+    }
+
+    return policy
+  } catch {
+    return null
+  }
+}
+
+function resolveSignPolicyRaw(env: Env) {
+  return cleanEnv(env.SIGN_POLICY_JSON) || cleanEnv(env.SIGN_ALLOWLIST_JSON)
+}
+
+function roleAllowed(allowedRoles: string[], role: string) {
+  return allowedRoles.includes('*') || allowedRoles.includes(role)
+}
+
+function resolveSignRequestContext(body: Record<string, unknown>, env: Env) {
+  const payload = asRecord(body.payload)
+  const siteId = firstNonEmptyString(
+    body.siteId,
+    body.SiteId,
+    body['Site-Id'],
+    payload?.siteId,
+    payload?.SiteId,
+    payload?.['Site-Id'],
+  )
+  const signatureRef = firstNonEmptyString(
+    body.signatureRef,
+    body.SignatureRef,
+    body['Signature-Ref'],
+    env.WORKER_SIGNATURE_REF,
+    'worker-ed25519',
+  )
+  const action = firstNonEmptyString(body.action, body.Action)
+  const role = firstNonEmptyString(body.role, body.Role, body['Actor-Role'])
+  return { action, role, siteId, signatureRef }
+}
+
+function enforceSignPolicy(env: Env, body: Record<string, unknown>) {
+  const rawPolicy = resolveSignPolicyRaw(env)
+  if (!rawPolicy) return resolveSignRequestContext(body, env)
+
+  const policy = parseSignPolicy(rawPolicy)
+  if (!policy) {
+    throw new HTTPException(500, { message: 'invalid_sign_policy' })
+  }
+
+  const context = resolveSignRequestContext(body, env)
+  if (!context.action) {
+    throw new HTTPException(400, { message: 'sign_policy_action_required' })
+  }
+  if (!context.role) {
+    throw new HTTPException(400, { message: 'sign_policy_role_required' })
+  }
+
+  const hasSitePolicy = Object.prototype.hasOwnProperty.call(policy, 'sites')
+  const hasSignatureRefPolicy = Object.prototype.hasOwnProperty.call(policy, 'signatureRefs')
+  if (!hasSitePolicy && !hasSignatureRefPolicy) {
+    throw new HTTPException(403, { message: 'sign_policy_empty' })
+  }
+
+  const scopeChecks: Array<{
+    label: 'site' | 'signature_ref'
+    selector: string
+    family?: SignPolicyMap
+  }> = []
+
+  if (hasSitePolicy) {
+    scopeChecks.push({
+      label: 'site',
+      selector: context.siteId,
+      family: policy.sites,
+    })
+  }
+  if (hasSignatureRefPolicy) {
+    scopeChecks.push({
+      label: 'signature_ref',
+      selector: context.signatureRef,
+      family: policy.signatureRefs,
+    })
+  }
+
+  for (const scope of scopeChecks) {
+    if (!scope.selector) {
+      throw new HTTPException(400, {
+        message: scope.label === 'site' ? 'sign_policy_site_required' : 'sign_policy_signature_ref_required',
+      })
+    }
+
+    const family = scope.family || {}
+    const actionRoles = family[scope.selector]
+    if (!actionRoles) {
+      throw new HTTPException(403, {
+        message:
+          scope.label === 'site' ? 'sign_action_not_allowed_for_site' : 'sign_action_not_allowed_for_signature_ref',
+      })
+    }
+
+    const allowedRoles = actionRoles[context.action]
+    if (!allowedRoles) {
+      throw new HTTPException(403, {
+        message:
+          scope.label === 'site' ? 'sign_action_not_allowed_for_site' : 'sign_action_not_allowed_for_signature_ref',
+      })
+    }
+
+    if (!roleAllowed(allowedRoles, context.role)) {
+      throw new HTTPException(403, {
+        message:
+          scope.label === 'site' ? 'sign_role_not_allowed_for_site' : 'sign_role_not_allowed_for_signature_ref',
+      })
+    }
+  }
+
+  return context
 }
 
 function expectedTemplateToken(env: Env, siteId: string): string {
@@ -1578,6 +1747,12 @@ app.post('/sign', async (c) => {
     'role',
     'Role',
     'Actor-Role',
+    'siteId',
+    'SiteId',
+    'Site-Id',
+    'signatureRef',
+    'SignatureRef',
+    'Signature-Ref',
     'payload',
     'Payload',
     'requestId',
@@ -1588,6 +1763,7 @@ app.post('/sign', async (c) => {
       throw new HTTPException(400, { message: 'unknown_field' })
     }
   }
+  const signContext = enforceSignPolicy(c.env, body)
   const nonce = body.nonce || body.Nonce
   if (!nonce || typeof nonce !== 'string' || nonce.length > 128) {
     throw new HTTPException(400, { message: 'missing_nonce' })
@@ -1606,8 +1782,7 @@ app.post('/sign', async (c) => {
     throw new HTTPException(413, { message: 'payload_too_large' })
   }
   const signature = await signCommand(c.env, body)
-  const signatureRef = c.env.WORKER_SIGNATURE_REF || 'worker-ed25519'
-  return c.json({ signature, signatureRef })
+  return c.json({ signature, signatureRef: signContext.signatureRef })
 })
 
 app.get('/api/health', async (c) => {

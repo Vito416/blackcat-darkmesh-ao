@@ -74,6 +74,7 @@ Env/config
   - `GATEWAY_READ_TIMEOUT_MS`, `GATEWAY_WRITE_TIMEOUT_MS`, `GATEWAY_WRITE_RETRIES`
   - `GATEWAY_WRITE_ACCEPT_EMPTY_RESULT` (default `1`)
   - `GATEWAY_WRITE_AUTO_SIGN` (default `1`; when `0`, signatures must be provided by caller)
+  - `SIGN_POLICY_JSON` (optional fail-closed allowlist for `/sign`; JSON shape: `{ "sites": { "<siteId>": { "<Action>": ["role", ...] } }, "signatureRefs": { "<signatureRef>": { "<Action>": ["role", ...] } } }`; siteId is read from `siteId` or `payload.siteId`, signatureRef from the request or `WORKER_SIGNATURE_REF`)
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).

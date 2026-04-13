@@ -46,4 +46,6 @@ export interface Env {
   GATEWAY_WRITE_RETRIES?: string
   GATEWAY_WRITE_ACCEPT_EMPTY_RESULT?: string
   GATEWAY_WRITE_AUTO_SIGN?: string
+  SIGN_POLICY_JSON?: string
+  SIGN_ALLOWLIST_JSON?: string
 }
