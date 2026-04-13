@@ -5,15 +5,39 @@ import { gauge, inc, toProm } from './metrics'
 import { Buffer } from 'node:buffer'
 import * as ed25519 from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha512'
+import { hexToBytes, normalizeHmacSignature } from './runtime/crypto/hmac'
 
 type InboxItem = {
   payload: string
   exp: number
 }
 
+type GatewayTemplateCallInput = {
+  action?: string
+  payload?: Record<string, unknown>
+  requestId?: string
+  siteId?: string
+  actor?: string
+  role?: string
+  tenant?: string
+  timestamp?: string | number
+  nonce?: string
+  signature?: string
+  signatureRef?: string
+}
+
+type GatewayTokenMap = Record<string, string>
+
 const encoder = new TextEncoder()
 // noble/ed25519 requires a SHA-512 implementation to be wired explicitly.
 ed25519.etc.sha512Sync = (msg) => sha512(msg)
+
+const DEFAULT_AO_HB_URL = 'https://push.forward.computer'
+const DEFAULT_AO_SCHEDULER = 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo'
+const DEFAULT_AO_MODE = 'mainnet'
+const DEFAULT_READ_TIMEOUT_MS = 30000
+const DEFAULT_WRITE_TIMEOUT_MS = 45000
+const DEFAULT_WRITE_RETRIES = 4
 
 // Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
 let inboxKey: CryptoKey | null = null
@@ -28,6 +52,36 @@ const LOG_LEVEL =
 const LITE_MODE = (typeof process !== 'undefined' && process.env?.LITE_MODE === '1') || false
 
 const app = new Hono<{ Bindings: Env }>()
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    return err.getResponse()
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  const stack = err instanceof Error ? err.stack || '' : ''
+  const causeRaw = err instanceof Error ? (err as any).cause : null
+  const causeMessage =
+    causeRaw instanceof Error
+      ? causeRaw.message
+      : typeof causeRaw === 'string'
+        ? causeRaw
+        : causeRaw && typeof causeRaw === 'object'
+          ? JSON.stringify(causeRaw)
+          : ''
+  const causeStack = causeRaw instanceof Error ? causeRaw.stack || '' : ''
+  logEvent('unhandled_error', { message, stack }, 'error')
+  return c.json(
+    {
+      ok: false,
+      error: 'internal_error',
+      message,
+      stack: stack ? stack.slice(0, 400) : '',
+      cause: causeMessage || '',
+      causeStack: causeStack ? causeStack.slice(0, 400) : '',
+    },
+    500,
+  )
+})
 
 // Simple in-memory KV shim for tests to avoid SQLite locks in Miniflare
 type KvEntry = { value: string; exp?: number }
@@ -477,15 +531,478 @@ function hostAllowed(u: URL, allowlistRaw?: string) {
   return allow.some((a) => host === a || host.endsWith('.' + a))
 }
 
-function hexToBytes(hex: string): Uint8Array {
-  if (!hex || hex.length % 2 !== 0) {
-    throw new HTTPException(401, { message: 'invalid_signature' })
+function trimString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function cleanEnv(value: unknown): string {
+  const next = trimString(value)
+  if (!next) return ''
+  if (next === 'undefined' || next === 'null') return ''
+  return next
+}
+
+function boolEnv(value: unknown, fallback = false): boolean {
+  const normalized = cleanEnv(value).toLowerCase()
+  if (!normalized) return fallback
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
+}
+
+function positiveIntEnv(value: unknown, fallback: number): number {
+  const parsed = Number.parseInt(cleanEnv(value), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return parsed
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function normalizePath(pathValue: unknown): string {
+  const path = trimString(pathValue)
+  if (!path) return '/'
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    const next = trimString(value)
+    if (next) return next
   }
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16)
+  return ''
+}
+
+function randomId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
+}
+
+function parseTokenMap(raw: string): GatewayTokenMap | null {
+  try {
+    const parsed = JSON.parse(raw)
+    const record = asRecord(parsed)
+    if (!record) return null
+    const map: GatewayTokenMap = {}
+    for (const [k, v] of Object.entries(record)) {
+      const key = trimString(k)
+      const token = trimString(v)
+      if (!key || !token) return null
+      map[key] = token
+    }
+    return map
+  } catch {
+    return null
   }
-  return bytes
+}
+
+function expectedTemplateToken(env: Env, siteId: string): string {
+  const mapRaw = cleanEnv(env.GATEWAY_TEMPLATE_TOKEN_MAP)
+  if (mapRaw) {
+    const parsed = parseTokenMap(mapRaw)
+    if (!parsed) {
+      throw new HTTPException(500, { message: 'invalid_template_token_map' })
+    }
+    if (siteId && parsed[siteId]) return parsed[siteId]
+  }
+  return cleanEnv(env.GATEWAY_TEMPLATE_TOKEN)
+}
+
+function requireTemplateApiToken(c: any, siteId: string) {
+  const optional = boolEnv(c.env.GATEWAY_TEMPLATE_TOKEN_OPTIONAL, false)
+  const expected = expectedTemplateToken(c.env, siteId)
+  if (!expected) {
+    if (optional) return
+    throw new HTTPException(500, { message: 'missing_template_token' })
+  }
+  const auth = cleanEnv(c.req.header('authorization'))
+  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : ''
+  const presented = firstNonEmptyString(
+    c.req.header('x-template-token'),
+    c.req.header('x-api-token'),
+    bearer,
+  )
+  if (!presented || presented !== expected) {
+    throw new HTTPException(401, { message: 'unauthorized' })
+  }
+}
+
+let aoReadCache: { key: string; client: any } | null = null
+let aoConnectModulePromise: Promise<any> | null = null
+let arbundlesModulePromise: Promise<any> | null = null
+
+async function loadAoConnect() {
+  if (!aoConnectModulePromise) {
+    const g = globalThis as any
+    if (!g.process) g.process = { env: {} }
+    if (!g.process.env) g.process.env = {}
+    if (!g.Buffer) g.Buffer = Buffer
+    aoConnectModulePromise = import('@permaweb/aoconnect')
+  }
+  return aoConnectModulePromise
+}
+
+async function loadArbundles() {
+  if (!arbundlesModulePromise) {
+    arbundlesModulePromise = import('@dha-team/arbundles')
+  }
+  return arbundlesModulePromise
+}
+
+function hbUrlFromEnv(env: Env): string {
+  return cleanEnv(env.AO_HB_URL) || DEFAULT_AO_HB_URL
+}
+
+function schedulerFromEnv(env: Env): string {
+  return cleanEnv(env.AO_HB_SCHEDULER) || DEFAULT_AO_SCHEDULER
+}
+
+function aoModeFromEnv(env: Env): string {
+  return cleanEnv(env.AO_MODE) || DEFAULT_AO_MODE
+}
+
+function resolveSitePid(env: Env): string {
+  return cleanEnv(env.AO_SITE_PROCESS_ID)
+}
+
+function resolveWritePid(env: Env): string {
+  return cleanEnv(env.WRITE_PROCESS_ID)
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  return new Uint8Array(Buffer.from(padded, 'base64'))
+}
+
+function bytesToBase64Url(input: ArrayBuffer | Uint8Array): string {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
+  return Buffer.from(bytes)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+}
+
+function normalizeSignatureInput(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value
+  if (value instanceof ArrayBuffer) return new Uint8Array(value)
+  throw new HTTPException(500, { message: 'invalid_signer_input' })
+}
+
+function walletShape(env: Env) {
+  const raw = cleanEnv(env.AO_WALLET_JSON)
+  if (!raw) return { present: false }
+  try {
+    const parsed = JSON.parse(raw)
+    const record = asRecord(parsed)
+    if (!record) {
+      return { present: true, parsed: typeof parsed }
+    }
+    return {
+      present: true,
+      parsed: 'object',
+      keyCount: Object.keys(record).length,
+      kty: trimString(record.kty),
+      hasConnectFunction: typeof (record as any).connect === 'function',
+      hasN: typeof record.n === 'string' && record.n.length > 0,
+    }
+  } catch {
+    return { present: true, parsed: 'invalid_json' }
+  }
+}
+
+type Ans104Passthrough = {
+  data?: unknown
+  tags?: Array<{ name: string; value: string }>
+  target?: string
+  anchor?: string
+}
+
+async function buildAns104DataItem(
+  publicKeyBytes: Uint8Array,
+  passthrough: Ans104Passthrough,
+  signFn: (signatureData: Uint8Array) => Promise<Uint8Array>,
+): Promise<{ id: string; raw: Uint8Array }> {
+  const module = await loadArbundles()
+  const root = (module as any).default || module
+  const createData = root.createData || module.createData
+  const sigConfig = root.SIG_CONFIG || module.SIG_CONFIG
+  if (typeof createData !== 'function' || !sigConfig || !sigConfig[1]) {
+    throw new Error('arbundles_ans104_missing')
+  }
+
+  const signerMeta = { ...sigConfig[1] }
+  signerMeta.signatureType = 1
+  signerMeta.ownerLength = signerMeta.pubLength
+  signerMeta.signatureLength = signerMeta.sigLength
+  signerMeta.publicKey = Buffer.from(publicKeyBytes)
+
+  const item = createData(passthrough.data ?? '', signerMeta, {
+    target: passthrough.target ?? '',
+    tags: passthrough.tags ?? [],
+    anchor: passthrough.anchor ?? '',
+  })
+  const signatureDataRaw = await item.getSignatureData()
+  const signatureData =
+    signatureDataRaw instanceof Uint8Array
+      ? signatureDataRaw
+      : signatureDataRaw instanceof ArrayBuffer
+        ? new Uint8Array(signatureDataRaw)
+        : new Uint8Array(signatureDataRaw.buffer, signatureDataRaw.byteOffset, signatureDataRaw.byteLength)
+
+  const signature = await signFn(signatureData)
+  const raw = item.getRaw()
+  raw.set(signature, 2)
+  const idDigest = await crypto.subtle.digest('SHA-256', signature)
+  return {
+    id: base64UrlNoPad(idDigest),
+    raw,
+  }
+}
+
+async function createWebWalletSigner(wallet: Record<string, unknown>) {
+  const modulus = trimString(wallet.n)
+  if (!modulus) {
+    throw new HTTPException(500, { message: 'invalid_ao_wallet_json_missing_n' })
+  }
+  const publicKeyBytes = base64UrlToBytes(modulus)
+  const addressDigest = await crypto.subtle.digest('SHA-256', publicKeyBytes)
+  const address = bytesToBase64Url(addressDigest)
+  const baseJwk = {
+    ...(wallet as unknown as JsonWebKey),
+    key_ops: ['sign'],
+    ext: true,
+  } as JsonWebKey
+  let ansKey: CryptoKey | null = null
+  let httpsigKey: CryptoKey | null = null
+
+  const getKey = async (hashName: 'SHA-256' | 'SHA-512') => {
+    if (hashName === 'SHA-256' && ansKey) return ansKey
+    if (hashName === 'SHA-512' && httpsigKey) return httpsigKey
+    const jwk =
+      hashName === 'SHA-256'
+        ? ({ ...baseJwk, alg: 'PS256' } as JsonWebKey)
+        : ({ ...baseJwk, alg: 'PS512' } as JsonWebKey)
+    let key: CryptoKey
+    try {
+      key = await crypto.subtle.importKey(
+        'jwk',
+        jwk,
+        { name: 'RSA-PSS', hash: { name: hashName } },
+        false,
+        ['sign'],
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`jwk_import_failed:${hashName}:${message}`)
+    }
+    if (hashName === 'SHA-256') ansKey = key
+    else httpsigKey = key
+    return key
+  }
+
+  return async (getSignatureData: any, signerKind: string) => {
+    if (typeof getSignatureData !== 'function') {
+      throw new Error('invalid_signer_callback')
+    }
+    if (signerKind !== 'ans104' && signerKind !== 'httpsig') {
+      throw new Error(`unsupported_signer_kind:${signerKind}`)
+    }
+    if (signerKind === 'ans104') {
+      const passthrough = (await getSignatureData({
+        type: 1,
+        publicKey: publicKeyBytes,
+        alg: 'rsa-v1_5-sha256',
+        address,
+        passthrough: true,
+      })) as Ans104Passthrough
+      if (passthrough && typeof passthrough === 'object') {
+        return buildAns104DataItem(publicKeyBytes, passthrough, async (signatureData) => {
+          const key = await getKey('SHA-256')
+          const signature = await crypto.subtle.sign(
+            { name: 'RSA-PSS', saltLength: 32 },
+            key,
+            signatureData,
+          )
+          return new Uint8Array(signature)
+        })
+      }
+      throw new Error('ans104_passthrough_missing')
+    }
+
+    const signatureInput = normalizeSignatureInput(
+      await getSignatureData({ type: 1, publicKey: publicKeyBytes, alg: 'rsa-pss-sha512', address }),
+    )
+    const key = await getKey('SHA-512')
+    const signature = await crypto.subtle.sign({ name: 'RSA-PSS', saltLength: 64 }, key, signatureInput)
+    return { signature: new Uint8Array(signature), address }
+  }
+}
+
+async function createPkcs8WalletSigner(wallet: Record<string, unknown>, pkcs8Base64: string) {
+  const modulus = trimString(wallet.n)
+  if (!modulus) {
+    throw new HTTPException(500, { message: 'invalid_ao_wallet_json_missing_n' })
+  }
+  const pkcs8 = trimString(pkcs8Base64)
+  if (!pkcs8) {
+    throw new HTTPException(500, { message: 'invalid_ao_wallet_pkcs8' })
+  }
+  const publicKeyBytes = base64UrlToBytes(modulus)
+  const addressDigest = await crypto.subtle.digest('SHA-256', publicKeyBytes)
+  const address = bytesToBase64Url(addressDigest)
+  const pkcs8Bytes = new Uint8Array(Buffer.from(pkcs8, 'base64'))
+  const pkcs8Buffer = pkcs8Bytes.buffer.slice(
+    pkcs8Bytes.byteOffset,
+    pkcs8Bytes.byteOffset + pkcs8Bytes.byteLength,
+  )
+  let ansKey: CryptoKey | null = null
+  let httpsigKey: CryptoKey | null = null
+
+  const getKey = async (hashName: 'SHA-256' | 'SHA-512') => {
+    if (hashName === 'SHA-256' && ansKey) return ansKey
+    if (hashName === 'SHA-512' && httpsigKey) return httpsigKey
+    let key: CryptoKey
+    try {
+      key = await crypto.subtle.importKey(
+        'pkcs8',
+        pkcs8Buffer,
+        { name: 'RSA-PSS', hash: { name: hashName } },
+        false,
+        ['sign'],
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`pkcs8_import_failed:${hashName}:${message}`)
+    }
+    if (hashName === 'SHA-256') ansKey = key
+    else httpsigKey = key
+    return key
+  }
+
+  return async (getSignatureData: any, signerKind: string) => {
+    if (typeof getSignatureData !== 'function') {
+      throw new Error('invalid_signer_callback')
+    }
+    if (signerKind !== 'ans104' && signerKind !== 'httpsig') {
+      throw new Error(`unsupported_signer_kind:${signerKind}`)
+    }
+    if (signerKind === 'ans104') {
+      const passthrough = (await getSignatureData({
+        type: 1,
+        publicKey: publicKeyBytes,
+        alg: 'rsa-v1_5-sha256',
+        address,
+        passthrough: true,
+      })) as Ans104Passthrough
+      if (passthrough && typeof passthrough === 'object') {
+        return buildAns104DataItem(publicKeyBytes, passthrough, async (signatureData) => {
+          const key = await getKey('SHA-256')
+          const signature = await crypto.subtle.sign(
+            { name: 'RSA-PSS', saltLength: 32 },
+            key,
+            signatureData,
+          )
+          return new Uint8Array(signature)
+        })
+      }
+      throw new Error('ans104_passthrough_missing')
+    }
+
+    const signatureInput = normalizeSignatureInput(
+      await getSignatureData({ type: 1, publicKey: publicKeyBytes, alg: 'rsa-pss-sha512', address }),
+    )
+    const key = await getKey('SHA-512')
+    const signature = await crypto.subtle.sign({ name: 'RSA-PSS', saltLength: 64 }, key, signatureInput)
+    return { signature: new Uint8Array(signature), address }
+  }
+}
+
+async function readGatewaySigner(env: Env) {
+  const raw = cleanEnv(env.AO_WALLET_JSON)
+  if (!raw) throw new HTTPException(500, { message: 'missing_ao_wallet_json' })
+  const pkcs8 = cleanEnv((env as any).AO_WALLET_PKCS8_B64)
+  let wallet: unknown
+  try {
+    wallet = JSON.parse(raw)
+  } catch {
+    throw new HTTPException(500, { message: 'invalid_ao_wallet_json' })
+  }
+  let signer: any = null
+  const record = asRecord(wallet)
+  if (record && pkcs8) {
+    try {
+      signer = await createPkcs8WalletSigner(record, pkcs8)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new HTTPException(500, { message: `pkcs8_signer_init_failed:${message}` })
+    }
+  }
+  if (!signer && record) {
+    try {
+      signer = await createWebWalletSigner(record)
+    } catch {
+      signer = null
+    }
+  }
+  if (typeof signer !== 'function') {
+    const module = await loadAoConnect()
+    const root = (module as any).default || module
+    const createSigner = root.createSigner
+    const createDataItemSigner = root.createDataItemSigner
+    if (typeof createDataItemSigner === 'function') {
+      signer = createDataItemSigner(wallet as any)
+    } else if (typeof createSigner === 'function') {
+      signer = createSigner(wallet as any)
+    }
+  }
+  if (typeof signer !== 'function') {
+    throw new HTTPException(500, { message: 'aoconnect_create_signer_missing' })
+  }
+  return signer
+}
+
+async function readAoClient(env: Env) {
+  const key = `${aoModeFromEnv(env)}|${hbUrlFromEnv(env)}|${schedulerFromEnv(env)}`
+  if (aoReadCache && aoReadCache.key === key) return aoReadCache.client
+  const module = await loadAoConnect()
+  const root = (module as any).default || module
+  const connect = root.connect
+  if (typeof connect !== 'function') {
+    throw new HTTPException(500, { message: 'aoconnect_connect_missing' })
+  }
+  const client = connect({
+    MODE: aoModeFromEnv(env),
+    URL: hbUrlFromEnv(env),
+    SCHEDULER: schedulerFromEnv(env),
+  })
+  aoReadCache = { key, client }
+  return client
+}
+
+async function writeAoClient(env: Env) {
+  const module = await loadAoConnect()
+  const root = (module as any).default || module
+  const connect = root.connect
+  if (typeof connect !== 'function') {
+    throw new HTTPException(500, { message: 'aoconnect_connect_missing' })
+  }
+  const signer = await readGatewaySigner(env)
+  const client = connect({
+    MODE: aoModeFromEnv(env),
+    URL: hbUrlFromEnv(env),
+    SCHEDULER: schedulerFromEnv(env),
+    signer,
+  })
+  return client
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  const clamped = Math.max(1000, timeoutMs)
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout_${label}_${clamped}ms`)), clamped)),
+  ])
 }
 
 function stableStringify(value: any): string {
@@ -505,6 +1022,7 @@ function canonicalDetachedMessage(cmd: any): string {
     cmd.actor || cmd.Actor || '',
     cmd.timestamp || cmd.ts || '',
     cmd.nonce || cmd.Nonce || '',
+    cmd.role || cmd.Role || cmd['Actor-Role'] || '',
     stableStringify(cmd.payload || cmd.Payload || {}),
     cmd.requestId || cmd['Request-Id'] || ''
   ]
@@ -518,6 +1036,440 @@ async function signCommand(env: Env, cmd: any) {
   const message = canonicalDetachedMessage(cmd)
   const sig = await ed25519.sign(Buffer.from(message), hexToBytes(privHex))
   return Buffer.from(sig).toString('hex')
+}
+
+function buildReadTags(
+  action: string,
+  requestId: string,
+  siteId: string,
+  sitePid: string,
+  payload: Record<string, unknown>,
+) {
+  const tags = [
+    { name: 'Action', value: action },
+    { name: 'Request-Id', value: requestId },
+    { name: 'Site-Id', value: siteId },
+    { name: 'Reply-To', value: sitePid },
+    { name: 'signing-format', value: 'ans104' },
+    { name: 'accept-bundle', value: 'true' },
+    { name: 'require-codec', value: 'application/json' },
+    { name: 'Type', value: 'Message' },
+    { name: 'Variant', value: 'ao.TN.1' },
+    { name: 'Data-Protocol', value: 'ao' },
+    { name: 'Content-Type', value: 'application/json' },
+    { name: 'Input-Encoding', value: 'JSON-1' },
+    { name: 'Output-Encoding', value: 'JSON-1' },
+  ] as Array<{ name: string; value: string }>
+
+  if (action === 'ResolveRoute') {
+    const routePath = normalizePath(payload.path)
+    tags.push({ name: 'Path', value: routePath })
+    const locale = trimString(payload.locale)
+    if (locale) tags.push({ name: 'Locale', value: locale })
+  } else if (action === 'GetPage') {
+    const pageId = trimString(payload.pageId)
+    const slug = firstNonEmptyString(payload.slug, payload.path)
+    if (pageId) tags.push({ name: 'Page-Id', value: pageId })
+    if (slug) tags.push({ name: 'Slug', value: slug })
+    const locale = trimString(payload.locale)
+    const version = trimString(payload.version)
+    if (locale) tags.push({ name: 'Locale', value: locale })
+    if (version) tags.push({ name: 'Version', value: version })
+  }
+
+  return tags
+}
+
+function buildReadData(action: string, requestId: string, siteId: string, payload: Record<string, unknown>): string {
+  const body: Record<string, unknown> = {
+    Action: action,
+    'Request-Id': requestId,
+    'Site-Id': siteId,
+  }
+  if (action === 'ResolveRoute') {
+    body.Path = normalizePath(payload.path)
+    const locale = trimString(payload.locale)
+    if (locale) body.Locale = locale
+  } else if (action === 'GetPage') {
+    const pageId = trimString(payload.pageId)
+    const slug = firstNonEmptyString(payload.slug, payload.path)
+    if (pageId) body['Page-Id'] = pageId
+    if (slug) body.Slug = slug
+    const locale = trimString(payload.locale)
+    const version = trimString(payload.version)
+    if (locale) body.Locale = locale
+    if (version) body.Version = version
+  }
+  return JSON.stringify(body)
+}
+
+function normalizeReadEnvelope(raw: any, action: string): { status: number; body: Record<string, unknown> } {
+  const normalized = raw?.results?.raw || raw?.raw || raw || {}
+  const outputCandidate =
+    normalized?.Output ??
+    normalized?.output ??
+    normalized?.Data ??
+    normalized?.data ??
+    raw?.Output ??
+    raw?.output ??
+    null
+
+  let envelope: any = null
+  if (typeof outputCandidate === 'string') {
+    if (outputCandidate.trim()) {
+      try {
+        envelope = JSON.parse(outputCandidate)
+      } catch {
+        envelope = { status: 'ERROR', code: 'INVALID_OUTPUT', message: outputCandidate }
+      }
+    }
+  } else if (outputCandidate && typeof outputCandidate === 'object') {
+    envelope = outputCandidate
+  } else if (normalized && typeof normalized === 'object' && typeof normalized.status === 'string') {
+    envelope = normalized
+  }
+
+  if (!envelope) {
+    const maybeError = normalized?.Error
+    const hasRuntimeError = maybeError && typeof maybeError === 'object' && Object.keys(maybeError).length > 0
+    if (!hasRuntimeError && (action === 'ResolveRoute' || action === 'GetPage')) {
+      return {
+        status: 404,
+        body: {
+          status: 'ERROR',
+          code: 'NOT_FOUND',
+          message: 'not_found_or_empty_result',
+        },
+      }
+    }
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: 'invalid_ao_response',
+      },
+    }
+  }
+
+  if (String(envelope.status || '').toUpperCase() === 'OK') {
+    return { status: 200, body: envelope }
+  }
+
+  const code = trimString(envelope.code).toUpperCase()
+  const status =
+    code === 'NOT_FOUND'
+      ? 404
+      : code === 'INVALID_INPUT' || code === 'UNSUPPORTED_FIELD' || code === 'MISSING_TAGS'
+        ? 400
+        : code === 'FORBIDDEN'
+          ? 403
+          : code === 'UNAUTHORIZED'
+            ? 401
+            : 422
+  return { status, body: envelope }
+}
+
+async function executeReadAction(c: any, action: 'ResolveRoute' | 'GetPage', input: GatewayTemplateCallInput) {
+  const sitePid = resolveSitePid(c.env)
+  if (!sitePid) throw new HTTPException(500, { message: 'missing_ao_site_process_id' })
+
+  const payload = asRecord(input.payload) || asRecord(input) || {}
+  const siteId = firstNonEmptyString(input.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
+  if (!siteId) throw new HTTPException(400, { message: 'site_id_required' })
+  const requestId = firstNonEmptyString(
+    input.requestId,
+    c.req.header('x-request-id'),
+    randomId('gw-read'),
+  )
+  const tags = buildReadTags(action, requestId, siteId, sitePid, payload)
+  const data = buildReadData(action, requestId, siteId, payload)
+  const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
+  const ao = await writeAoClient(c.env)
+  const slotOrMessage = await withTimeout(
+    ao.message({
+      process: sitePid,
+      tags,
+      data,
+    }),
+    timeoutMs,
+    'ao_read_message',
+  )
+  let result: any = null
+  try {
+    result = await withTimeout(
+      ao.result({
+        process: sitePid,
+        message: String(slotOrMessage),
+      }),
+      timeoutMs,
+      'ao_read_result',
+    )
+  } catch {
+    result = await fetchComputeFallback(c.env, sitePid, String(slotOrMessage), timeoutMs)
+  }
+  return normalizeReadEnvelope(result, action)
+}
+
+function buildWritePayload(input: GatewayTemplateCallInput): Record<string, unknown> {
+  const payload = asRecord(input.payload) || {}
+  return { ...payload }
+}
+
+function expectedWriteAction(pathname: string): 'CreateOrder' | 'CreatePaymentIntent' {
+  if (pathname.endsWith('/api/checkout/order')) return 'CreateOrder'
+  return 'CreatePaymentIntent'
+}
+
+function validateWriteRouteAction(bodyAction: unknown, expected: string): void {
+  const normalized = trimString(bodyAction)
+  if (!normalized) return
+  if (normalized === expected) return
+  if (normalized === 'checkout.create-order' && expected === 'CreateOrder') return
+  if (normalized === 'checkout.create-payment-intent' && expected === 'CreatePaymentIntent') return
+  throw new HTTPException(400, { message: 'action_route_mismatch' })
+}
+
+function buildWriteCommand(c: any, input: GatewayTemplateCallInput, expected: string) {
+  validateWriteRouteAction(input.action, expected)
+  const payload = buildWritePayload(input)
+  const siteId = firstNonEmptyString(input.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
+  if (siteId && !payload.siteId) payload.siteId = siteId
+
+  const requestId = firstNonEmptyString(input.requestId, c.req.header('x-request-id'), randomId('gw-write'))
+  const actor = firstNonEmptyString(input.actor, 'gateway-template')
+  const role = firstNonEmptyString(input.role, 'admin')
+  const tenant = firstNonEmptyString(input.tenant, payload.siteId)
+  if (!tenant) throw new HTTPException(400, { message: 'tenant_required' })
+
+  const command: Record<string, unknown> = {
+    action: expected,
+    requestId,
+    actor,
+    role,
+    tenant,
+    timestamp: firstNonEmptyString(input.timestamp, new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')),
+    nonce: firstNonEmptyString(input.nonce, randomId('nonce')),
+    payload,
+  }
+
+  const signature = trimString(input.signature)
+  const signatureRef = trimString(input.signatureRef)
+  if (signature) command.signature = signature
+  if (signatureRef) command.signatureRef = signatureRef
+
+  return command
+}
+
+async function maybeSignWriteCommand(env: Env, command: Record<string, unknown>) {
+  if (trimString(command.signature) && trimString(command.signatureRef)) return command
+  const autoSign = boolEnv(env.GATEWAY_WRITE_AUTO_SIGN, true)
+  if (!autoSign) throw new HTTPException(401, { message: 'signature_required' })
+  const signature = await signCommand(env, command)
+  return {
+    ...command,
+    signature,
+    signatureRef: cleanEnv(env.WORKER_SIGNATURE_REF) || 'worker-ed25519',
+  }
+}
+
+function writeMessageTags() {
+  return [
+    { name: 'Action', value: 'Write-Command' },
+    { name: 'Variant', value: 'ao.TN.1' },
+    { name: 'Content-Type', value: 'application/json' },
+    { name: 'Input-Encoding', value: 'JSON-1' },
+    { name: 'Output-Encoding', value: 'JSON-1' },
+    { name: 'Data-Protocol', value: 'ao' },
+    { name: 'Type', value: 'Message' },
+  ]
+}
+
+function base64UrlNoPad(input: ArrayBuffer | Uint8Array): string {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
+  return Buffer.from(bytes)
+    .toString('base64url')
+    .replace(/=+$/g, '')
+}
+
+async function fetchComputeFallback(env: Env, pid: string, slotOrMessage: string, timeoutMs: number) {
+  const endpoint =
+    `${hbUrlFromEnv(env).replace(/\/$/, '')}/${pid}~process@1.0/compute=${slotOrMessage}` +
+    '?accept-bundle=true&require-codec=application/json'
+  const response = await withTimeout(fetch(endpoint, { method: 'GET' }), timeoutMs, 'compute_fetch')
+  const text = await response.text().catch(() => '')
+  if (!response.ok) {
+    throw new Error(`compute_http_${response.status}:${text.slice(0, 180)}`)
+  }
+  try {
+    return text ? JSON.parse(text) : {}
+  } catch {
+    throw new Error('compute_invalid_json')
+  }
+}
+
+function extractSlotOrMessage(value: unknown, depth = 0): string | undefined {
+  if (depth > 4 || value === null || value === undefined) return undefined
+  if (typeof value === 'string') {
+    const direct = trimString(value)
+    if (!direct) return undefined
+    try {
+      const parsed = JSON.parse(direct)
+      return extractSlotOrMessage(parsed, depth + 1) || direct
+    } catch {
+      return /^[A-Za-z0-9_-]{20,}$/.test(direct) ? direct : undefined
+    }
+  }
+  const record = asRecord(value)
+  if (!record) return undefined
+  const numericDirect = [record.slot, record.Slot, record.message, record.Message, record.id, record.Id]
+    .map((v) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : ''))
+    .find((v) => !!v)
+  if (numericDirect) return numericDirect
+  const direct = firstNonEmptyString(
+    record.slot,
+    record.Slot,
+    record.message,
+    record.Message,
+    record.id,
+    record.Id,
+    record.cursor,
+    record.Cursor,
+  )
+  if (direct) return direct
+
+  const nestedKeys = ['raw', 'data', 'body', 'result', 'results', 'output', 'node', 'value']
+  for (const key of nestedKeys) {
+    const nested = extractSlotOrMessage(record[key], depth + 1)
+    if (nested) return nested
+  }
+  return undefined
+}
+
+async function sendWriteCommand(c: any, command: Record<string, unknown>) {
+  const pid = resolveWritePid(c.env)
+  if (!pid) throw new HTTPException(500, { message: 'missing_write_process_id' })
+  const timeoutMs = positiveIntEnv(c.env.GATEWAY_WRITE_TIMEOUT_MS, DEFAULT_WRITE_TIMEOUT_MS)
+  const retries = positiveIntEnv(c.env.GATEWAY_WRITE_RETRIES, DEFAULT_WRITE_RETRIES)
+  const ao = await writeAoClient(c.env)
+
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    try {
+      const pushResponse = await withTimeout(
+        ao.request({
+          path: `/${pid}~process@1.0/push`,
+          target: pid,
+          tags: writeMessageTags(),
+          data: JSON.stringify(command),
+          method: 'POST',
+          'signing-format': 'ans104',
+          'accept-bundle': 'true',
+          'require-codec': 'application/json',
+        }),
+        timeoutMs,
+        'ao_push_request',
+      )
+      const pushText = await pushResponse.text().catch(() => '')
+      if (!pushResponse.ok) {
+        throw new Error(`ao_push_http_${pushResponse.status}:${pushText.slice(0, 320)}`)
+      }
+      let pushJson: any = {}
+      try {
+        pushJson = pushText ? JSON.parse(pushText) : {}
+      } catch {
+        throw new Error('ao_push_invalid_json')
+      }
+      const slotOrMessage = firstNonEmptyString(
+        extractSlotOrMessage(pushJson),
+        extractSlotOrMessage(pushJson?.body),
+        extractSlotOrMessage(pushJson?.raw),
+        extractSlotOrMessage(pushJson?.data),
+      )
+      if (!slotOrMessage) {
+        throw new Error(`ao_push_missing_slot:${pushText.slice(0, 1200)}`)
+      }
+
+      let raw: any = null
+      try {
+        raw = await withTimeout(ao.result({ process: pid, message: slotOrMessage }), timeoutMs, 'ao_result')
+      } catch {
+        raw = await fetchComputeFallback(c.env, pid, slotOrMessage, timeoutMs)
+      }
+      return { raw, slotOrMessage }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      if (attempt + 1 >= retries) break
+      await sleep(500 * (attempt + 1))
+    }
+  }
+
+  throw lastError || new Error('write_command_failed')
+}
+
+function normalizeWriteEnvelope(env: Env, rawResult: any, context: { requestId?: string; action?: string }) {
+  const normalized = rawResult?.results?.raw || rawResult?.raw || rawResult || {}
+  const output = normalized?.Output ?? normalized?.output ?? null
+  let envelope: any = null
+  if (typeof output === 'string') {
+    if (output.trim()) {
+      try {
+        envelope = JSON.parse(output)
+      } catch {
+        envelope = { status: 'ERROR', code: 'INVALID_OUTPUT', message: output }
+      }
+    }
+  } else if (output && typeof output === 'object') {
+    envelope = output
+  } else if (normalized && typeof normalized === 'object' && typeof normalized.status === 'string') {
+    envelope = normalized
+  }
+
+  if (!envelope) {
+    const maybeError = normalized?.Error
+    const hasRuntimeError = maybeError && typeof maybeError === 'object' && Object.keys(maybeError).length > 0
+    const acceptEmpty = boolEnv(env.GATEWAY_WRITE_ACCEPT_EMPTY_RESULT, true)
+    if (!hasRuntimeError && acceptEmpty) {
+      return {
+        status: 202,
+        body: {
+          status: 'OK',
+          code: 'ACCEPTED_ASYNC',
+          message: 'command accepted; result envelope unavailable',
+          requestId: context.requestId || null,
+          action: context.action || null,
+        },
+      }
+    }
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: 'invalid_write_response',
+      },
+    }
+  }
+
+  const statusText = trimString(envelope.status).toUpperCase()
+  if (statusText === 'OK') {
+    return { status: 200, body: envelope }
+  }
+
+  const code = trimString(envelope.code).toUpperCase()
+  const status =
+    code === 'INVALID_INPUT' || code === 'PAYLOAD_TOO_LARGE'
+      ? 400
+      : code === 'UNAUTHORIZED'
+        ? 401
+        : code === 'FORBIDDEN'
+          ? 403
+          : code === 'NOT_FOUND'
+            ? 404
+            : code === 'CONFLICT'
+              ? 409
+              : code === 'RATE_LIMITED'
+                ? 429
+                : 422
+  return { status, body: envelope }
 }
 
 async function verifyInboxSignature(c: any, body: string) {
@@ -535,7 +1487,7 @@ async function verifyInboxSignature(c: any, body: string) {
       inboxKey = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
       inboxSecretCached = secret
     }
-    const signatureBytes = hexToBytes(sig.trim().toLowerCase())
+    const signatureBytes = hexToBytes(normalizeHmacSignature(sig))
     const ok = await crypto.subtle.verify('HMAC', inboxKey, signatureBytes, encoder.encode(body))
     if (!ok) {
       throw new HTTPException(401, { message: 'invalid_signature' })
@@ -564,7 +1516,7 @@ async function verifyNotifySignature(c: any, body: string) {
       notifyKey = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
       notifySecretCached = secret
     }
-    const signatureBytes = hexToBytes(sig.trim().toLowerCase())
+    const signatureBytes = hexToBytes(normalizeHmacSignature(sig))
     const ok = await crypto.subtle.verify('HMAC', notifyKey, signatureBytes, encoder.encode(body))
     if (!ok) {
       inc('worker_notify_hmac_invalid_total')
@@ -612,7 +1564,25 @@ app.post('/sign', async (c) => {
   if (!body || typeof body !== 'object') {
     throw new HTTPException(400, { message: 'invalid_body' })
   }
-  const allowedKeys = new Set(['action','Action','tenant','Tenant','actor','Actor','timestamp','ts','nonce','Nonce','payload','Payload','requestId','Request-Id'])
+  const allowedKeys = new Set([
+    'action',
+    'Action',
+    'tenant',
+    'Tenant',
+    'actor',
+    'Actor',
+    'timestamp',
+    'ts',
+    'nonce',
+    'Nonce',
+    'role',
+    'Role',
+    'Actor-Role',
+    'payload',
+    'Payload',
+    'requestId',
+    'Request-Id',
+  ])
   for (const key of Object.keys(body)) {
     if (!allowedKeys.has(key)) {
       throw new HTTPException(400, { message: 'unknown_field' })
@@ -638,6 +1608,82 @@ app.post('/sign', async (c) => {
   const signature = await signCommand(c.env, body)
   const signatureRef = c.env.WORKER_SIGNATURE_REF || 'worker-ed25519'
   return c.json({ signature, signatureRef })
+})
+
+app.get('/api/health', async (c) => {
+  const aoModule = await loadAoConnect().catch(() => null)
+  const aoRoot = aoModule ? (aoModule as any).default || aoModule : null
+  return c.json({
+    ok: true,
+    service: 'blackcat-inbox',
+    now: new Date().toISOString(),
+    ao: {
+      mode: aoModeFromEnv(c.env),
+      hbUrl: hbUrlFromEnv(c.env),
+      scheduler: schedulerFromEnv(c.env),
+      sitePidConfigured: Boolean(resolveSitePid(c.env)),
+      writePidConfigured: Boolean(resolveWritePid(c.env)),
+      walletConfigured: Boolean(cleanEnv(c.env.AO_WALLET_JSON)),
+      walletPkcs8Configured: Boolean(cleanEnv((c.env as any).AO_WALLET_PKCS8_B64)),
+      walletShape: walletShape(c.env),
+      signerFactories: {
+        createSigner: typeof aoRoot?.createSigner === 'function',
+        createDataItemSigner: typeof aoRoot?.createDataItemSigner === 'function',
+      },
+    },
+  })
+})
+
+app.post('/api/public/resolve-route', async (c) => {
+  const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
+  if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
+  const payload = asRecord(body.payload) || {}
+  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, siteId)
+  const out = await executeReadAction(c, 'ResolveRoute', body)
+  return c.json(out.body, out.status)
+})
+
+app.post('/api/public/page', async (c) => {
+  const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
+  if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
+  const payload = asRecord(body.payload) || {}
+  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, siteId)
+  const out = await executeReadAction(c, 'GetPage', body)
+  return c.json(out.body, out.status)
+})
+
+app.post('/api/checkout/order', async (c) => {
+  const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
+  if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
+  const payload = asRecord(body.payload) || {}
+  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, siteId)
+  const command = buildWriteCommand(c, body, expectedWriteAction('/api/checkout/order'))
+  const signed = await maybeSignWriteCommand(c.env, command)
+  const transport = await sendWriteCommand(c, signed)
+  const normalized = normalizeWriteEnvelope(c.env, transport.raw, {
+    requestId: trimString(signed.requestId),
+    action: trimString(signed.action),
+  })
+  return c.json(normalized.body, normalized.status)
+})
+
+app.post('/api/checkout/payment-intent', async (c) => {
+  const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
+  if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
+  const payload = asRecord(body.payload) || {}
+  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, siteId)
+  const command = buildWriteCommand(c, body, expectedWriteAction('/api/checkout/payment-intent'))
+  const signed = await maybeSignWriteCommand(c.env, command)
+  const transport = await sendWriteCommand(c, signed)
+  const normalized = normalizeWriteEnvelope(c.env, transport.raw, {
+    requestId: trimString(signed.requestId),
+    action: trimString(signed.action),
+  })
+  return c.json(normalized.body, normalized.status)
 })
 
 app.get('/inbox/:subject/:nonce', async (c) => {
