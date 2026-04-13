@@ -7,6 +7,28 @@ to AO push endpoints (`push.forward.computer`, `push-1.forward.computer`).
 
 ---
 
+## 2026-04-13 — Fresh AO site deploy (v2) + strict verification
+
+Authoritative v2 pair:
+- module: `mJDTGZDoP1R0Dszd_fskD8Qdmwlbhkhf3lRmOfR60-I`
+- pid: `DjnYdgyIN7UQ77w9wyukBNZd1iyV4ByJS1j54Sn1Kus`
+
+Artifacts:
+- `tmp/deploy-site-module-v2-2026-04-13.json`
+- `tmp/deploy-site-pid-v2-2026-04-13.json`
+
+Strict deep test (`--profile site`) on v2 PID:
+- report: `tmp/deep-test-site-DjnY-strict-2026-04-13.json`
+- result: **PASS 6/6** (`push` + `push-1`)
+
+CU/readback diagnostic:
+- report: `tmp/diag-cureadback-site-DjnY-2026-04-13.json`
+- summary:
+  - `slot/current(process)` -> 200 on both push nodes
+  - scheduler message probes -> 200 on both
+  - compute -> 200 on both
+  - `ao.result` available on `push.forward`, `na` on `push-1` (known behavior)
+
 ## 2026-04-13 — Rebuild + redeploy (authoritative site pair) and post-finalization tests
 
 Authoritative deploy pair (rebuilt from current source before publish):
