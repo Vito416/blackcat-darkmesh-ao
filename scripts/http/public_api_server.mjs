@@ -1,0 +1,572 @@
+#!/usr/bin/env node
+import http from 'node:http'
+import fs from 'node:fs'
+import crypto from 'node:crypto'
+import { createData, ArweaveSigner } from 'arbundles'
+import { connect } from '@permaweb/aoconnect'
+
+const DEFAULT_HB_URL = 'https://push.forward.computer'
+const DEFAULT_SCHEDULER = 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo'
+const DEFAULT_PORT = 8788
+const DEFAULT_RESULT_TIMEOUT_MS = 45000
+const DEFAULT_SITE_ACTION_TIMEOUT_MS = 30000
+const DEFAULT_RESULT_RETRIES = 4
+
+const env = {
+  port: positiveInt(process.env.PORT, DEFAULT_PORT),
+  host: clean(process.env.HOST) || '0.0.0.0',
+  hbUrl: clean(process.env.AO_HB_URL) || clean(process.env.HB_URL) || DEFAULT_HB_URL,
+  scheduler: clean(process.env.AO_HB_SCHEDULER) || clean(process.env.HB_SCHEDULER) || DEFAULT_SCHEDULER,
+  sitePid: clean(process.env.AO_SITE_PROCESS_ID) || clean(process.env.SITE_PID) || '',
+  authToken: clean(process.env.AO_PUBLIC_API_TOKEN) || '',
+  allowOrigin: clean(process.env.AO_PUBLIC_API_ALLOW_ORIGIN) || '*',
+  mode: clean(process.env.AO_MODE) || 'mainnet',
+  actionTimeoutMs: positiveInt(process.env.AO_SITE_ACTION_TIMEOUT_MS, DEFAULT_SITE_ACTION_TIMEOUT_MS),
+  resultTimeoutMs: positiveInt(process.env.AO_RESULT_TIMEOUT_MS, DEFAULT_RESULT_TIMEOUT_MS),
+  resultRetries: positiveInt(process.env.AO_RESULT_RETRIES, DEFAULT_RESULT_RETRIES),
+  // dryrun is the preferred non-mutating path.
+  disableDryrun: isTrue(process.env.AO_DISABLE_DRYRUN),
+  // Optional fallback when dryrun is unavailable on the selected transport.
+  fallbackToScheduler: isTrue(process.env.AO_READ_FALLBACK_TO_SCHEDULER),
+  walletPath: clean(process.env.AO_WALLET_PATH) || clean(process.env.WALLET_PATH) || 'wallet.json',
+  debug: isTrue(process.env.AO_PUBLIC_API_DEBUG),
+}
+
+const ao = connect({
+  MODE: env.mode,
+  URL: env.hbUrl,
+  SCHEDULER: env.scheduler,
+})
+
+let fallbackWallet = null
+let fallbackSigner = null
+
+function clean(value) {
+  if (!value) return ''
+  const next = String(value).trim()
+  return next === '' || next === 'undefined' || next === 'null' ? '' : next
+}
+
+function isTrue(value) {
+  const next = clean(value).toLowerCase()
+  return next === '1' || next === 'true' || next === 'yes' || next === 'on'
+}
+
+function positiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value || ''), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return parsed
+}
+
+function nowIso() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
+function json(res, status, body) {
+  const payload = JSON.stringify(body)
+  res.statusCode = status
+  res.setHeader('content-type', 'application/json; charset=utf-8')
+  res.setHeader('cache-control', 'no-store')
+  res.setHeader('x-content-type-options', 'nosniff')
+  res.setHeader('x-frame-options', 'DENY')
+  res.setHeader('referrer-policy', 'no-referrer')
+  res.setHeader('access-control-allow-origin', env.allowOrigin)
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
+  res.setHeader('access-control-allow-headers', 'content-type,authorization,x-api-token,x-request-id')
+  res.end(payload)
+}
+
+function unauthorized(res) {
+  json(res, 401, { ok: false, error: 'unauthorized' })
+}
+
+function readJsonBody(req, maxBytes = 128 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let total = 0
+    req.on('data', (chunk) => {
+      total += chunk.length
+      if (total > maxBytes) {
+        reject(new Error('payload_too_large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf8')
+        const parsed = raw ? JSON.parse(raw) : {}
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          reject(new Error('invalid_json'))
+          return
+        }
+        resolve(parsed)
+      } catch {
+        reject(new Error('invalid_json'))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function trimString(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizePath(pathValue) {
+  const path = trimString(pathValue)
+  if (!path) return '/'
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+function requestIdFrom(req, body) {
+  const headerValue = trimString(req.headers['x-request-id'])
+  if (headerValue) return headerValue.slice(0, 128)
+  const bodyValue = trimString(body.requestId)
+  if (bodyValue) return bodyValue.slice(0, 128)
+  return `gw-read-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+}
+
+function requireAuth(req) {
+  if (!env.authToken) return true
+  const authHeader = trimString(req.headers.authorization)
+  const tokenHeader = trimString(req.headers['x-api-token'])
+  const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : ''
+  return bearer === env.authToken || tokenHeader === env.authToken
+}
+
+function buildCommonTags(action, requestId) {
+  return [
+    { name: 'Action', value: action },
+    { name: 'Request-Id', value: requestId },
+    { name: 'Reply-To', value: env.sitePid },
+    { name: 'signing-format', value: 'ans104' },
+    { name: 'accept-bundle', value: 'true' },
+    { name: 'require-codec', value: 'application/json' },
+    { name: 'Type', value: 'Message' },
+    { name: 'Variant', value: 'ao.TN.1' },
+    { name: 'Data-Protocol', value: 'ao' },
+    { name: 'Content-Type', value: 'application/json' },
+    { name: 'Input-Encoding', value: 'JSON-1' },
+    { name: 'Output-Encoding', value: 'JSON-1' },
+  ]
+}
+
+function buildReadData(action, requestId, payload) {
+  const data = {
+    Action: action,
+    'Request-Id': requestId,
+  }
+  const siteId = trimString(payload.siteId)
+  if (siteId) data['Site-Id'] = siteId
+
+  if (action === 'ResolveRoute') {
+    const routePath = normalizePath(payload.path)
+    data.Path = routePath
+    const locale = trimString(payload.locale)
+    if (locale) data.Locale = locale
+  } else if (action === 'GetPage') {
+    const pageId = trimString(payload.pageId)
+    const slug = trimString(payload.slug || payload.path)
+    if (pageId) data['Page-Id'] = pageId
+    if (slug) data.Slug = slug
+    const version = trimString(payload.version)
+    const locale = trimString(payload.locale)
+    if (version) data.Version = version
+    if (locale) data.Locale = locale
+  }
+
+  return JSON.stringify(data)
+}
+
+function addTag(tags, name, value) {
+  const normalized = trimString(value)
+  if (normalized) tags.push({ name, value: normalized })
+}
+
+function normalizeAoEnvelope(rawResult, context = {}) {
+  const normalized = rawResult?.results?.raw || rawResult?.raw || rawResult || {}
+  const outputCandidate =
+    normalized?.Output ??
+    normalized?.output ??
+    normalized?.Data ??
+    normalized?.data ??
+    rawResult?.Output ??
+    rawResult?.output ??
+    null
+
+  let envelope = null
+  if (typeof outputCandidate === 'string') {
+    if (outputCandidate.trim() !== '') {
+      try {
+        envelope = JSON.parse(outputCandidate)
+      } catch {
+        envelope = { status: 'ERROR', code: 'INVALID_OUTPUT', message: outputCandidate }
+      }
+    }
+  } else if (outputCandidate && typeof outputCandidate === 'object') {
+    envelope = outputCandidate
+  } else if (normalized && typeof normalized === 'object' && typeof normalized.status === 'string') {
+    envelope = normalized
+  } else if (rawResult && typeof rawResult === 'object' && typeof rawResult.status === 'string') {
+    envelope = rawResult
+  }
+
+  if (!envelope) {
+    const runtimeError = normalized?.Error
+    const hasRuntimeError =
+      runtimeError &&
+      typeof runtimeError === 'object' &&
+      Object.keys(runtimeError).length > 0
+    if (!hasRuntimeError && (context.action === 'ResolveRoute' || context.action === 'GetPage')) {
+      return {
+        ok: false,
+        status: 404,
+        body: {
+          status: 'ERROR',
+          code: 'NOT_FOUND',
+          message: 'not_found_or_empty_result',
+        },
+      }
+    }
+    return {
+      ok: false,
+      status: 502,
+      body: {
+        ok: false,
+        error: 'invalid_ao_response',
+        details: 'Could not normalize AO response envelope',
+        raw: env.debug ? rawResult : undefined,
+      },
+    }
+  }
+
+  if (String(envelope.status || '').toUpperCase() === 'OK') {
+    return {
+      ok: true,
+      status: 200,
+      body: envelope,
+    }
+  }
+
+  const code = trimString(envelope.code).toUpperCase()
+  const status =
+    code === 'NOT_FOUND'
+      ? 404
+      : code === 'INVALID_INPUT' || code === 'UNSUPPORTED_FIELD' || code === 'MISSING_TAGS'
+        ? 400
+        : code === 'FORBIDDEN'
+          ? 403
+          : code === 'UNAUTHORIZED'
+            ? 401
+            : 422
+
+  return {
+    ok: false,
+    status,
+    body: envelope,
+  }
+}
+
+function timeoutPromise(label, ms) {
+  return new Promise((_, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timeout_${label}_${ms}ms`)), ms)
+    timer.unref?.()
+  })
+}
+
+async function runWithTimeout(label, promiseFactory, ms) {
+  return Promise.race([promiseFactory(), timeoutPromise(label, ms)])
+}
+
+async function tryDryrun(tags, data) {
+  const output = await runWithTimeout(
+    'dryrun',
+    () =>
+      ao.dryrun({
+        process: env.sitePid,
+        tags,
+        data,
+      }),
+    env.actionTimeoutMs,
+  )
+  return { mode: 'dryrun', output }
+}
+
+function loadFallbackWallet() {
+  if (fallbackWallet && fallbackSigner) {
+    return { wallet: fallbackWallet, signer: fallbackSigner }
+  }
+  if (!env.walletPath || !fs.existsSync(env.walletPath)) {
+    throw new Error(`fallback_wallet_missing:${env.walletPath}`)
+  }
+  fallbackWallet = JSON.parse(fs.readFileSync(env.walletPath, 'utf8'))
+  fallbackSigner = new ArweaveSigner(fallbackWallet)
+  return { wallet: fallbackWallet, signer: fallbackSigner }
+}
+
+async function sendSchedulerMessage(tags, data) {
+  const { signer } = loadFallbackWallet()
+  const item = createData(data, signer, {
+    target: env.sitePid,
+    tags,
+  })
+  await item.sign(signer)
+  const endpoint = `${env.hbUrl.replace(/\/$/, '')}/~scheduler@1.0/schedule?target=${env.sitePid}`
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/ans104',
+      'codec-device': 'ans104@1.0',
+    },
+    body: item.getRaw(),
+  })
+  const text = await response.text().catch(() => '')
+  let parsed = null
+  try {
+    parsed = text ? JSON.parse(text) : null
+  } catch {
+    parsed = null
+  }
+  const slot = Number(response.headers.get('slot') || parsed?.slot || '')
+  return {
+    ok: response.ok,
+    status: response.status,
+    slot: Number.isFinite(slot) ? slot : null,
+    messageId: item.id,
+    parsed,
+    text,
+  }
+}
+
+async function fetchCompute(slot) {
+  const endpoint =
+    `${env.hbUrl.replace(/\/$/, '')}/${env.sitePid}~process@1.0/compute=${slot}` +
+    '?accept-bundle=true&require-codec=application/json'
+  const response = await fetch(endpoint, { method: 'GET' })
+  const text = await response.text().catch(() => '')
+  if (!response.ok) {
+    throw new Error(`compute_failed:${response.status}:${text.slice(0, 220)}`)
+  }
+  try {
+    return text ? JSON.parse(text) : {}
+  } catch {
+    throw new Error('compute_invalid_json')
+  }
+}
+
+async function schedulerFallback(tags, data) {
+  const sent = await sendSchedulerMessage(tags, data)
+  if (!sent.ok || !Number.isFinite(sent.slot)) {
+    const parsedBody = sent?.parsed?.body
+    const parsedBodyText = typeof parsedBody === 'string' ? parsedBody : ''
+    const lowerText = String(sent.text || '').toLowerCase()
+    if (
+      sent.status === 404 ||
+      parsedBodyText.toLowerCase() === 'not_found' ||
+      parsedBodyText.toLowerCase().includes('empty message sequence') ||
+      lowerText.includes('necessary_message_not_found') ||
+      lowerText.includes('not_found')
+    ) {
+      return {
+        mode: 'scheduler-direct',
+        output: {
+          status: 'ERROR',
+          code: 'NOT_FOUND',
+          message: parsedBodyText || 'not_found',
+        },
+        slot: null,
+        messageId: sent.messageId,
+      }
+    }
+    if (sent.ok && sent.parsed && typeof sent.parsed === 'object') {
+      return {
+        mode: 'scheduler-direct',
+        output: sent.parsed,
+        slot: null,
+        messageId: sent.messageId,
+      }
+    }
+    throw new Error(`scheduler_send_failed:${sent.status}:${String(sent.text || '').slice(0, 220)}`)
+  }
+  let lastErr = null
+  for (let i = 0; i < env.resultRetries; i += 1) {
+    try {
+      const output = await runWithTimeout(
+        'compute',
+        () => fetchCompute(sent.slot),
+        env.resultTimeoutMs,
+      )
+      return { mode: 'scheduler', output, slot: sent.slot, messageId: sent.messageId }
+    } catch (error) {
+      lastErr = error
+      await new Promise((resolve) => setTimeout(resolve, 700 * (i + 1)))
+    }
+  }
+  throw lastErr || new Error('compute_failed')
+}
+
+async function executeRead(action, req, body) {
+  if (!env.sitePid) {
+    return {
+      status: 503,
+      body: {
+        ok: false,
+        error: 'ao_site_pid_missing',
+      },
+    }
+  }
+  const requestId = requestIdFrom(req, body)
+
+  const payload = body.payload && typeof body.payload === 'object' ? body.payload : body
+  const siteId = trimString(body.siteId || payload.siteId)
+  if (!siteId) {
+    return { status: 400, body: { ok: false, error: 'site_id_required' } }
+  }
+
+  const tags = buildCommonTags(action, requestId)
+  addTag(tags, 'Site-Id', siteId)
+
+  if (action === 'ResolveRoute') {
+    const routePath = normalizePath(payload.path)
+    addTag(tags, 'Path', routePath)
+    addTag(tags, 'Locale', payload.locale)
+  } else if (action === 'GetPage') {
+    const pageId = trimString(payload.pageId)
+    const slug = trimString(payload.slug || payload.path)
+    if (!pageId && !slug) {
+      return { status: 400, body: { ok: false, error: 'page_id_or_slug_required' } }
+    }
+    addTag(tags, 'Page-Id', pageId)
+    addTag(tags, 'Slug', slug)
+    addTag(tags, 'Version', payload.version)
+    addTag(tags, 'Locale', payload.locale)
+  }
+
+  const data = buildReadData(action, requestId, {
+    siteId,
+    path: payload.path,
+    pageId: payload.pageId,
+    slug: payload.slug,
+    version: payload.version,
+    locale: payload.locale,
+  })
+
+  try {
+    let transport = null
+    let aoOutput = null
+
+    if (!env.disableDryrun) {
+      try {
+        transport = await tryDryrun(tags, data)
+        aoOutput = transport.output
+      } catch (error) {
+        if (!env.fallbackToScheduler) throw error
+      }
+    }
+
+    if (!aoOutput) {
+      if (!env.fallbackToScheduler) {
+        throw new Error('dryrun_failed_no_fallback')
+      }
+      transport = await schedulerFallback(tags, data)
+      aoOutput = transport.output
+    }
+
+    const normalized = normalizeAoEnvelope(aoOutput, { action })
+    if (env.debug) {
+      normalized.body.transport = {
+        mode: transport?.mode || 'unknown',
+        slot: transport?.slot || null,
+        messageId: transport?.messageId || null,
+      }
+    }
+    return { status: normalized.status, body: normalized.body }
+  } catch (error) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: 'ao_read_failed',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    }
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const method = (req.method || 'GET').toUpperCase()
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
+
+  if (method === 'OPTIONS') {
+    res.statusCode = 204
+    res.setHeader('access-control-allow-origin', env.allowOrigin)
+    res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
+    res.setHeader('access-control-allow-headers', 'content-type,authorization,x-api-token,x-request-id')
+    res.end('')
+    return
+  }
+
+  if (url.pathname === '/healthz' && method === 'GET') {
+    json(res, 200, {
+      ok: true,
+      service: 'ao-public-api',
+      sitePidConfigured: Boolean(env.sitePid),
+      hbUrl: env.hbUrl,
+      scheduler: env.scheduler,
+      dryrunEnabled: !env.disableDryrun,
+      schedulerFallback: env.fallbackToScheduler,
+      now: nowIso(),
+    })
+    return
+  }
+
+  if (!requireAuth(req)) {
+    unauthorized(res)
+    return
+  }
+
+  if (method !== 'POST') {
+    json(res, 405, { ok: false, error: 'method_not_allowed' })
+    return
+  }
+
+  if (url.pathname !== '/api/public/resolve-route' && url.pathname !== '/api/public/page') {
+    json(res, 404, { ok: false, error: 'not_found' })
+    return
+  }
+
+  let body = {}
+  try {
+    body = await readJsonBody(req)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message === 'payload_too_large') {
+      json(res, 413, { ok: false, error: 'payload_too_large' })
+      return
+    }
+    json(res, 400, { ok: false, error: 'invalid_json' })
+    return
+  }
+
+  const action = url.pathname === '/api/public/resolve-route' ? 'ResolveRoute' : 'GetPage'
+  const out = await executeRead(action, req, body)
+  json(res, out.status, out.body)
+})
+
+server.listen(env.port, env.host, () => {
+  console.log(
+    JSON.stringify({
+      event: 'ao_public_api_started',
+      host: env.host,
+      port: env.port,
+      hbUrl: env.hbUrl,
+      scheduler: env.scheduler,
+      sitePidConfigured: Boolean(env.sitePid),
+      dryrunEnabled: !env.disableDryrun,
+      schedulerFallback: env.fallbackToScheduler,
+      startedAt: nowIso(),
+    }),
+  )
+})
