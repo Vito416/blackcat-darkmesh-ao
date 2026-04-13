@@ -7,6 +7,97 @@ to AO push endpoints (`push.forward.computer`, `push-1.forward.computer`).
 
 ---
 
+## 2026-04-13 — Rebuild + redeploy (authoritative site pair) and post-finalization tests
+
+Authoritative deploy pair (rebuilt from current source before publish):
+- module: `PJ2DGlpYLRkFxO1xCvhni9CYdTg7hjdMLGa6NR4O3e4`
+- pid: `VGUHhgEV11rBRYirJq9v1u5OlUC9fYtUKvXyphMZ2T0`
+
+Artifacts:
+- `tmp/deploy-site-module.json`
+- `tmp/deploy-site-pid.json`
+
+Deep tests (strict, profile `site`):
+- initial run right after finalization:
+  - `tmp/deep-test-site-VGUH-strict-r2-2026-04-13.json`
+  - temporary compute/readback instability (`compute_not_ok`, `slot/current 500`) on both push nodes
+- rerun after propagation settled:
+  - `tmp/deep-test-site-VGUH-strict-r3-2026-04-13.json`
+  - **PASS** on both:
+    - `https://push.forward.computer`: 3/3
+    - `https://push-1.forward.computer`: 3/3
+
+CU/readback diagnostic on passing run:
+- `tmp/diag-cureadback-site-VGUH-r3-2026-04-13.json`
+- summary:
+  - process `slot/current`: `200` on both push nodes
+  - scheduler direct sends: `200` on both push nodes
+  - compute: `200` for all tested actions
+  - `ao.result`: available on `push.forward`, `na` on `push-1` (known endpoint behavior difference)
+
+## 4.19) 2026-04-13 — New AO site deploy (module+PID) for gateway bridge cutover
+
+- Published AO site WASM module:
+  - `yCQw-xxU0PZ3dOcEsgLGPpxhZ6VbmspVOXB7J7OCxWU`
+  - tags include `Type=Module`, `Variant=ao.TN.1`, `accept-bundle=true`, `accept-codec=httpsig@1.0`.
+- Spawned AO site process:
+  - `3qPhX1f7CJW_j8bJtZSeSKuMrLXcuAVGiwHBlqc132U`
+  - scheduler: `n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo`
+  - spawn mode: `extended`.
+- Auth flags set on spawn:
+  - `AUTH_REQUIRE_SIGNATURE=1`
+  - `AUTH_REQUIRE_NONCE=1`
+  - `AUTH_REQUIRE_TIMESTAMP=1`
+  - `AUTH_SIGNATURE_TYPE=ed25519`
+  - `AUTH_SIGNATURE_PUBLIC=<WRITE_SIG_PUBLIC_HEX from tmp/test-secrets.json>`
+
+Operational note:
+- Local WASM rebuild from fresh runtime sources is currently blocked in this WSL session (`docker` integration unavailable).
+- Deploy used currently available `dist/site/process.wasm`; schedule a rebuild+republish once Docker WSL integration is restored.
+
+## 4.20) 2026-04-13 — Rebuild + redeploy after Docker restore (authoritative pair)
+
+Docker was restored in WSL, so site WASM was rebuilt from current source before publish.
+
+Rebuild sequence:
+- `node scripts/build-ao-bundles.mjs --all`
+- `node scripts/deploy/patch_seed_module.mjs`
+- `bash scripts/deploy/rebuild_wasm_from_runtime.sh site`
+
+Authoritative deployment pair (use this one):
+- module: `c9yIg0fsnK0XCj7g47M73x4AhPRmSqS_K9RjnMeINmY`
+- pid: `Zv01GLNx1TBKxoswGi-tWoxNmgVYr1JSJJbjA3DDcJM`
+
+Note:
+- previous pair (`yCQw...` / `3qPh...`) should be treated as superseded by this rebuilt deploy.
+
+## 4.21) 2026-04-13 — Post-finalization deep tests on authoritative AO site PID
+
+Target under test:
+- module: `c9yIg0fsnK0XCj7g47M73x4AhPRmSqS_K9RjnMeINmY`
+- pid: `Zv01GLNx1TBKxoswGi-tWoxNmgVYr1JSJJbjA3DDcJM`
+
+Strict deep test:
+- command:
+  - `node scripts/cli/deep_test_scheduler_direct.js --profile site --pid Zv01... --urls https://push.forward.computer,https://push-1.forward.computer --wallet ../blackcat-darkmesh-write/wallet.json --execution-mode strict --out tmp/deep-test-site-Zv01-strict-2026-04-13.json`
+- result:
+  - push: `passed=3 failed=0`
+  - push-1: `passed=3 failed=0`
+  - summary: `passed=6 failed=0` (strict gate passed)
+
+CU/readback diagnostic:
+- command:
+  - `node scripts/cli/diagnose_cu_readback.js --pid Zv01... --report tmp/deep-test-site-Zv01-strict-2026-04-13.json --wallet ../blackcat-darkmesh-write/wallet.json --out tmp/diag-cureadback-site-Zv01-2026-04-13.json`
+- result:
+  - compute: `200` on both push endpoints
+  - scheduler message fetch: `200` on both
+  - `ao.result` available on `push.forward.computer`, `na` on `push-1` (same known pattern)
+
+Adapter probe note (`scripts/http/public_api_server.mjs`):
+- `ao.dryrun` read path still returns `Error running dryrun` for `resolve-route` and `page`.
+- scheduler fallback mode can still return transport `500` / empty output depending on action.
+- This remains a readback normalization blocker for direct gateway read adapter cutover.
+
 ## 4.10) 2026-04-08 — Post-limit continuation (new module/PID matrix)
 
 Tooling/code updates in this run:
