@@ -1243,13 +1243,21 @@ Gap closure implemented for universal gateway routing:
   - `RegisterSite` accepts optional `Runtime`
   - `GetSiteByHost` and `GetSiteConfig` now include `runtime` when configured
 - Runtime pointer contract is validated and normalized (typed fields, strict allowlist, format checks).
+- Runtime pointer schema expanded for shared multi-process routing:
+  - canonical keys supported in registry state/output:
+    - `processId`, `siteProcessId`, `catalogProcessId`, `accessProcessId`, `writeProcessId`, `ingestProcessId`, `registryProcessId`
+    - `workerId`, `workerUrl`, plus existing `moduleId`, `scheduler`, `updatedAt`
+  - alias inputs are normalized (`sitePid`, `write_process_id`, etc.).
+  - `workerUrl` is now strict URL-validated (`http://` / `https://`) before persistence.
 - Worker `/api/public/site-by-host` now passes runtime pointers through to callers.
+- Worker runtime pointer projection now also forwards `ingest*`, `worker*`, and `updatedAt` aliases from registry envelopes for gateway-side routing/observability.
 - Worker read path can resolve site read PID from registry runtime pointers when `AO_SITE_PROCESS_ID` is not statically configured.
 - Write adapter now supports optional per-request write PID routing (`X-Write-Process-Id` / `writeProcessId`) behind explicit opt-in and token auth gates.
 
 Validation and tests:
 - `stylua --check ao scripts` ✅
 - `AUTH_REQUIRE_SIGNATURE=0 lua5.4 scripts/verify/contracts.lua` ✅
+  - includes new assertions for alias normalization + expanded runtime pointer fields + invalid `workerUrl` rejection
 - `AUTH_REQUIRE_SIGNATURE=0 lua5.4 scripts/verify/integrity_registry_spec.lua` ✅
 - Worker tests (`npm test`) ✅
 - Write adapter contract tests (`npm run test:checkout-adapter-contract`) ✅

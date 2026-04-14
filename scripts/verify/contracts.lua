@@ -186,6 +186,12 @@ do
     Config = { version = "v1" },
     Runtime = {
       processId = "proc-site-1",
+      siteProcessId = "proc-site-1-read",
+      catalogProcessId = "proc-catalog-1",
+      accessProcessId = "proc-access-1",
+      writeProcessId = "proc-write-1",
+      workerId = "worker-site-1",
+      workerUrl = "https://worker.example.net/site-1",
       moduleId = "module-site-1",
       scheduler = "scheduler-site-1",
     },
@@ -193,6 +199,21 @@ do
   })
   assert_status(register_site_1, "OK", "register site with runtime status")
   assert_eq(register_site_1.payload.runtime.processId, "proc-site-1", "register runtime process")
+  assert_eq(
+    register_site_1.payload.runtime.siteProcessId,
+    "proc-site-1-read",
+    "register runtime site pid"
+  )
+  assert_eq(
+    register_site_1.payload.runtime.writeProcessId,
+    "proc-write-1",
+    "register runtime write pid"
+  )
+  assert_eq(
+    register_site_1.payload.runtime.workerUrl,
+    "https://worker.example.net/site-1",
+    "register runtime worker url"
+  )
   local bind = registry.route(with_req {
     Action = "BindDomain",
     ["Site-Id"] = "site-1",
@@ -204,6 +225,12 @@ do
   assert_eq(lookup.status, "OK", "get site by host status")
   assert_eq(lookup.payload.siteId, "site-1", "domain->siteId")
   assert_eq(lookup.payload.runtime.processId, "proc-site-1", "domain lookup runtime process")
+  assert_eq(
+    lookup.payload.runtime.siteProcessId,
+    "proc-site-1-read",
+    "domain lookup runtime site pid"
+  )
+  assert_eq(lookup.payload.runtime.workerId, "worker-site-1", "domain lookup runtime worker id")
 
   -- conflict: binding another site to same host should overwrite in stub (and keep deterministic)
   registry.route(
@@ -224,14 +251,30 @@ do
     Action = "SetSiteRuntime",
     ["Site-Id"] = "site-2",
     Runtime = {
-      processId = "proc-site-2",
+      sitePid = "proc-site-2-read",
+      catalog_process_id = "proc-catalog-2",
+      accessPid = "proc-access-2",
+      write_process_id = "proc-write-2",
+      ingestPid = "proc-ingest-2",
+      registryPid = "proc-registry-2",
+      worker_id = "worker-site-2",
+      worker_url = "https://worker.example.net/site-2",
       moduleId = "module-site-2",
       scheduler = "scheduler-site-2",
     },
     ["Actor-Role"] = "registry-admin",
   })
   assert_status(set_runtime, "OK", "set site runtime status")
-  assert_eq(set_runtime.payload.runtime.processId, "proc-site-2", "set site runtime process")
+  assert_eq(
+    set_runtime.payload.runtime.siteProcessId,
+    "proc-site-2-read",
+    "set site runtime site pid"
+  )
+  assert_eq(
+    set_runtime.payload.runtime.writeProcessId,
+    "proc-write-2",
+    "set site runtime write pid"
+  )
 
   local get_runtime = registry.route(with_req {
     Action = "GetSiteRuntime",
@@ -239,6 +282,12 @@ do
   })
   assert_status(get_runtime, "OK", "get site runtime status")
   assert_eq(get_runtime.payload.runtime.moduleId, "module-site-2", "get site runtime module")
+  assert_eq(get_runtime.payload.runtime.workerId, "worker-site-2", "get site runtime worker id")
+  assert_eq(
+    get_runtime.payload.runtime.workerUrl,
+    "https://worker.example.net/site-2",
+    "get site runtime worker url"
+  )
 
   local get_cfg_runtime = registry.route(with_req {
     Action = "GetSiteConfig",
@@ -255,13 +304,30 @@ do
     Action = "UpsertSiteRuntime",
     ["Site-Id"] = "site-2",
     Runtime = {
-      processId = "proc-site-2b",
+      processId = "proc-site-2b-router",
+      siteProcessId = "proc-site-2b-read",
+      writeProcessId = "proc-write-2b",
+      workerUrl = "https://worker.example.net/site-2b",
       moduleId = "module-site-2b",
     },
     ["Actor-Role"] = "registry-admin",
   })
   assert_status(upsert_runtime, "OK", "upsert site runtime status")
-  assert_eq(upsert_runtime.payload.runtime.processId, "proc-site-2b", "upsert site runtime process")
+  assert_eq(
+    upsert_runtime.payload.runtime.processId,
+    "proc-site-2b-router",
+    "upsert site runtime process"
+  )
+  assert_eq(
+    upsert_runtime.payload.runtime.siteProcessId,
+    "proc-site-2b-read",
+    "upsert site runtime site pid"
+  )
+  assert_eq(
+    upsert_runtime.payload.runtime.writeProcessId,
+    "proc-write-2b",
+    "upsert site runtime write pid"
+  )
 
   local bad_runtime = registry.route(with_req {
     Action = "SetSiteRuntime",
@@ -271,6 +337,15 @@ do
   })
   assert_status(bad_runtime, "ERROR", "set site runtime invalid status")
   assert_code(bad_runtime, "INVALID_INPUT", "set site runtime invalid code")
+
+  local bad_runtime_url = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = { siteProcessId = "proc-site-2-read", workerUrl = "not-a-url" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_runtime_url, "ERROR", "set site runtime invalid worker url status")
+  assert_code(bad_runtime_url, "INVALID_INPUT", "set site runtime invalid worker url code")
 
   local denied_runtime = registry.route(with_req {
     Action = "SetSiteRuntime",

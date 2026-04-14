@@ -204,9 +204,32 @@ ensure_gateway_state()
 
 local RUNTIME_POINTER_INPUT_KEYS = {
   processId = true,
+  siteProcessId = true,
+  catalogProcessId = true,
+  accessProcessId = true,
+  writeProcessId = true,
+  ingestProcessId = true,
+  registryProcessId = true,
+  workerId = true,
+  workerUrl = true,
   ProcessId = true,
   ["Process-Id"] = true,
   process_id = true,
+  sitePid = true,
+  catalogPid = true,
+  accessPid = true,
+  writePid = true,
+  ingestPid = true,
+  registryPid = true,
+  workerPid = true,
+  site_process_id = true,
+  catalog_process_id = true,
+  access_process_id = true,
+  write_process_id = true,
+  ingest_process_id = true,
+  registry_process_id = true,
+  worker_id = true,
+  worker_url = true,
   moduleId = true,
   ModuleId = true,
   ["Module-Id"] = true,
@@ -220,9 +243,32 @@ local RUNTIME_POINTER_INPUT_KEYS = {
 
 local RUNTIME_POINTER_STORED_KEYS = {
   processId = true,
+  siteProcessId = true,
+  catalogProcessId = true,
+  accessProcessId = true,
+  writeProcessId = true,
+  ingestProcessId = true,
+  registryProcessId = true,
+  workerId = true,
+  workerUrl = true,
   ProcessId = true,
   ["Process-Id"] = true,
   process_id = true,
+  sitePid = true,
+  catalogPid = true,
+  accessPid = true,
+  writePid = true,
+  ingestPid = true,
+  registryPid = true,
+  workerPid = true,
+  site_process_id = true,
+  catalog_process_id = true,
+  access_process_id = true,
+  write_process_id = true,
+  ingest_process_id = true,
+  registry_process_id = true,
+  worker_id = true,
+  worker_url = true,
   moduleId = true,
   ModuleId = true,
   ["Module-Id"] = true,
@@ -262,6 +308,21 @@ local function validate_runtime_pointer_token(value, field)
   return true
 end
 
+local function validate_runtime_pointer_url(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 512, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if value == "" or not tostring(value):match "^https?://[%w%._~:/%?#%[%]@!$&'()*+,;=-]+$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
 local function validate_runtime_pointer_timestamp(value, field)
   local ok_type, err_type = validation.assert_type(value, "string", field)
   if not ok_type then
@@ -295,12 +356,32 @@ local function normalize_runtime_pointer(raw, opts)
   end
 
   local process_id = first_present(raw, { "processId", "ProcessId", "Process-Id", "process_id" })
+  local site_process_id = first_present(raw, { "siteProcessId", "sitePid", "site_process_id" })
+  local catalog_process_id =
+    first_present(raw, { "catalogProcessId", "catalogPid", "catalog_process_id" })
+  local access_process_id =
+    first_present(raw, { "accessProcessId", "accessPid", "access_process_id" })
+  local write_process_id = first_present(raw, { "writeProcessId", "writePid", "write_process_id" })
+  local ingest_process_id =
+    first_present(raw, { "ingestProcessId", "ingestPid", "ingest_process_id" })
+  local registry_process_id =
+    first_present(raw, { "registryProcessId", "registryPid", "registry_process_id" })
+  local worker_id = first_present(raw, { "workerId", "workerPid", "worker_id" })
+  local worker_url = first_present(raw, { "workerUrl", "worker_url" })
   local module_id = first_present(raw, { "moduleId", "ModuleId", "Module-Id", "module_id" })
   local scheduler =
     first_present(raw, { "scheduler", "Scheduler", "Scheduler-Id", "schedulerId", "scheduler_id" })
   local updated_at = first_present(raw, { "updatedAt", "UpdatedAt", "Updated-At", "updated_at" })
 
-  if process_id == nil and require_process then
+  local has_any_process = process_id ~= nil
+    or site_process_id ~= nil
+    or catalog_process_id ~= nil
+    or access_process_id ~= nil
+    or write_process_id ~= nil
+    or ingest_process_id ~= nil
+    or registry_process_id ~= nil
+
+  if not has_any_process and require_process then
     return nil, ("missing_field:%s.processId"):format(field_name), field_name .. ".processId"
   end
 
@@ -312,6 +393,69 @@ local function normalize_runtime_pointer(raw, opts)
       return nil, err_process, field_name .. ".processId"
     end
     runtime.processId = tostring(process_id)
+  end
+  if site_process_id ~= nil then
+    local ok_site, err_site =
+      validate_runtime_pointer_token(site_process_id, field_name .. ".siteProcessId")
+    if not ok_site then
+      return nil, err_site, field_name .. ".siteProcessId"
+    end
+    runtime.siteProcessId = tostring(site_process_id)
+  end
+  if catalog_process_id ~= nil then
+    local ok_catalog, err_catalog =
+      validate_runtime_pointer_token(catalog_process_id, field_name .. ".catalogProcessId")
+    if not ok_catalog then
+      return nil, err_catalog, field_name .. ".catalogProcessId"
+    end
+    runtime.catalogProcessId = tostring(catalog_process_id)
+  end
+  if access_process_id ~= nil then
+    local ok_access, err_access =
+      validate_runtime_pointer_token(access_process_id, field_name .. ".accessProcessId")
+    if not ok_access then
+      return nil, err_access, field_name .. ".accessProcessId"
+    end
+    runtime.accessProcessId = tostring(access_process_id)
+  end
+  if write_process_id ~= nil then
+    local ok_write, err_write =
+      validate_runtime_pointer_token(write_process_id, field_name .. ".writeProcessId")
+    if not ok_write then
+      return nil, err_write, field_name .. ".writeProcessId"
+    end
+    runtime.writeProcessId = tostring(write_process_id)
+  end
+  if ingest_process_id ~= nil then
+    local ok_ingest, err_ingest =
+      validate_runtime_pointer_token(ingest_process_id, field_name .. ".ingestProcessId")
+    if not ok_ingest then
+      return nil, err_ingest, field_name .. ".ingestProcessId"
+    end
+    runtime.ingestProcessId = tostring(ingest_process_id)
+  end
+  if registry_process_id ~= nil then
+    local ok_registry, err_registry =
+      validate_runtime_pointer_token(registry_process_id, field_name .. ".registryProcessId")
+    if not ok_registry then
+      return nil, err_registry, field_name .. ".registryProcessId"
+    end
+    runtime.registryProcessId = tostring(registry_process_id)
+  end
+  if worker_id ~= nil then
+    local ok_worker, err_worker =
+      validate_runtime_pointer_token(worker_id, field_name .. ".workerId")
+    if not ok_worker then
+      return nil, err_worker, field_name .. ".workerId"
+    end
+    runtime.workerId = tostring(worker_id)
+  end
+  if worker_url ~= nil then
+    local ok_url, err_url = validate_runtime_pointer_url(worker_url, field_name .. ".workerUrl")
+    if not ok_url then
+      return nil, err_url, field_name .. ".workerUrl"
+    end
+    runtime.workerUrl = tostring(worker_url)
   end
   if module_id ~= nil then
     local ok_module, err_module =
@@ -344,10 +488,52 @@ local function snapshot_runtime_pointer(runtime)
   if type(runtime) ~= "table" then
     return nil
   end
-  if type(runtime.processId) ~= "string" or runtime.processId == "" then
+  local has_process = false
+  for _, key in ipairs {
+    "processId",
+    "siteProcessId",
+    "catalogProcessId",
+    "accessProcessId",
+    "writeProcessId",
+    "ingestProcessId",
+    "registryProcessId",
+  } do
+    if type(runtime[key]) == "string" and runtime[key] ~= "" then
+      has_process = true
+      break
+    end
+  end
+  if not has_process then
     return nil
   end
-  local out = { processId = runtime.processId }
+  local out = {}
+  if type(runtime.processId) == "string" and runtime.processId ~= "" then
+    out.processId = runtime.processId
+  end
+  if type(runtime.siteProcessId) == "string" and runtime.siteProcessId ~= "" then
+    out.siteProcessId = runtime.siteProcessId
+  end
+  if type(runtime.catalogProcessId) == "string" and runtime.catalogProcessId ~= "" then
+    out.catalogProcessId = runtime.catalogProcessId
+  end
+  if type(runtime.accessProcessId) == "string" and runtime.accessProcessId ~= "" then
+    out.accessProcessId = runtime.accessProcessId
+  end
+  if type(runtime.writeProcessId) == "string" and runtime.writeProcessId ~= "" then
+    out.writeProcessId = runtime.writeProcessId
+  end
+  if type(runtime.ingestProcessId) == "string" and runtime.ingestProcessId ~= "" then
+    out.ingestProcessId = runtime.ingestProcessId
+  end
+  if type(runtime.registryProcessId) == "string" and runtime.registryProcessId ~= "" then
+    out.registryProcessId = runtime.registryProcessId
+  end
+  if type(runtime.workerId) == "string" and runtime.workerId ~= "" then
+    out.workerId = runtime.workerId
+  end
+  if type(runtime.workerUrl) == "string" and runtime.workerUrl ~= "" then
+    out.workerUrl = runtime.workerUrl
+  end
   if type(runtime.moduleId) == "string" and runtime.moduleId ~= "" then
     out.moduleId = runtime.moduleId
   end
