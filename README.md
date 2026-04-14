@@ -7,7 +7,8 @@ AO-first backend layer for Blackcat Darkmesh. This repository hosts AO processes
 
 ## Scope
 - In scope: AO processes for public state (site registry, routing, public read model, audit metadata, permission registry), schemas, Arweave manifests/snapshots, deploy/verify/export scripts, fixtures, CI workflows.
-- Out of scope: command validation/idempotency, builder/admin UI, template/rendering layer, SMTP/OTP/payments, mailbox payloads, resolver/gateway runtime, or any storage of sensitive plaintext. Mutations are owned by `blackcat-darkmesh-write`.
+- Out of scope: command validation/idempotency, builder/admin UI, template/rendering layer, SMTP/OTP/payments business logic, mailbox payload persistence, full resolver/gateway runtime, or any storage of sensitive plaintext. Mutations are owned by `blackcat-darkmesh-write`.
+- Exception: this repo includes thin HTTP compatibility adapters (`scripts/http/public_api_server.mjs` and `worker/src/index.ts`) with a limited route subset (see "Gateway Adapter Surface").
 
 ## Architecture Snapshot
 - Process split: `router`/`registry` (domains, sites, keys), `public_state` (routes, pages, navigation, SEO/public config), `catalog` (public product + category payloads/refs), `permissions` (publish keys/roles), and `audit` (receipts + references only).
@@ -31,11 +32,23 @@ tests/             # integration, message-contracts, snapshots, security
 ```
 
 ## Message Contract (public AO surface)
-- Read (public/tenant-scoped): `GetSiteByHost`, `ResolveRoute`, `GetPage`, `GetLayout`, `GetNavigation`, `GetPublishedVersion`, `GetProduct`, `ListCategoryProducts`, `HasEntitlement`.
+- Read (public/tenant-scoped): `GetSiteByHost`, `ResolveRoute`, `GetPage`, `GetLayout`, `GetNavigation`, `GetProduct`, `ListCategoryProducts`, `HasEntitlement`.
 - Integrity registry reads: `GetTrustedRoot`, `GetTrustedReleaseByVersion`, `GetTrustedReleaseByRoot`, `GetIntegrityPolicy`, `GetIntegrityAuthority`, `GetIntegrityAuditState`, `GetIntegritySnapshot`.
 - Ingest (from `blackcat-darkmesh-write` only): publish/apply events carrying `Action`, `Site-Id`, `Publish-Id`, `Version`, `Schema-Version`, `Timestamp`, `Request-Id`, `Signature-Ref` and content hashes/refs. No direct write commands are accepted from gateways/clients.
 - Integrity registry writes (admin/registry-admin only): `PublishTrustedRelease`, `RevokeTrustedRelease`, `SetIntegrityPolicyPause`, `SetIntegrityAuthority`, `AppendIntegrityAuditCommitment`.
 - Standard tags for read responses: `Action`, `Site-Id`, `Version`, `Locale`, `Request-Id`, `Schema-Version`, `Nonce` (optional for cache-busting).
+
+## Gateway Adapter Surface (implemented now)
+- Read routes:
+  - `POST /api/public/resolve-route` -> `ResolveRoute`
+  - `POST /api/public/page` -> `GetPage`
+- Write routes (worker adapter):
+  - `POST /api/checkout/order` -> `CreateOrder`
+  - `POST /api/checkout/payment-intent` -> `CreatePaymentIntent`
+- Health endpoints:
+  - `GET /healthz` (node adapter in `scripts/http/public_api_server.mjs`)
+  - `GET /health` and `GET /api/health` (worker adapter in `worker/src/index.ts`)
+- Not yet implemented as adapter routes: additional registry/catalog/access reads (for example `GetSiteConfig`, `GetCategory`, `ListCategories`, `SearchCatalog`, `FacetSearch`, `GetTrustedResolvers`, `GetResolverFlags`) and write routes for payment webhook/status updates, passwordless session actions, and gateway-flag submissions.
 
 ## Publish Model (apply-only)
 1) `blackcat-darkmesh-write` validates and approves a mutation, producing a publish event (`publishId`, `versionId`, hashes, refs).  
