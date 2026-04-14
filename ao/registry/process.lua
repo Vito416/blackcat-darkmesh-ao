@@ -2333,15 +2333,36 @@ end
 
 local previous_Handle = _G.Handle
 local previous_handle = _G.handle
+
+local function emit_handler_error(code, message, meta)
+  return emit_response_json(encode_json(codec.error(code, message, meta)))
+end
+
 local function merged_global_handle(original, msg)
   local routed = fallback_handle(msg)
   if routed ~= nil then
     return routed
   end
   if type(original) == "function" then
-    return original(msg)
+    local ok_original, original_result = pcall(original, msg)
+    if ok_original then
+      if original_result ~= nil then
+        return original_result
+      end
+    else
+      return emit_handler_error(
+        "HANDLER_CRASH",
+        tostring(original_result or "registry_original_handle_crash")
+      )
+    end
   end
-  return nil
+
+  local normalized = enrich_message(msg or {})
+  local action = normalized.Action
+  if type(action) == "string" and action ~= "" then
+    return emit_handler_error("UNROUTED_ACTION", "No handler matched action", { action = action })
+  end
+  return emit_handler_error("UNROUTED_MESSAGE", "No handler matched message shape")
 end
 
 _G.Handle = function(msg)

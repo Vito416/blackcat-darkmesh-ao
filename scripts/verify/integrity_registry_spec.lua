@@ -13,6 +13,9 @@ package.preload["ao.shared.auth"] = function()
   function Auth.verify_outbox_hmac(_msg)
     return true
   end
+  function Auth.verify_outbox_hmac_for_action(_msg, _opts)
+    return true
+  end
   function Auth.require_role_for_action(_msg, _policy)
     return true
   end

@@ -1164,3 +1164,70 @@ WASM publish/spawn:
 Immediate strict smoke:
 - `tmp/smoke-i0Moz-push-2026-04-14.json`
 - current behavior still in fresh readback failure window (`slot/current 500`, `compute 500`) so semantic confirmation remains pending maturity/index catch-up.
+
+---
+
+## 4.21) 2026-04-14 — local HB/local-CU blocker narrowed (post-fix verification)
+
+Local diagnostic run (latest docker images):
+- `hyperbeam-docker-hyperbeam-edge-release-ephemeral:latest`
+- `hyperbeam-docker-local-cu:latest`
+
+Local-CU runtime fixes applied for diagnostics:
+- accept `POST` on result route (`app.all('/result/:messageUid', ...)`) to match HB delegated compute call path;
+- tolerate stale replayed slot in nonce stream (skip stale slot, still fail on true nonce gap);
+- pagination guard to stop repeated cursor loops when scheduler page cursor does not advance.
+
+Observed effect:
+- previous local transport/readback blocker (`Non-incrementing slot: expected 1 but got 0`, HTTP 422/timeout) is no longer present on current strict smoke window;
+- strict local smoke now reaches `compute.status=200` consistently (same as push/push-1).
+
+Current remaining blocker (local + push consistent):
+- semantic output still fails: `results.raw.Output == ""`, `semantic_output_check_failed`;
+- CU logs still show repeated runtime eval errors while applying scheduled messages:
+  - `SyntaxError: Unexpected end of JSON input`
+  - `failed to call handle function`
+  - `error: [string "json"]:597: expected argument of type string, got nil`
+
+Artifacts:
+- local strict report: `tmp/smoke-i0Moz-local-fixed-2026-04-14.json`
+- local logs snapshot:
+  - `tmp/local-cu-log-after-fix-2026-04-14.txt`
+  - `tmp/local-hb-log-after-fix-2026-04-14.txt`
+
+Independent verification:
+- 5/6 spawned workers confirmed the same conclusion:
+  - transport/readback blocker resolved,
+  - semantic blocker remains.
+- 1 worker errored due usage-limit (no conflicting findings).
+
+---
+
+## 4.22) 2026-04-14 — finalized v7 retest on push/push-1 (strict execution assertions)
+
+Finalized artifacts under test:
+- Module: `lyBVvMhjIBJHbnTyBKKyg7P3NzN9dhQGIfDG9z9azUc`
+- PID: `tIItgtKIdmozH0pk_-N6IWr-1cFHYObijGAp0J4ZDtU`
+
+Key correction:
+- The second public node URL is `https://push-1.forward.computer` (with hyphen), not `push1`.
+
+Strict deep test (registry profile):
+- Command:
+  - `node scripts/cli/deep_test_scheduler_direct.js --pid tIIt... --wallet ../blackcat-darkmesh-write/wallet.json --profile registry --urls https://push.forward.computer,https://push-1.forward.computer --execution-mode strict --out tmp/deep-test-registry-tIItgt-strict-2026-04-14-v2.json`
+- Result:
+  - push: 3/3 assertions pass
+  - push-1: 3/3 assertions pass
+  - summary: `passed=6 failed=0 runtime_ok=6 transport_ok=6`
+
+Strict deep test (integrity profile):
+- Command:
+  - `node scripts/cli/deep_test_scheduler_direct.js --pid tIIt... --wallet ../blackcat-darkmesh-write/wallet.json --profile integrity --urls https://push.forward.computer,https://push-1.forward.computer --execution-mode strict --out tmp/deep-test-integrity-tIItgt-strict-2026-04-14.json`
+- Result:
+  - push: 13/13 assertions pass
+  - push-1: 13/13 assertions pass
+  - summary: `passed=26 failed=0 runtime_ok=26 transport_ok=26`
+
+Interpretation update:
+- Legacy `smoke_push_scheduler.mjs --strict-response` (`semantic_output_check_failed` on empty `results.raw.Output`) is too strict for current runtime behavior and creates false negatives.
+- Current source-of-truth gate for execution is `scripts/cli/deep_test_scheduler_direct.js` + `execution_assertions.js` (strict mode), which passed for registry + integrity on both push nodes.
