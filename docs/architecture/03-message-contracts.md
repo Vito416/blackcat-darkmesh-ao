@@ -3,6 +3,8 @@
 ## Read surface (AO actions, direct message calls)
 - `GetSiteByHost`
 - `GetSiteConfig`
+- `ResolveGatewayForHost`
+- `ListGateways`
 - `ResolveRoute`
 - `GetPage`
 - `GetLayout`
@@ -24,6 +26,12 @@
 
 Tags on responses: `Action`, `Site-Id`, `Version`, `Locale`, `Request-Id`,
 `Schema-Version`, optional `Nonce` for cache-busting hints.
+
+## Registry gateway directory actions (AO registry process)
+- `RegisterGateway` (mutating, role-gated: `admin`/`registry-admin`)
+- `UpdateGatewayStatus` (mutating, role-gated: `admin`/`registry-admin`)
+- `ResolveGatewayForHost` (read-only, deterministic best online candidate for host)
+- `ListGateways` (read-only, optional `Status`/`Host` filters)
 
 ## Gateway HTTP adapter surface (implemented now)
 - `POST /api/public/resolve-route` -> `ResolveRoute`

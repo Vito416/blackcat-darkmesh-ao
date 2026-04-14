@@ -26,6 +26,12 @@ type GatewayTemplateCallInput = {
   signatureRef?: string
 }
 
+type SiteByHostLookupInput = {
+  host: string
+  requestId?: string
+  traceId?: string
+}
+
 type GatewayTokenMap = Record<string, string>
 type SignPolicyRuleMap = Record<string, string[]>
 type SignPolicyMap = Record<string, SignPolicyRuleMap>
@@ -45,6 +51,7 @@ const DEFAULT_READ_TIMEOUT_MS = 30000
 const DEFAULT_WRITE_TIMEOUT_MS = 45000
 const DEFAULT_WRITE_RETRIES = 4
 const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{8,128}$/
+const SAFE_REQUEST_ID_RE = /^[A-Za-z0-9._-]{6,128}$/
 
 // Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
 let inboxKey: CryptoKey | null = null
@@ -554,6 +561,41 @@ function resolveTraceId(value: unknown): string {
   return SAFE_TRACE_ID_RE.test(normalized) ? normalized : ''
 }
 
+function normalizeLookupHost(value: unknown): string {
+  const raw = trimString(value).toLowerCase()
+  if (!raw) throw new HTTPException(400, { message: 'host_required' })
+  const host = raw.endsWith('.') ? raw.slice(0, -1) : raw
+  if (!host || host.length > 255) {
+    throw new HTTPException(400, { message: 'invalid_host' })
+  }
+  if (
+    host.includes('://') ||
+    host.includes('/') ||
+    host.includes('?') ||
+    host.includes('#') ||
+    host.includes(':') ||
+    /\s/.test(host)
+  ) {
+    throw new HTTPException(400, { message: 'invalid_host' })
+  }
+  if (host.startsWith('.') || host.endsWith('.') || host.includes('..')) {
+    throw new HTTPException(400, { message: 'invalid_host' })
+  }
+  const labels = host.split('.')
+  if (labels.length < 2) {
+    throw new HTTPException(400, { message: 'invalid_host' })
+  }
+  for (const label of labels) {
+    if (!label || label.length > 63) {
+      throw new HTTPException(400, { message: 'invalid_host' })
+    }
+    if (!/^[a-z0-9-]+$/.test(label) || label.startsWith('-') || label.endsWith('-')) {
+      throw new HTTPException(400, { message: 'invalid_host' })
+    }
+  }
+  return host
+}
+
 function cleanEnv(value: unknown): string {
   const next = trimString(value)
   if (!next) return ''
@@ -648,6 +690,34 @@ function canonicalizeGatewayTemplateInput(input: GatewayTemplateCallInput, heade
     payload: normalizedPayload,
   }
   return { siteId, payload: normalizedPayload, input: normalizedInput }
+}
+
+function parseSiteByHostInput(raw: unknown): SiteByHostLookupInput {
+  const body = asRecord(raw)
+  if (!body) {
+    throw new HTTPException(400, { message: 'invalid_body' })
+  }
+
+  const allowedKeys = new Set(['host', 'Host', 'requestId', 'Request-Id', 'traceId', 'Trace-Id'])
+  for (const key of Object.keys(body)) {
+    if (!allowedKeys.has(key)) {
+      throw new HTTPException(400, { message: 'unknown_field' })
+    }
+  }
+
+  const host = normalizeLookupHost(canonicalFieldValue([body.host, body.Host], 'host_mismatch'))
+  const requestId = canonicalFieldValue([body.requestId, body['Request-Id']], 'request_id_mismatch')
+  if (requestId && !SAFE_REQUEST_ID_RE.test(requestId)) {
+    throw new HTTPException(400, { message: 'invalid_request_id' })
+  }
+
+  const traceRaw = canonicalFieldValue([body.traceId, body['Trace-Id']], 'trace_id_mismatch')
+  const traceId = resolveTraceId(traceRaw)
+  if (traceRaw && !traceId) {
+    throw new HTTPException(400, { message: 'invalid_trace_id' })
+  }
+
+  return { host, requestId, traceId }
 }
 
 function resolveCanonicalSignatureRef(body: Record<string, unknown>, env: Env): string {
@@ -911,6 +981,10 @@ function aoModeFromEnv(env: Env): string {
 
 function resolveSitePid(env: Env): string {
   return cleanEnv(env.AO_SITE_PROCESS_ID)
+}
+
+function resolveRegistryPid(env: Env): string {
+  return cleanEnv((env as any).AO_REGISTRY_PROCESS_ID) || resolveSitePid(env)
 }
 
 function resolveWritePid(env: Env): string {
@@ -1366,6 +1440,117 @@ function buildReadData(action: string, requestId: string, siteId: string, payloa
   return JSON.stringify(body)
 }
 
+function buildSiteByHostTags(
+  requestId: string,
+  registryPid: string,
+  host: string,
+  traceId = '',
+): Array<{ name: string; value: string }> {
+  const tags = [
+    { name: 'Action', value: 'GetSiteByHost' },
+    { name: 'Request-Id', value: requestId },
+    { name: 'Reply-To', value: registryPid },
+    { name: 'Host', value: host },
+    { name: 'signing-format', value: 'ans104' },
+    { name: 'accept-bundle', value: 'true' },
+    { name: 'require-codec', value: 'application/json' },
+    { name: 'Type', value: 'Message' },
+    { name: 'Variant', value: 'ao.TN.1' },
+    { name: 'Data-Protocol', value: 'ao' },
+    { name: 'Content-Type', value: 'application/json' },
+    { name: 'Input-Encoding', value: 'JSON-1' },
+    { name: 'Output-Encoding', value: 'JSON-1' },
+  ] as Array<{ name: string; value: string }>
+
+  if (traceId) tags.push({ name: 'Trace-Id', value: traceId })
+  return tags
+}
+
+function buildSiteByHostData(requestId: string, host: string): string {
+  return JSON.stringify({
+    Action: 'GetSiteByHost',
+    'Request-Id': requestId,
+    Host: host,
+  })
+}
+
+function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<string, unknown> } {
+  const normalized = raw?.results?.raw || raw?.raw || raw || {}
+  const outputCandidate =
+    normalized?.Output ??
+    normalized?.output ??
+    normalized?.Data ??
+    normalized?.data ??
+    raw?.Output ??
+    raw?.output ??
+    null
+
+  let envelope: any = null
+  if (typeof outputCandidate === 'string') {
+    if (outputCandidate.trim()) {
+      try {
+        envelope = JSON.parse(outputCandidate)
+      } catch {
+        envelope = { status: 'ERROR', code: 'INVALID_OUTPUT', message: outputCandidate }
+      }
+    }
+  } else if (outputCandidate && typeof outputCandidate === 'object') {
+    envelope = outputCandidate
+  } else if (normalized && typeof normalized === 'object' && typeof normalized.status === 'string') {
+    envelope = normalized
+  }
+
+  if (!envelope) {
+    return {
+      status: 502,
+      body: {
+        status: 'ERROR',
+        code: 'INVALID_UPSTREAM_RESPONSE',
+        message: 'invalid_registry_response',
+      },
+    }
+  }
+
+  if (String(envelope.status || '').toUpperCase() === 'OK') {
+    const payload = asRecord(envelope.data) || {}
+    const siteId = firstNonEmptyString(payload.siteId, (envelope as any).siteId)
+    const activeVersion = firstNonEmptyString(payload.activeVersion, (envelope as any).activeVersion)
+    if (!siteId) {
+      return {
+        status: 502,
+        body: {
+          status: 'ERROR',
+          code: 'INVALID_UPSTREAM_RESPONSE',
+          message: 'missing_site_id',
+        },
+      }
+    }
+    const data: Record<string, unknown> = { siteId }
+    if (activeVersion) data.activeVersion = activeVersion
+    return {
+      status: 200,
+      body: {
+        status: 'OK',
+        data,
+        source: 'registry',
+      },
+    }
+  }
+
+  const code = trimString(envelope.code).toUpperCase()
+  const status =
+    code === 'NOT_FOUND'
+      ? 404
+      : code === 'INVALID_INPUT' || code === 'UNSUPPORTED_FIELD' || code === 'MISSING_TAGS'
+        ? 400
+        : code === 'FORBIDDEN'
+          ? 403
+          : code === 'UNAUTHORIZED'
+            ? 401
+            : 422
+  return { status, body: envelope }
+}
+
 function normalizeReadEnvelope(raw: any, action: string): { status: number; body: Record<string, unknown> } {
   const normalized = raw?.results?.raw || raw?.raw || raw || {}
   const outputCandidate =
@@ -1485,6 +1670,43 @@ async function executeReadAction(
     result = await fetchComputeFallback(c.env, sitePid, String(slotOrMessage), timeoutMs)
   }
   return normalizeReadEnvelope(result, action)
+}
+
+async function executeSiteByHostLookup(c: any, input: SiteByHostLookupInput) {
+  const registryPid = resolveRegistryPid(c.env)
+  if (!registryPid) throw new HTTPException(500, { message: 'missing_ao_registry_process_id' })
+
+  const requestId = firstNonEmptyString(input.requestId, c.req.header('x-request-id'), randomId('gw-host-read'))
+  const traceId = resolveTraceId(firstNonEmptyString(c.req.header('x-trace-id'), input.traceId))
+  const tags = buildSiteByHostTags(requestId, registryPid, input.host, traceId)
+  const data = buildSiteByHostData(requestId, input.host)
+  const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
+  const ao = await writeAoClient(c.env)
+  const slotOrMessage = await withTimeout(
+    ao.message({
+      process: registryPid,
+      tags,
+      data,
+    }),
+    timeoutMs,
+    'ao_registry_message',
+  )
+
+  let result: any = null
+  try {
+    result = await withTimeout(
+      ao.result({
+        process: registryPid,
+        message: String(slotOrMessage),
+      }),
+      timeoutMs,
+      'ao_registry_result',
+    )
+  } catch {
+    result = await fetchComputeFallback(c.env, registryPid, String(slotOrMessage), timeoutMs)
+  }
+
+  return normalizeSiteByHostEnvelope(result)
 }
 
 function buildWritePayload(input: GatewayTemplateCallInput): Record<string, unknown> {
@@ -1921,6 +2143,7 @@ app.get('/api/health', async (c) => {
       hbUrl: hbUrlFromEnv(c.env),
       scheduler: schedulerFromEnv(c.env),
       sitePidConfigured: Boolean(resolveSitePid(c.env)),
+      registryPidConfigured: Boolean(resolveRegistryPid(c.env)),
       writePidConfigured: Boolean(resolveWritePid(c.env)),
       walletConfigured: Boolean(cleanEnv(c.env.AO_WALLET_JSON)),
       walletPkcs8Configured: Boolean(cleanEnv((c.env as any).AO_WALLET_PKCS8_B64)),
@@ -1931,6 +2154,26 @@ app.get('/api/health', async (c) => {
       },
     },
   })
+})
+
+app.post('/api/public/site-by-host', async (c) => {
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null)
+  const input = parseSiteByHostInput(body)
+  try {
+    const out = await executeSiteByHostLookup(c, input)
+    return c.json(out.body, out.status)
+  } catch (error) {
+    if (error instanceof HTTPException) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    return c.json(
+      {
+        status: 'ERROR',
+        code: 'UPSTREAM_FAILURE',
+        message,
+      },
+      502,
+    )
+  }
 })
 
 app.post('/api/public/resolve-route', async (c) => {

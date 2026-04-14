@@ -32,6 +32,7 @@ API (baseline)
 - `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
 - `GET /health` — liveness check, returns `{ status: "ok" }`.
 - `GET /api/health` — AO bridge readiness (site/write pid + wallet presence).
+- `POST /api/public/site-by-host` — AO registry lookup (`GetSiteByHost`) for host → site metadata.
 - `POST /api/public/resolve-route` — AO read adapter for gateway template calls.
 - `POST /api/public/page` — AO read adapter for gateway template calls.
 - `POST /api/checkout/order` — write adapter (`CreateOrder`) with optional worker auto-sign.
@@ -66,6 +67,7 @@ Env/config
 - `LOG_LEVEL` (debug|info|error): default `info`; `error` suppresses info logs.
 - Gateway AO/write bridge vars:
   - `AO_MODE`, `AO_HB_URL`, `AO_HB_SCHEDULER`
+  - `AO_REGISTRY_PROCESS_ID` (optional; falls back to `AO_SITE_PROCESS_ID` when unset)
   - `AO_SITE_PROCESS_ID`, `WRITE_PROCESS_ID`
   - `AO_WALLET_JSON` (Arweave JWK JSON used for write transport)
   - optional `AO_WALLET_PKCS8_B64` (base64 PKCS#8 private key; preferred when JWK import is restricted)

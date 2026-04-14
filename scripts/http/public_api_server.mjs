@@ -132,6 +132,15 @@ function normalizePath(pathValue) {
   return path.startsWith('/') ? path : `/${path}`
 }
 
+function normalizeHost(hostValue) {
+  const normalized = trimString(hostValue).toLowerCase()
+  if (!normalized) return ''
+  const withoutProtocol = normalized.replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+  const withoutPath = withoutProtocol.split('/')[0]
+  const withoutPort = withoutPath.split(':')[0]
+  return withoutPort.replace(/\.$/, '')
+}
+
 function requestIdFrom(req, body) {
   const headerValue = trimString(req.headers['x-request-id'])
   if (headerValue) return headerValue.slice(0, 128)
@@ -179,7 +188,10 @@ function buildReadData(action, requestId, payload) {
   const siteId = trimString(payload.siteId)
   if (siteId) data['Site-Id'] = siteId
 
-  if (action === 'ResolveRoute') {
+  if (action === 'GetSiteByHost') {
+    const host = normalizeHost(payload.host || payload.hostname)
+    if (host) data.Host = host
+  } else if (action === 'ResolveRoute') {
     const routePath = normalizePath(payload.path)
     data.Path = routePath
     const locale = trimString(payload.locale)
@@ -237,7 +249,10 @@ function normalizeAoEnvelope(rawResult, context = {}) {
       runtimeError &&
       typeof runtimeError === 'object' &&
       Object.keys(runtimeError).length > 0
-    if (!hasRuntimeError && (context.action === 'ResolveRoute' || context.action === 'GetPage')) {
+    if (
+      !hasRuntimeError &&
+      (context.action === 'ResolveRoute' || context.action === 'GetSiteByHost' || context.action === 'GetPage')
+    ) {
       return {
         ok: false,
         status: 404,
@@ -440,7 +455,9 @@ async function executeRead(action, req, body) {
 
   const payload = body.payload && typeof body.payload === 'object' ? body.payload : body
   const siteId = trimString(body.siteId || payload.siteId)
-  if (!siteId) {
+  const host = normalizeHost(body.host || body.hostname || payload.host || payload.hostname)
+
+  if (action !== 'GetSiteByHost' && !siteId) {
     return {
       status: 400,
       body: { ok: false, error: 'site_id_required', traceId: traceId || undefined },
@@ -451,7 +468,16 @@ async function executeRead(action, req, body) {
   const tags = buildCommonTags(action, requestId, traceId)
   addTag(tags, 'Site-Id', siteId)
 
-  if (action === 'ResolveRoute') {
+  if (action === 'GetSiteByHost') {
+    if (!host) {
+      return {
+        status: 400,
+        body: { ok: false, error: 'host_required', traceId: traceId || undefined },
+        meta: { requestId, traceId },
+      }
+    }
+    addTag(tags, 'Host', host)
+  } else if (action === 'ResolveRoute') {
     const routePath = normalizePath(payload.path)
     addTag(tags, 'Path', routePath)
     addTag(tags, 'Locale', payload.locale)
@@ -473,6 +499,7 @@ async function executeRead(action, req, body) {
 
   const data = buildReadData(action, requestId, {
     siteId,
+    host,
     path: payload.path,
     pageId: payload.pageId,
     slug: payload.slug,
@@ -564,7 +591,11 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (url.pathname !== '/api/public/resolve-route' && url.pathname !== '/api/public/page') {
+  if (
+    url.pathname !== '/api/public/resolve-route' &&
+    url.pathname !== '/api/public/site-by-host' &&
+    url.pathname !== '/api/public/page'
+  ) {
     json(res, 404, { ok: false, error: 'not_found', traceId: traceId || undefined }, { traceId })
     return
   }
@@ -582,7 +613,12 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  const action = url.pathname === '/api/public/resolve-route' ? 'ResolveRoute' : 'GetPage'
+  const action =
+    url.pathname === '/api/public/resolve-route'
+      ? 'ResolveRoute'
+      : url.pathname === '/api/public/site-by-host'
+        ? 'GetSiteByHost'
+        : 'GetPage'
   const out = await executeRead(action, req, body)
   json(res, out.status, out.body, out.meta || { traceId })
 })

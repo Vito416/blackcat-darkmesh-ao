@@ -211,6 +211,155 @@ do
   local lookup2 = registry.route(with_req { Action = "GetSiteByHost", Host = "example.com" })
   assert_eq(lookup2.payload.siteId, "site-2", "rebinding took effect")
 
+  -- Gateway directory contract (multi-gateway routing)
+  local gw1 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-1",
+    Url = "https://gw1.example.net",
+    Region = "eu-central",
+    Country = "cz",
+    ["Capacity-Weight"] = 70,
+    Score = 90,
+    Status = "online",
+    ["Last-Seen"] = "2026-04-14T00:00:00Z",
+    Domains = { "example.com", "*.example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw1, "OK", "register gateway 1 status")
+  assert_eq(gw1.payload.gateway.id, "gw-1", "register gateway 1 id")
+
+  local gw2 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-2",
+    Url = "https://gw2.example.net",
+    Region = "eu-west",
+    Country = "de",
+    ["Capacity-Weight"] = 60,
+    Score = 95,
+    Status = "online",
+    ["Last-Seen"] = "2026-04-14T00:00:01Z",
+    Domains = { "example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw2, "OK", "register gateway 2 status")
+
+  local gw3 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-3",
+    Url = "https://gw3.example.net",
+    Region = "us-east",
+    Country = "us",
+    ["Capacity-Weight"] = 999,
+    Score = 999,
+    Status = "offline",
+    ["Last-Seen"] = "2026-04-14T00:00:02Z",
+    Domains = { "example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw3, "OK", "register gateway 3 status")
+
+  local gw_resolve = registry.route(with_req {
+    Action = "ResolveGatewayForHost",
+    Host = "example.com",
+  })
+  assert_status(gw_resolve, "OK", "resolve gateway by host status")
+  assert_eq(gw_resolve.payload.gateway.id, "gw-2", "resolve gateway picks highest score")
+
+  local gw_update = registry.route(with_req {
+    Action = "UpdateGatewayStatus",
+    ["Gateway-Id"] = "gw-2",
+    Status = "offline",
+    Score = 95,
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw_update, "OK", "update gateway status")
+  assert_eq(gw_update.payload.gateway.status, "offline", "update gateway status value")
+
+  local gw_resolve_after_update = registry.route(with_req {
+    Action = "ResolveGatewayForHost",
+    Host = "blog.example.com",
+  })
+  assert_status(gw_resolve_after_update, "OK", "resolve gateway wildcard host status")
+  assert_eq(
+    gw_resolve_after_update.payload.gateway.id,
+    "gw-1",
+    "resolve gateway skips offline and uses wildcard"
+  )
+
+  local gw4 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-4",
+    Url = "https://gw4.example.net",
+    Region = "eu-north",
+    Country = "se",
+    ["Capacity-Weight"] = 70,
+    Score = 90,
+    Status = "online",
+    ["Last-Seen"] = "2026-04-14T00:00:03Z",
+    Domains = { "blog.example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw4, "OK", "register gateway 4 status")
+
+  local tie_break = registry.route(with_req {
+    Action = "ResolveGatewayForHost",
+    Host = "blog.example.com",
+  })
+  assert_status(tie_break, "OK", "resolve gateway tie status")
+  assert_eq(tie_break.payload.gateway.id, "gw-1", "resolve gateway stable tie-break by id")
+
+  local gw_list_online = registry.route(with_req {
+    Action = "ListGateways",
+    Status = "online",
+  })
+  assert_status(gw_list_online, "OK", "list gateways online status")
+  assert_truthy(gw_list_online.payload.count >= 2, "list gateways online count")
+
+  local gw_list_for_host = registry.route(with_req {
+    Action = "ListGateways",
+    Host = "blog.example.com",
+  })
+  assert_status(gw_list_for_host, "OK", "list gateways by host status")
+  assert_truthy(gw_list_for_host.payload.count >= 2, "list gateways by host count")
+
+  local gw_register_denied = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-denied",
+    Url = "https://denied.example.net",
+    Region = "eu",
+    Country = "cz",
+    ["Capacity-Weight"] = 1,
+    Score = 1,
+    Status = "online",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(gw_register_denied, "ERROR", "register gateway forbidden status")
+  assert_code(gw_register_denied, "FORBIDDEN", "register gateway forbidden code")
+
+  local gw_update_denied = registry.route(with_req {
+    Action = "UpdateGatewayStatus",
+    ["Gateway-Id"] = "gw-1",
+    Status = "offline",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(gw_update_denied, "ERROR", "update gateway forbidden status")
+  assert_code(gw_update_denied, "FORBIDDEN", "update gateway forbidden code")
+
+  local gw_extra = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-extra",
+    Url = "https://gw-extra.example.net",
+    Region = "eu-central",
+    Country = "cz",
+    ["Capacity-Weight"] = 1,
+    Score = 1,
+    Status = "online",
+    Foo = "bar",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw_extra, "ERROR", "register gateway extra status")
+  assert_code(gw_extra, "UNSUPPORTED_FIELD", "register gateway extra code")
+
   -- forbidden bind
   local denied = registry.route(with_req {
     Action = "BindDomain",

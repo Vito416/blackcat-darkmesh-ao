@@ -32,10 +32,11 @@ tests/             # integration, message-contracts, snapshots, security
 ```
 
 ## Message Contract (public AO surface)
-- Read (public/tenant-scoped): `GetSiteByHost`, `ResolveRoute`, `GetPage`, `GetLayout`, `GetNavigation`, `GetProduct`, `ListCategoryProducts`, `HasEntitlement`.
+- Read (public/tenant-scoped): `GetSiteByHost`, `ResolveGatewayForHost`, `ListGateways`, `ResolveRoute`, `GetPage`, `GetLayout`, `GetNavigation`, `GetProduct`, `ListCategoryProducts`, `HasEntitlement`.
 - Integrity registry reads: `GetTrustedRoot`, `GetTrustedReleaseByVersion`, `GetTrustedReleaseByRoot`, `GetIntegrityPolicy`, `GetIntegrityAuthority`, `GetIntegrityAuditState`, `GetIntegritySnapshot`.
 - Ingest (from `blackcat-darkmesh-write` only): publish/apply events carrying `Action`, `Site-Id`, `Publish-Id`, `Version`, `Schema-Version`, `Timestamp`, `Request-Id`, `Signature-Ref` and content hashes/refs. No direct write commands are accepted from gateways/clients.
 - Integrity registry writes (admin/registry-admin only): `PublishTrustedRelease`, `RevokeTrustedRelease`, `SetIntegrityPolicyPause`, `SetIntegrityAuthority`, `AppendIntegrityAuditCommitment`.
+- Gateway directory writes (admin/registry-admin only): `RegisterGateway`, `UpdateGatewayStatus`.
 - Standard tags for read responses: `Action`, `Site-Id`, `Version`, `Locale`, `Request-Id`, `Schema-Version`, `Nonce` (optional for cache-busting).
 
 ## Gateway Adapter Surface (implemented now)

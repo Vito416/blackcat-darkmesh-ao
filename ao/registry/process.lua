@@ -15,6 +15,10 @@ local handlers = {}
 local allowed_actions = {
   "GetSiteByHost",
   "GetSiteConfig",
+  "RegisterGateway",
+  "UpdateGatewayStatus",
+  "ResolveGatewayForHost",
+  "ListGateways",
   "RegisterSite",
   "BindDomain",
   "SetActiveVersion",
@@ -39,6 +43,8 @@ local allowed_actions = {
 }
 
 local role_policy = {
+  RegisterGateway = { "admin", "registry-admin" },
+  UpdateGatewayStatus = { "admin", "registry-admin" },
   RegisterSite = { "admin", "registry-admin" },
   BindDomain = { "admin", "registry-admin" },
   SetActiveVersion = { "admin", "registry-admin" },
@@ -58,6 +64,8 @@ local role_policy = {
 local hmac_skip_actions = {
   GetSiteByHost = true,
   GetSiteConfig = true,
+  ResolveGatewayForHost = true,
+  ListGateways = true,
   GetTrustedResolvers = true,
   GetTrustedReleaseByVersion = true,
   GetTrustedReleaseByRoot = true,
@@ -73,6 +81,7 @@ local hmac_skip_actions = {
 local state = persist.load("registry_state", {
   sites = {}, -- siteId => {config = {}, createdAt = ts}
   domains = {}, -- host => siteId
+  gateways = {}, -- gatewayId => { id, url, region, country, capacityWeight, score, status, lastSeen, domains = {} }
   active_versions = {}, -- siteId => versionId
   roles = {}, -- siteId => map[user] = role
   trust = { resolvers = {}, manifestTx = nil, updatedAt = nil },
@@ -163,6 +172,29 @@ end
 
 ensure_integrity_state()
 
+local function ensure_gateway_state()
+  state.gateways = state.gateways or {}
+  for gateway_id, gateway in pairs(state.gateways) do
+    if type(gateway) ~= "table" then
+      state.gateways[gateway_id] = nil
+    else
+      gateway.id = gateway.id or gateway_id
+      gateway.url = gateway.url or ""
+      gateway.region = gateway.region or ""
+      gateway.country = gateway.country or ""
+      gateway.capacityWeight = tonumber(gateway.capacityWeight) or 0
+      gateway.score = tonumber(gateway.score) or 0
+      gateway.status = gateway.status or "offline"
+      gateway.lastSeen = gateway.lastSeen or "1970-01-01T00:00:00Z"
+      if type(gateway.domains) ~= "table" then
+        gateway.domains = {}
+      end
+    end
+  end
+end
+
+ensure_gateway_state()
+
 local function append_log(path, obj)
   if not path or path == "" or not json_ok then
     return
@@ -248,6 +280,520 @@ function handlers.GetSiteConfig(msg)
     siteId = msg["Site-Id"],
     config = site.config,
     activeVersion = state.active_versions[msg["Site-Id"]],
+  }
+end
+
+local gateway_status_allow = {
+  online = true,
+  offline = true,
+  degraded = true,
+  draining = true,
+  maintenance = true,
+}
+
+local function normalize_host_label(value)
+  if type(value) ~= "string" then
+    return nil
+  end
+  return string.lower(value)
+end
+
+local function validate_gateway_id(value)
+  local ok_type, err_type = validation.assert_type(value, "string", "Gateway-Id")
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 128, "Gateway-Id")
+  if not ok_len then
+    return false, err_len
+  end
+  if not tostring(value):match "^[%w%-%._]+$" then
+    return false, "invalid_format:Gateway-Id"
+  end
+  return true
+end
+
+local function validate_gateway_url(value)
+  local ok_type, err_type = validation.assert_type(value, "string", "Url")
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 512, "Url")
+  if not ok_len then
+    return false, err_len
+  end
+  if value:find "%s" then
+    return false, "invalid_format:Url"
+  end
+  if not value:match "^https?://[%w]" then
+    return false, "invalid_format:Url"
+  end
+  return true
+end
+
+local function validate_gateway_short_token(value, field, max_len)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, max_len, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if not value:match "^[%w%-%._]+$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function parse_gateway_numeric(value, field)
+  local num = tonumber(value)
+  if not num then
+    return nil, ("invalid_number:%s"):format(field)
+  end
+  if num < 0 then
+    return nil, ("invalid_number:%s"):format(field)
+  end
+  return num
+end
+
+local function validate_gateway_status(value)
+  local ok_type, err_type = validation.assert_type(value, "string", "Status")
+  if not ok_type then
+    return false, err_type
+  end
+  local normalized = string.lower(value)
+  if not gateway_status_allow[normalized] then
+    return false, "invalid_value:Status"
+  end
+  return true, normalized
+end
+
+local function validate_gateway_last_seen(value)
+  local ok_type, err_type = validation.assert_type(value, "string", "Last-Seen")
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 64, "Last-Seen")
+  if not ok_len then
+    return false, err_len
+  end
+  if not value:match "^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$" then
+    return false, "invalid_format:Last-Seen"
+  end
+  return true
+end
+
+local function validate_gateway_domain_label(value, field, allow_wildcard)
+  local normalized = normalize_host_label(value)
+  if not normalized then
+    return false, ("invalid_type:%s"):format(field)
+  end
+  local ok_len, err_len = validation.check_length(normalized, 255, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if normalized:find "%s" or normalized:find "%.%.+" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  if normalized:sub(1, 1) == "." or normalized:sub(-1) == "." then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  if normalized:find "%*" then
+    if not allow_wildcard or not normalized:match "^%*%.[%w%-%.]+$" then
+      return false, ("invalid_format:%s"):format(field)
+    end
+  elseif not normalized:match "^[%w%-%.]+$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true, normalized
+end
+
+local function normalize_gateway_domains(raw_domains)
+  if raw_domains == nil then
+    return {}
+  end
+  if type(raw_domains) == "string" then
+    raw_domains = { raw_domains }
+  end
+  if type(raw_domains) ~= "table" then
+    return nil, "Domains must be string or array", "Domains"
+  end
+  local seen = {}
+  local out = {}
+  for idx, domain in ipairs(raw_domains) do
+    local ok_domain, norm_or_err = validate_gateway_domain_label(
+      domain,
+      ("Domains[%d]"):format(idx),
+      true
+    )
+    if not ok_domain then
+      return nil, norm_or_err, ("Domains[%d]"):format(idx)
+    end
+    local normalized = norm_or_err
+    if not seen[normalized] then
+      seen[normalized] = true
+      out[#out + 1] = normalized
+    end
+  end
+  table.sort(out)
+  return out
+end
+
+local function snapshot_gateway(gateway)
+  local domains = {}
+  for i, domain in ipairs(gateway.domains or {}) do
+    domains[i] = domain
+  end
+  return {
+    id = gateway.id,
+    url = gateway.url,
+    region = gateway.region,
+    country = gateway.country,
+    capacityWeight = gateway.capacityWeight,
+    score = gateway.score,
+    status = gateway.status,
+    lastSeen = gateway.lastSeen,
+    domains = domains,
+  }
+end
+
+local function host_matches_gateway_domain(host, domain)
+  if host == domain then
+    return true
+  end
+  if domain:sub(1, 2) ~= "*." then
+    return false
+  end
+  local suffix = domain:sub(3)
+  if host == suffix then
+    return true
+  end
+  local tail = "." .. suffix
+  return host:sub(-#tail) == tail
+end
+
+function handlers.RegisterGateway(msg)
+  local required = {
+    "Gateway-Id",
+    "Url",
+    "Region",
+    "Country",
+    "Capacity-Weight",
+    "Score",
+    "Status",
+  }
+  local ok, missing = validation.require_fields(msg, required)
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Gateway-Id",
+    "Url",
+    "Region",
+    "Country",
+    "Capacity-Weight",
+    "Score",
+    "Status",
+    "Last-Seen",
+    "Domains",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local ok_id, err_id = validate_gateway_id(msg["Gateway-Id"])
+  if not ok_id then
+    return codec.error("INVALID_INPUT", err_id, { field = "Gateway-Id" })
+  end
+  local ok_url, err_url = validate_gateway_url(msg.Url)
+  if not ok_url then
+    return codec.error("INVALID_INPUT", err_url, { field = "Url" })
+  end
+  local ok_region, err_region = validate_gateway_short_token(msg.Region, "Region", 64)
+  if not ok_region then
+    return codec.error("INVALID_INPUT", err_region, { field = "Region" })
+  end
+  local ok_country, err_country = validate_gateway_short_token(msg.Country, "Country", 16)
+  if not ok_country then
+    return codec.error("INVALID_INPUT", err_country, { field = "Country" })
+  end
+  local capacity_weight, err_weight = parse_gateway_numeric(
+    msg["Capacity-Weight"],
+    "Capacity-Weight"
+  )
+  if err_weight then
+    return codec.error("INVALID_INPUT", err_weight, { field = "Capacity-Weight" })
+  end
+  local score, err_score = parse_gateway_numeric(msg.Score, "Score")
+  if err_score then
+    return codec.error("INVALID_INPUT", err_score, { field = "Score" })
+  end
+  local ok_status, status_or_err = validate_gateway_status(msg.Status)
+  if not ok_status then
+    return codec.error("INVALID_INPUT", status_or_err, { field = "Status" })
+  end
+  local status = status_or_err
+
+  local last_seen = msg["Last-Seen"] or now_iso()
+  local ok_seen, err_seen = validate_gateway_last_seen(last_seen)
+  if not ok_seen then
+    return codec.error("INVALID_INPUT", err_seen, { field = "Last-Seen" })
+  end
+  local domains, domains_err, domains_field = normalize_gateway_domains(msg.Domains)
+  if not domains then
+    return codec.error("INVALID_INPUT", domains_err, { field = domains_field or "Domains" })
+  end
+
+  local gateway_id = msg["Gateway-Id"]
+  local existing = state.gateways[gateway_id]
+  if existing then
+    return codec.ok {
+      gateway = snapshot_gateway(existing),
+      note = "already_registered",
+    }
+  end
+
+  local gateway = {
+    id = gateway_id,
+    url = msg.Url,
+    region = msg.Region,
+    country = msg.Country,
+    capacityWeight = capacity_weight,
+    score = score,
+    status = status,
+    lastSeen = last_seen,
+    domains = domains,
+  }
+  state.gateways[gateway_id] = gateway
+  audit.record("registry", "RegisterGateway", msg, nil, {
+    gatewayId = gateway_id,
+    status = status,
+    domains = #domains,
+  })
+  return codec.ok { gateway = snapshot_gateway(gateway) }
+end
+
+function handlers.UpdateGatewayStatus(msg)
+  local required = { "Gateway-Id" }
+  local ok, missing = validation.require_fields(msg, required)
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Gateway-Id",
+    "Status",
+    "Score",
+    "Capacity-Weight",
+    "Last-Seen",
+    "Domains",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_id, err_id = validate_gateway_id(msg["Gateway-Id"])
+  if not ok_id then
+    return codec.error("INVALID_INPUT", err_id, { field = "Gateway-Id" })
+  end
+  local gateway = state.gateways[msg["Gateway-Id"]]
+  if not gateway then
+    return codec.error("NOT_FOUND", "Gateway not registered", { gatewayId = msg["Gateway-Id"] })
+  end
+
+  local has_update = msg.Status ~= nil
+    or msg.Score ~= nil
+    or msg["Capacity-Weight"] ~= nil
+    or msg["Last-Seen"] ~= nil
+    or msg.Domains ~= nil
+  if not has_update then
+    return codec.error("INVALID_INPUT", "No mutable fields supplied")
+  end
+
+  if msg.Status ~= nil then
+    local ok_status, status_or_err = validate_gateway_status(msg.Status)
+    if not ok_status then
+      return codec.error("INVALID_INPUT", status_or_err, { field = "Status" })
+    end
+    gateway.status = status_or_err
+  end
+  if msg.Score ~= nil then
+    local score, err_score = parse_gateway_numeric(msg.Score, "Score")
+    if err_score then
+      return codec.error("INVALID_INPUT", err_score, { field = "Score" })
+    end
+    gateway.score = score
+  end
+  if msg["Capacity-Weight"] ~= nil then
+    local weight, err_weight = parse_gateway_numeric(msg["Capacity-Weight"], "Capacity-Weight")
+    if err_weight then
+      return codec.error("INVALID_INPUT", err_weight, { field = "Capacity-Weight" })
+    end
+    gateway.capacityWeight = weight
+  end
+  if msg["Last-Seen"] ~= nil then
+    local ok_seen, err_seen = validate_gateway_last_seen(msg["Last-Seen"])
+    if not ok_seen then
+      return codec.error("INVALID_INPUT", err_seen, { field = "Last-Seen" })
+    end
+    gateway.lastSeen = msg["Last-Seen"]
+  end
+  if msg.Domains ~= nil then
+    local domains, domains_err, domains_field = normalize_gateway_domains(msg.Domains)
+    if not domains then
+      return codec.error("INVALID_INPUT", domains_err, { field = domains_field or "Domains" })
+    end
+    gateway.domains = domains
+  end
+
+  audit.record("registry", "UpdateGatewayStatus", msg, nil, {
+    gatewayId = gateway.id,
+    status = gateway.status,
+  })
+  return codec.ok { gateway = snapshot_gateway(gateway) }
+end
+
+function handlers.ResolveGatewayForHost(msg)
+  local required = { "Host" }
+  local ok, missing = validation.require_fields(msg, required)
+  if not ok then
+    return codec.error("INVALID_INPUT", "Host is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_host, host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", host_or_err, { field = "Host" })
+  end
+  local host = host_or_err
+
+  local candidates = {}
+  for _, gateway in pairs(state.gateways) do
+    if gateway.status == "online" then
+      for _, domain in ipairs(gateway.domains or {}) do
+        if host_matches_gateway_domain(host, domain) then
+          candidates[#candidates + 1] = {
+            gateway = gateway,
+            matchedDomain = domain,
+            score = tonumber(gateway.score) or 0,
+            capacityWeight = tonumber(gateway.capacityWeight) or 0,
+          }
+          break
+        end
+      end
+    end
+  end
+
+  if #candidates == 0 then
+    return codec.error("NOT_FOUND", "No online gateway candidate for host", { host = host })
+  end
+
+  table.sort(candidates, function(a, b)
+    if a.score ~= b.score then
+      return a.score > b.score
+    end
+    if a.capacityWeight ~= b.capacityWeight then
+      return a.capacityWeight > b.capacityWeight
+    end
+    return tostring(a.gateway.id) < tostring(b.gateway.id)
+  end)
+
+  local chosen = candidates[1]
+  return codec.ok {
+    host = host,
+    matchedDomain = chosen.matchedDomain,
+    gateway = snapshot_gateway(chosen.gateway),
+  }
+end
+
+function handlers.ListGateways(msg)
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Status",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local status_filter = nil
+  if msg.Status ~= nil then
+    local ok_status, status_or_err = validate_gateway_status(msg.Status)
+    if not ok_status then
+      return codec.error("INVALID_INPUT", status_or_err, { field = "Status" })
+    end
+    status_filter = status_or_err
+  end
+
+  local host_filter = nil
+  if msg.Host ~= nil then
+    local ok_host, host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+    if not ok_host then
+      return codec.error("INVALID_INPUT", host_or_err, { field = "Host" })
+    end
+    host_filter = host_or_err
+  end
+
+  local list = {}
+  for _, gateway in pairs(state.gateways) do
+    local include = true
+    if status_filter and gateway.status ~= status_filter then
+      include = false
+    end
+    if include and host_filter then
+      include = false
+      for _, domain in ipairs(gateway.domains or {}) do
+        if host_matches_gateway_domain(host_filter, domain) then
+          include = true
+          break
+        end
+      end
+    end
+    if include then
+      list[#list + 1] = snapshot_gateway(gateway)
+    end
+  end
+  table.sort(list, function(a, b)
+    return tostring(a.id) < tostring(b.id)
+  end)
+
+  return codec.ok {
+    count = #list,
+    gateways = list,
   }
 end
 

@@ -3,6 +3,7 @@
 This adapter exposes gateway-compatible read endpoints:
 
 - `POST /api/public/resolve-route`
+- `POST /api/public/site-by-host`
 - `POST /api/public/page`
 - `GET /healthz`
 
@@ -22,6 +23,10 @@ node scripts/http/public_api_server.mjs
 curl -sS -X POST http://127.0.0.1:8788/api/public/resolve-route \
   -H 'content-type: application/json' \
   --data '{"siteId":"site-main","path":"/"}'
+
+curl -sS -X POST http://127.0.0.1:8788/api/public/site-by-host \
+  -H 'content-type: application/json' \
+  --data '{"host":"example.com"}'
 
 curl -sS -X POST http://127.0.0.1:8788/api/public/page \
   -H 'content-type: application/json' \

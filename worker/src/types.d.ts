@@ -34,6 +34,7 @@ export interface Env {
   AO_MODE?: string
   AO_HB_URL?: string
   AO_HB_SCHEDULER?: string
+  AO_REGISTRY_PROCESS_ID?: string
   AO_SITE_PROCESS_ID?: string
   WRITE_PROCESS_ID?: string
   AO_WALLET_JSON?: string

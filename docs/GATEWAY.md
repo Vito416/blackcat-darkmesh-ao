@@ -37,7 +37,8 @@ The following are not currently exposed as gateway adapter HTTP routes in this
 repo, even if AO processes may support some of them directly:
 
 - Additional read routes for registry/catalog/access actions (for example:
-  `GetSiteByHost`, `GetSiteConfig`, `GetLayout`, `GetNavigation`, `GetProduct`,
+  `GetSiteByHost`, `GetSiteConfig`, `ResolveGatewayForHost`, `ListGateways`,
+  `GetLayout`, `GetNavigation`, `GetProduct`,
   `ListCategoryProducts`, `GetCategory`, `ListCategories`, `SearchCatalog`,
   `FacetSearch`, `RelatedProducts`, `RecentlyViewed`, `GetRecommendations`,
   `GetResolverFlags`, `GetTrustedResolvers`, `HasEntitlement`).
