@@ -20,6 +20,9 @@ local allowed_actions = {
   "ResolveGatewayForHost",
   "ListGateways",
   "RegisterSite",
+  "SetSiteRuntime",
+  "UpsertSiteRuntime",
+  "GetSiteRuntime",
   "BindDomain",
   "SetActiveVersion",
   "GrantRole",
@@ -46,6 +49,8 @@ local role_policy = {
   RegisterGateway = { "admin", "registry-admin" },
   UpdateGatewayStatus = { "admin", "registry-admin" },
   RegisterSite = { "admin", "registry-admin" },
+  SetSiteRuntime = { "admin", "registry-admin" },
+  UpsertSiteRuntime = { "admin", "registry-admin" },
   BindDomain = { "admin", "registry-admin" },
   SetActiveVersion = { "admin", "registry-admin" },
   GrantRole = { "admin", "registry-admin" },
@@ -66,6 +71,7 @@ local hmac_skip_actions = {
   GetSiteConfig = true,
   ResolveGatewayForHost = true,
   ListGateways = true,
+  GetSiteRuntime = true,
   GetTrustedResolvers = true,
   GetTrustedReleaseByVersion = true,
   GetTrustedReleaseByRoot = true,
@@ -80,6 +86,7 @@ local hmac_skip_actions = {
 -- pseudo-state kept in-memory for now; AO runtime would persist this.
 local state = persist.load("registry_state", {
   sites = {}, -- siteId => {config = {}, createdAt = ts}
+  site_runtimes = {}, -- siteId => { processId, moduleId?, scheduler?, updatedAt }
   domains = {}, -- host => siteId
   gateways = {}, -- gatewayId => { id, url, region, country, capacityWeight, score, status, lastSeen, domains = {} }
   active_versions = {}, -- siteId => versionId
@@ -195,6 +202,235 @@ end
 
 ensure_gateway_state()
 
+local RUNTIME_POINTER_INPUT_KEYS = {
+  processId = true,
+  ProcessId = true,
+  ["Process-Id"] = true,
+  process_id = true,
+  moduleId = true,
+  ModuleId = true,
+  ["Module-Id"] = true,
+  module_id = true,
+  scheduler = true,
+  Scheduler = true,
+  ["Scheduler-Id"] = true,
+  schedulerId = true,
+  scheduler_id = true,
+}
+
+local RUNTIME_POINTER_STORED_KEYS = {
+  processId = true,
+  ProcessId = true,
+  ["Process-Id"] = true,
+  process_id = true,
+  moduleId = true,
+  ModuleId = true,
+  ["Module-Id"] = true,
+  module_id = true,
+  scheduler = true,
+  Scheduler = true,
+  ["Scheduler-Id"] = true,
+  schedulerId = true,
+  scheduler_id = true,
+  updatedAt = true,
+  UpdatedAt = true,
+  ["Updated-At"] = true,
+  updated_at = true,
+}
+
+local function first_present(tbl, keys)
+  for _, key in ipairs(keys) do
+    if tbl[key] ~= nil then
+      return tbl[key]
+    end
+  end
+  return nil
+end
+
+local function validate_runtime_pointer_token(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 128, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if value == "" or not tostring(value):match "^[A-Za-z0-9_-]+$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function validate_runtime_pointer_timestamp(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 64, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if not value:match "^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function normalize_runtime_pointer(raw, opts)
+  opts = opts or {}
+  local field_name = opts.field_name or "Runtime"
+  local require_process = opts.require_process ~= false
+  local allow_stored_shape = opts.allow_stored_shape == true
+
+  if type(raw) ~= "table" then
+    return nil, ("invalid_type:%s"):format(field_name), field_name
+  end
+
+  local allowed = allow_stored_shape and RUNTIME_POINTER_STORED_KEYS or RUNTIME_POINTER_INPUT_KEYS
+  for key in pairs(raw) do
+    if not allowed[key] then
+      return nil, ("unsupported_field:%s.%s"):format(field_name, tostring(key)), field_name
+    end
+  end
+
+  local process_id = first_present(raw, { "processId", "ProcessId", "Process-Id", "process_id" })
+  local module_id = first_present(raw, { "moduleId", "ModuleId", "Module-Id", "module_id" })
+  local scheduler =
+    first_present(raw, { "scheduler", "Scheduler", "Scheduler-Id", "schedulerId", "scheduler_id" })
+  local updated_at = first_present(raw, { "updatedAt", "UpdatedAt", "Updated-At", "updated_at" })
+
+  if process_id == nil and require_process then
+    return nil, ("missing_field:%s.processId"):format(field_name), field_name .. ".processId"
+  end
+
+  local runtime = {}
+  if process_id ~= nil then
+    local ok_process, err_process =
+      validate_runtime_pointer_token(process_id, field_name .. ".processId")
+    if not ok_process then
+      return nil, err_process, field_name .. ".processId"
+    end
+    runtime.processId = tostring(process_id)
+  end
+  if module_id ~= nil then
+    local ok_module, err_module =
+      validate_runtime_pointer_token(module_id, field_name .. ".moduleId")
+    if not ok_module then
+      return nil, err_module, field_name .. ".moduleId"
+    end
+    runtime.moduleId = tostring(module_id)
+  end
+  if scheduler ~= nil then
+    local ok_scheduler, err_scheduler =
+      validate_runtime_pointer_token(scheduler, field_name .. ".scheduler")
+    if not ok_scheduler then
+      return nil, err_scheduler, field_name .. ".scheduler"
+    end
+    runtime.scheduler = tostring(scheduler)
+  end
+  if allow_stored_shape and updated_at ~= nil then
+    local ok_updated, err_updated =
+      validate_runtime_pointer_timestamp(updated_at, field_name .. ".updatedAt")
+    if not ok_updated then
+      return nil, err_updated, field_name .. ".updatedAt"
+    end
+    runtime.updatedAt = tostring(updated_at)
+  end
+  return runtime
+end
+
+local function snapshot_runtime_pointer(runtime)
+  if type(runtime) ~= "table" then
+    return nil
+  end
+  if type(runtime.processId) ~= "string" or runtime.processId == "" then
+    return nil
+  end
+  local out = { processId = runtime.processId }
+  if type(runtime.moduleId) == "string" and runtime.moduleId ~= "" then
+    out.moduleId = runtime.moduleId
+  end
+  if type(runtime.scheduler) == "string" and runtime.scheduler ~= "" then
+    out.scheduler = runtime.scheduler
+  end
+  if type(runtime.updatedAt) == "string" and runtime.updatedAt ~= "" then
+    out.updatedAt = runtime.updatedAt
+  end
+  return out
+end
+
+local function runtime_for_site(site_id)
+  if type(state.site_runtimes) ~= "table" then
+    return nil
+  end
+  return snapshot_runtime_pointer(state.site_runtimes[site_id])
+end
+
+local function upsert_site_runtime(site_id, runtime_pointer)
+  local normalized, norm_err, norm_field = normalize_runtime_pointer(runtime_pointer, {
+    field_name = "Runtime",
+  })
+  if not normalized then
+    return nil, norm_err, norm_field
+  end
+  normalized.updatedAt = now_iso()
+  state.site_runtimes = state.site_runtimes or {}
+  state.site_runtimes[site_id] = normalized
+  return snapshot_runtime_pointer(normalized)
+end
+
+local function ensure_site_runtime_state()
+  if type(state.sites) ~= "table" then
+    state.sites = {}
+  end
+  if type(state.site_runtimes) ~= "table" then
+    state.site_runtimes = {}
+  end
+
+  for site_id, site in pairs(state.sites) do
+    if type(site_id) ~= "string" or type(site) ~= "table" then
+      state.sites[site_id] = nil
+    else
+      if type(site.config) ~= "table" then
+        site.config = {}
+      end
+      if type(site.createdAt) ~= "string" or site.createdAt == "" then
+        site.createdAt = "1970-01-01T00:00:00Z"
+      end
+      if state.site_runtimes[site_id] == nil and type(site.runtime) == "table" then
+        local normalized = normalize_runtime_pointer(site.runtime, {
+          field_name = "Runtime",
+          allow_stored_shape = true,
+        })
+        if normalized then
+          normalized.updatedAt = normalized.updatedAt or now_iso()
+          state.site_runtimes[site_id] = normalized
+        end
+      end
+    end
+  end
+
+  for site_id, runtime_pointer in pairs(state.site_runtimes) do
+    if type(site_id) ~= "string" or state.sites[site_id] == nil then
+      state.site_runtimes[site_id] = nil
+    else
+      local normalized = normalize_runtime_pointer(runtime_pointer, {
+        field_name = "Runtime",
+        allow_stored_shape = true,
+      })
+      if not normalized then
+        state.site_runtimes[site_id] = nil
+      else
+        normalized.updatedAt = normalized.updatedAt or now_iso()
+        state.site_runtimes[site_id] = normalized
+      end
+    end
+  end
+end
+
+ensure_site_runtime_state()
+
 local function append_log(path, obj)
   if not path or path == "" or not json_ok then
     return
@@ -243,10 +479,15 @@ function handlers.GetSiteByHost(msg)
   if not site_id then
     return codec.error("NOT_FOUND", "Domain not bound", { host = msg.Host })
   end
-  return codec.ok {
+  local payload = {
     siteId = site_id,
     activeVersion = state.active_versions[site_id],
   }
+  local runtime = runtime_for_site(site_id)
+  if runtime then
+    payload.runtime = runtime
+  end
+  return codec.ok(payload)
 end
 
 function handlers.GetSiteConfig(msg)
@@ -276,10 +517,51 @@ function handlers.GetSiteConfig(msg)
   if not site then
     return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
   end
-  return codec.ok {
+  local payload = {
     siteId = msg["Site-Id"],
     config = site.config,
     activeVersion = state.active_versions[msg["Site-Id"]],
+  }
+  local runtime = runtime_for_site(msg["Site-Id"])
+  if runtime then
+    payload.runtime = runtime
+  end
+  return codec.ok(payload)
+end
+
+function handlers.GetSiteRuntime(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Site-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_len, err = validation.check_length(msg["Site-Id"], 128, "Site-Id")
+  if not ok_len then
+    return codec.error("INVALID_INPUT", err, { field = "Site-Id" })
+  end
+  if not state.sites[msg["Site-Id"]] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  end
+  local runtime = runtime_for_site(msg["Site-Id"])
+  if not runtime then
+    return codec.error("NOT_FOUND", "Site runtime not set", { siteId = msg["Site-Id"] })
+  end
+  return codec.ok {
+    siteId = msg["Site-Id"],
+    runtime = runtime,
   }
 end
 
@@ -805,6 +1087,7 @@ function handlers.RegisterSite(msg)
     "Timestamp",
     "Site-Id",
     "Config",
+    "Runtime",
     "Version",
     "Actor-Role",
     "Schema-Version",
@@ -833,28 +1116,104 @@ function handlers.RegisterSite(msg)
   if not ok_size then
     return codec.error("INVALID_INPUT", err_size, { field = "Config" })
   end
+  local runtime = nil
+  if msg.Runtime ~= nil then
+    local runtime_err, runtime_field
+    runtime, runtime_err, runtime_field = normalize_runtime_pointer(msg.Runtime, {
+      field_name = "Runtime",
+    })
+    if not runtime then
+      return codec.error("INVALID_INPUT", runtime_err, { field = runtime_field or "Runtime" })
+    end
+  end
   local existing = state.sites[msg["Site-Id"]]
   if existing then
-    return codec.ok {
+    local payload = {
       siteId = msg["Site-Id"],
       createdAt = existing.createdAt,
       config = existing.config,
       activeVersion = state.active_versions[msg["Site-Id"]],
       note = "already_registered",
     }
+    local existing_runtime = runtime_for_site(msg["Site-Id"])
+    if existing_runtime then
+      payload.runtime = existing_runtime
+    end
+    return codec.ok(payload)
   end
   state.sites[msg["Site-Id"]] = {
     config = config,
     createdAt = now_iso(),
   }
   state.active_versions[msg["Site-Id"]] = config.version or msg.Version or nil
+  if runtime then
+    local upserted, upsert_err, upsert_field = upsert_site_runtime(msg["Site-Id"], runtime)
+    if not upserted then
+      return codec.error("INVALID_INPUT", upsert_err, { field = upsert_field or "Runtime" })
+    end
+  end
   audit.record("registry", "RegisterSite", msg, nil)
-  return codec.ok {
+  local payload = {
     siteId = msg["Site-Id"],
     createdAt = state.sites[msg["Site-Id"]].createdAt,
     activeVersion = state.active_versions[msg["Site-Id"]],
   }
+  local current_runtime = runtime_for_site(msg["Site-Id"])
+  if current_runtime then
+    payload.runtime = current_runtime
+  end
+  return codec.ok(payload)
 end
+
+function handlers.SetSiteRuntime(msg)
+  local required = { "Site-Id", "Runtime" }
+  local ok, missing = validation.require_fields(msg, required)
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Runtime",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_len, err = validation.check_length(msg["Site-Id"], 128, "Site-Id")
+  if not ok_len then
+    return codec.error("INVALID_INPUT", err, { field = "Site-Id" })
+  end
+  if not state.sites[msg["Site-Id"]] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  end
+  local runtime, runtime_err, runtime_field = normalize_runtime_pointer(msg.Runtime, {
+    field_name = "Runtime",
+  })
+  if not runtime then
+    return codec.error("INVALID_INPUT", runtime_err, { field = runtime_field or "Runtime" })
+  end
+  local upserted, upsert_err, upsert_field = upsert_site_runtime(msg["Site-Id"], runtime)
+  if not upserted then
+    return codec.error("INVALID_INPUT", upsert_err, { field = upsert_field or "Runtime" })
+  end
+  audit.record("registry", msg.Action or "SetSiteRuntime", msg, nil, {
+    siteId = msg["Site-Id"],
+    processId = upserted.processId,
+  })
+  return codec.ok {
+    siteId = msg["Site-Id"],
+    runtime = upserted,
+  }
+end
+
+handlers.UpsertSiteRuntime = handlers.SetSiteRuntime
 
 function handlers.BindDomain(msg)
   local required = { "Site-Id", "Host" }

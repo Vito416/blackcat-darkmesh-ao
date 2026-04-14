@@ -27,12 +27,13 @@ const baseEnv = {
   AO_WALLET_JSON: '{}',
 }
 
-async function call(
+async function callPath(
+  path: string,
   body: Record<string, unknown>,
   envOverrides: Record<string, unknown> = {},
   headers: Record<string, string> = {},
 ) {
-  const req = new Request('http://localhost/api/public/site-by-host', {
+  const req = new Request(`http://localhost${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -41,6 +42,14 @@ async function call(
     body: JSON.stringify(body),
   })
   return mod.fetch(req, { ...baseEnv, ...envOverrides } as any, {} as any)
+}
+
+async function callSiteByHost(
+  body: Record<string, unknown>,
+  envOverrides: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
+  return callPath('/api/public/site-by-host', body, envOverrides, headers)
 }
 
 describe('/api/public/site-by-host', () => {
@@ -61,7 +70,11 @@ describe('/api/public/site-by-host', () => {
       },
     })
 
-    const res = await call({ host: 'Shop.EXAMPLE.com', requestId: 'req-site-host-1' }, {}, { 'x-trace-id': 'trace-id-1234' })
+    const res = await callSiteByHost(
+      { host: 'Shop.EXAMPLE.com', requestId: 'req-site-host-1' },
+      {},
+      { 'x-trace-id': 'trace-id-1234' },
+    )
     expect(res.status).toBe(200)
 
     const json = await res.json()
@@ -85,6 +98,51 @@ describe('/api/public/site-by-host', () => {
     expect(payload.tags).toEqual(expect.arrayContaining([{ name: 'Host', value: 'shop.example.com' }]))
   })
 
+  it('passes through runtime pointers from registry output', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-runtime')
+    aoClient.result.mockResolvedValueOnce({
+      raw: {
+        Output: JSON.stringify({
+          status: 'OK',
+          data: {
+            siteId: 'site-runtime',
+            activeVersion: 'v2',
+            runtime: {
+              processId: 'SITE_PID_RUNTIME',
+              moduleId: 'SITE_MODULE_RUNTIME',
+              scheduler: 'SITE_SCHED_RUNTIME',
+            },
+            runtimePointers: {
+              catalogProcessId: 'CAT_PID_RUNTIME',
+            },
+            readProcessId: 'READ_PID_RUNTIME',
+          },
+        }),
+      },
+    })
+
+    const res = await callSiteByHost({ host: 'runtime.example.com' })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json).toEqual({
+      status: 'OK',
+      data: {
+        siteId: 'site-runtime',
+        activeVersion: 'v2',
+        runtime: {
+          processId: 'SITE_PID_RUNTIME',
+          moduleId: 'SITE_MODULE_RUNTIME',
+          scheduler: 'SITE_SCHED_RUNTIME',
+        },
+        runtimePointers: {
+          catalogProcessId: 'CAT_PID_RUNTIME',
+          readProcessId: 'READ_PID_RUNTIME',
+        },
+      },
+      source: 'registry',
+    })
+  })
+
   it('maps NOT_FOUND to 404', async () => {
     aoClient.message.mockResolvedValueOnce('msg-2')
     aoClient.result.mockResolvedValueOnce({
@@ -97,7 +155,7 @@ describe('/api/public/site-by-host', () => {
       },
     })
 
-    const res = await call({ host: 'missing.example.com' })
+    const res = await callSiteByHost({ host: 'missing.example.com' })
     expect(res.status).toBe(404)
     const json = await res.json()
     expect(json).toMatchObject({ status: 'ERROR', code: 'NOT_FOUND' })
@@ -115,7 +173,7 @@ describe('/api/public/site-by-host', () => {
       },
     })
 
-    const res = await call({ host: 'shop.example.com' })
+    const res = await callSiteByHost({ host: 'shop.example.com' })
     expect(res.status).toBe(502)
     const json = await res.json()
     expect(json).toMatchObject({
@@ -126,7 +184,7 @@ describe('/api/public/site-by-host', () => {
   })
 
   it('rejects invalid input with 400', async () => {
-    const res = await call({ host: 'https://bad.example.com' })
+    const res = await callSiteByHost({ host: 'https://bad.example.com' })
     expect(res.status).toBe(400)
     const text = await res.text()
     expect(text).toContain('invalid_host')
@@ -135,10 +193,68 @@ describe('/api/public/site-by-host', () => {
   it('maps upstream transport failure to 502', async () => {
     aoClient.message.mockRejectedValueOnce(new Error('upstream_down'))
 
-    const res = await call({ host: 'shop.example.com' })
+    const res = await callSiteByHost({ host: 'shop.example.com' })
     expect(res.status).toBe(502)
     const json = await res.json()
     expect(json).toMatchObject({ status: 'ERROR', code: 'UPSTREAM_FAILURE' })
     expect(String(json.message)).toContain('upstream_down')
+  })
+
+  it('resolves read site process from registry runtime pointers when AO site pid is not configured', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-site-runtime').mockResolvedValueOnce('msg-read')
+    aoClient.result
+      .mockResolvedValueOnce({
+        raw: {
+          Output: JSON.stringify({
+            status: 'OK',
+            data: {
+              siteId: 'site-alpha',
+              runtime: {
+                processId: 'SITE_PID_DYNAMIC',
+              },
+            },
+          }),
+        },
+      })
+      .mockResolvedValueOnce({
+        raw: {
+          Output: JSON.stringify({
+            status: 'OK',
+            data: { route: { pageId: 'home' } },
+          }),
+        },
+      })
+
+    const res = await callPath(
+      '/api/public/resolve-route',
+      {
+        siteId: 'site-alpha',
+        payload: { siteId: 'site-alpha', path: '/' },
+      },
+      {
+        GATEWAY_TEMPLATE_TOKEN_MAP: JSON.stringify({ 'site-alpha': 'tok-alpha' }),
+      },
+      {
+        authorization: 'Bearer tok-alpha',
+      },
+    )
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({
+      status: 'OK',
+      data: { route: { pageId: 'home' } },
+    })
+
+    expect(aoClient.message).toHaveBeenCalledTimes(2)
+    const runtimeLookup = aoClient.message.mock.calls[0][0]
+    expect(runtimeLookup.process).toBe('REGISTRY_PID_1')
+    expect(runtimeLookup.tags).toEqual(expect.arrayContaining([{ name: 'Action', value: 'GetSiteRuntime' }]))
+    expect(JSON.parse(String(runtimeLookup.data))).toMatchObject({
+      Action: 'GetSiteRuntime',
+      'Site-Id': 'site-alpha',
+    })
+
+    const readLookup = aoClient.message.mock.calls[1][0]
+    expect(readLookup.process).toBe('SITE_PID_DYNAMIC')
+    expect(readLookup.tags).toEqual(expect.arrayContaining([{ name: 'Action', value: 'ResolveRoute' }]))
   })
 })

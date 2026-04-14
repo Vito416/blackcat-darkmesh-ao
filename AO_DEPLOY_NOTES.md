@@ -1231,3 +1231,25 @@ Strict deep test (integrity profile):
 Interpretation update:
 - Legacy `smoke_push_scheduler.mjs --strict-response` (`semantic_output_check_failed` on empty `results.raw.Output`) is too strict for current runtime behavior and creates false negatives.
 - Current source-of-truth gate for execution is `scripts/cli/deep_test_scheduler_direct.js` + `execution_assertions.js` (strict mode), which passed for registry + integrity on both push nodes.
+
+---
+
+## 4.23) 2026-04-15 — shared AO registry runtime pointers (multi-site gateway contract)
+
+Gap closure implemented for universal gateway routing:
+
+- Registry now supports explicit per-site runtime pointers in shared state:
+  - new actions: `SetSiteRuntime`, `UpsertSiteRuntime`, `GetSiteRuntime`
+  - `RegisterSite` accepts optional `Runtime`
+  - `GetSiteByHost` and `GetSiteConfig` now include `runtime` when configured
+- Runtime pointer contract is validated and normalized (typed fields, strict allowlist, format checks).
+- Worker `/api/public/site-by-host` now passes runtime pointers through to callers.
+- Worker read path can resolve site read PID from registry runtime pointers when `AO_SITE_PROCESS_ID` is not statically configured.
+- Write adapter now supports optional per-request write PID routing (`X-Write-Process-Id` / `writeProcessId`) behind explicit opt-in and token auth gates.
+
+Validation and tests:
+- `stylua --check ao scripts` ✅
+- `AUTH_REQUIRE_SIGNATURE=0 lua5.4 scripts/verify/contracts.lua` ✅
+- `AUTH_REQUIRE_SIGNATURE=0 lua5.4 scripts/verify/integrity_registry_spec.lua` ✅
+- Worker tests (`npm test`) ✅
+- Write adapter contract tests (`npm run test:checkout-adapter-contract`) ✅

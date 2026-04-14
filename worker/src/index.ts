@@ -52,6 +52,51 @@ const DEFAULT_WRITE_TIMEOUT_MS = 45000
 const DEFAULT_WRITE_RETRIES = 4
 const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{8,128}$/
 const SAFE_REQUEST_ID_RE = /^[A-Za-z0-9._-]{6,128}$/
+const RUNTIME_POINTER_FIELD_KEYS = [
+  'processId',
+  'siteProcessId',
+  'readProcessId',
+  'writeProcessId',
+  'catalogProcessId',
+  'accessProcessId',
+  'registryProcessId',
+  'sitePid',
+  'readPid',
+  'writePid',
+  'catalogPid',
+  'accessPid',
+  'registryPid',
+  'site_process_id',
+  'read_process_id',
+  'write_process_id',
+  'catalog_process_id',
+  'access_process_id',
+  'registry_process_id',
+  'ProcessId',
+  'Process-Id',
+  'process_id',
+  'moduleId',
+  'ModuleId',
+  'Module-Id',
+  'module_id',
+  'scheduler',
+  'Scheduler',
+  'Scheduler-Id',
+  'schedulerId',
+  'scheduler_id',
+] as const
+const SITE_RUNTIME_PROCESS_FIELD_KEYS = [
+  'processId',
+  'siteProcessId',
+  'readProcessId',
+  'ProcessId',
+  'Process-Id',
+  'process_id',
+  'sitePid',
+  'readPid',
+  'site_process_id',
+  'read_process_id',
+] as const
 
 // Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
 let inboxKey: CryptoKey | null = null
@@ -630,6 +675,73 @@ function firstNonEmptyString(...values: unknown[]): string {
   for (const value of values) {
     const next = trimString(value)
     if (next) return next
+  }
+  return ''
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> | null {
+  for (const value of values) {
+    const record = asRecord(value)
+    if (record) return record
+  }
+  return null
+}
+
+type RuntimePointerProjection = {
+  runtime?: Record<string, unknown>
+  runtimePointers?: Record<string, unknown>
+}
+
+function collectRuntimePointerFields(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const source of sources) {
+    if (!source) continue
+    for (const key of RUNTIME_POINTER_FIELD_KEYS) {
+      const value = trimString(source[key])
+      if (value) out[key] = value
+    }
+  }
+  return out
+}
+
+function extractRuntimePointerProjection(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): RuntimePointerProjection {
+  const runtime = firstRecord(
+    ...sources.map((source) => source?.runtime),
+    ...sources.map((source) => source?.Runtime),
+  )
+  const runtimePointers = firstRecord(
+    ...sources.map((source) => source?.runtimePointers),
+    ...sources.map((source) => source?.RuntimePointers),
+    ...sources.map((source) => source?.runtimePointer),
+    ...sources.map((source) => source?.RuntimePointer),
+  )
+  const scalarPointers = collectRuntimePointerFields(...sources)
+  const projection: RuntimePointerProjection = {}
+  if (runtime) {
+    projection.runtime = { ...runtime }
+  }
+  if (runtimePointers || Object.keys(scalarPointers).length > 0) {
+    projection.runtimePointers = {
+      ...(runtimePointers ? { ...runtimePointers } : {}),
+      ...scalarPointers,
+    }
+  }
+  return projection
+}
+
+function resolveSiteRuntimeProcessId(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): string {
+  for (const source of sources) {
+    if (!source) continue
+    for (const key of SITE_RUNTIME_PROCESS_FIELD_KEYS) {
+      const value = trimString(source[key])
+      if (value) return value
+    }
   }
   return ''
 }
@@ -1474,6 +1586,40 @@ function buildSiteByHostData(requestId: string, host: string): string {
   })
 }
 
+function buildSiteRuntimeLookupTags(
+  requestId: string,
+  registryPid: string,
+  siteId: string,
+  traceId = '',
+): Array<{ name: string; value: string }> {
+  const tags = [
+    { name: 'Action', value: 'GetSiteRuntime' },
+    { name: 'Request-Id', value: requestId },
+    { name: 'Reply-To', value: registryPid },
+    { name: 'Site-Id', value: siteId },
+    { name: 'signing-format', value: 'ans104' },
+    { name: 'accept-bundle', value: 'true' },
+    { name: 'require-codec', value: 'application/json' },
+    { name: 'Type', value: 'Message' },
+    { name: 'Variant', value: 'ao.TN.1' },
+    { name: 'Data-Protocol', value: 'ao' },
+    { name: 'Content-Type', value: 'application/json' },
+    { name: 'Input-Encoding', value: 'JSON-1' },
+    { name: 'Output-Encoding', value: 'JSON-1' },
+  ] as Array<{ name: string; value: string }>
+
+  if (traceId) tags.push({ name: 'Trace-Id', value: traceId })
+  return tags
+}
+
+function buildSiteRuntimeLookupData(requestId: string, siteId: string): string {
+  return JSON.stringify({
+    Action: 'GetSiteRuntime',
+    'Request-Id': requestId,
+    'Site-Id': siteId,
+  })
+}
+
 function isShellPromptOutput(value: unknown): boolean {
   const record = asRecord(value)
   if (!record) return false
@@ -1548,6 +1694,7 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
     const payload = asRecord(envelope.data) || {}
     const siteId = firstNonEmptyString(payload.siteId, (envelope as any).siteId)
     const activeVersion = firstNonEmptyString(payload.activeVersion, (envelope as any).activeVersion)
+    const runtimeProjection = extractRuntimePointerProjection(payload, asRecord(envelope))
     if (!siteId) {
       return {
         status: 502,
@@ -1560,6 +1707,8 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
     }
     const data: Record<string, unknown> = { siteId }
     if (activeVersion) data.activeVersion = activeVersion
+    if (runtimeProjection.runtime) data.runtime = runtimeProjection.runtime
+    if (runtimeProjection.runtimePointers) data.runtimePointers = runtimeProjection.runtimePointers
     return {
       status: 200,
       body: {
@@ -1584,6 +1733,62 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
               ? 422
               : 502
   return { status, body: envelope }
+}
+
+function normalizeSiteRuntimeLookupEnvelope(raw: any): {
+  siteProcessId: string
+  runtime?: Record<string, unknown>
+  runtimePointers?: Record<string, unknown>
+} {
+  const normalized = raw?.results?.raw || raw?.raw || raw || {}
+  const outputCandidate =
+    normalized?.Output ??
+    normalized?.output ??
+    normalized?.Data ??
+    normalized?.data ??
+    raw?.Output ??
+    raw?.output ??
+    null
+
+  let envelope: any = null
+  if (typeof outputCandidate === 'string') {
+    if (outputCandidate.trim()) {
+      try {
+        envelope = JSON.parse(outputCandidate)
+      } catch {
+        envelope = null
+      }
+    }
+  } else if (outputCandidate && typeof outputCandidate === 'object') {
+    envelope = outputCandidate
+  } else if (normalized && typeof normalized === 'object' && typeof normalized.status === 'string') {
+    envelope = normalized
+  }
+
+  if (!envelope || isShellPromptOutput(envelope)) {
+    return { siteProcessId: '' }
+  }
+
+  const envelopeStatus = trimString((envelope as Record<string, unknown>).status).toUpperCase()
+  if (envelopeStatus !== 'OK') {
+    return { siteProcessId: '' }
+  }
+
+  const payload = asRecord(envelope.data) || {}
+  const config = asRecord(payload.config)
+  const projection = extractRuntimePointerProjection(payload, config, asRecord(envelope))
+  const siteProcessId = resolveSiteRuntimeProcessId(
+    projection.runtime,
+    projection.runtimePointers,
+    payload,
+    config,
+    asRecord(envelope),
+  )
+  return {
+    siteProcessId,
+    ...(projection.runtime ? { runtime: projection.runtime } : {}),
+    ...(projection.runtimePointers ? { runtimePointers: projection.runtimePointers } : {}),
+  }
 }
 
 function normalizeReadEnvelope(raw: any, action: string): { status: number; body: Record<string, unknown> } {
@@ -1675,15 +1880,67 @@ function normalizeReadEnvelope(raw: any, action: string): { status: number; body
   return { status, body: envelope }
 }
 
+async function resolveSiteRuntimeBySiteId(c: any, siteId: string, traceId = ''): Promise<{
+  siteProcessId: string
+  runtime?: Record<string, unknown>
+  runtimePointers?: Record<string, unknown>
+}> {
+  const registryPid = resolveRegistryPid(c.env)
+  if (!registryPid || !siteId) return { siteProcessId: '' }
+
+  const requestId = randomId('gw-site-runtime')
+  const tags = buildSiteRuntimeLookupTags(requestId, registryPid, siteId, traceId)
+  const data = buildSiteRuntimeLookupData(requestId, siteId)
+  const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
+  const ao = await writeAoClient(c.env)
+  const slotOrMessage = await withTimeout(
+    ao.message({
+      process: registryPid,
+      tags,
+      data,
+    }),
+    timeoutMs,
+    'ao_registry_site_runtime_message',
+  )
+
+  let result: any = null
+  try {
+    result = await withTimeout(
+      ao.result({
+        process: registryPid,
+        message: String(slotOrMessage),
+      }),
+      timeoutMs,
+      'ao_registry_site_runtime_result',
+    )
+  } catch {
+    result = await fetchComputeFallback(c.env, registryPid, String(slotOrMessage), timeoutMs)
+  }
+
+  return normalizeSiteRuntimeLookupEnvelope(result)
+}
+
+async function resolveReadSitePid(c: any, siteId: string, traceId = ''): Promise<string> {
+  const configured = resolveSitePid(c.env)
+  if (configured) return configured
+
+  try {
+    const runtime = await resolveSiteRuntimeBySiteId(c, siteId, traceId)
+    if (runtime.siteProcessId) return runtime.siteProcessId
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logEvent('registry_site_runtime_lookup_failed', { siteId, message }, 'debug')
+  }
+
+  throw new HTTPException(500, { message: 'missing_ao_site_process_id' })
+}
+
 async function executeReadAction(
   c: any,
   action: 'ResolveRoute' | 'GetPage',
   input: GatewayTemplateCallInput,
   authenticatedSiteId?: string,
 ) {
-  const sitePid = resolveSitePid(c.env)
-  if (!sitePid) throw new HTTPException(500, { message: 'missing_ao_site_process_id' })
-
   const payload = asRecord(input.payload) || {}
   const siteId = resolveCanonicalSiteId(
     firstNonEmptyString(input.siteId, (input as any).SiteId, (input as any)['Site-Id']),
@@ -1701,6 +1958,7 @@ async function executeReadAction(
     randomId('gw-read'),
   )
   const traceId = resolveTraceId(firstNonEmptyString(c.req.header('x-trace-id'), (input as any).traceId))
+  const sitePid = await resolveReadSitePid(c, siteId, traceId)
   const tags = buildReadTags(action, requestId, siteId, sitePid, payload, traceId)
   const data = buildReadData(action, requestId, siteId, payload)
   const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)

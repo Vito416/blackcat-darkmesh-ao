@@ -180,12 +180,19 @@ end
 -- Registry tests
 do
   local registry = require "ao.registry.process"
-  registry.route(with_req {
+  local register_site_1 = registry.route(with_req {
     Action = "RegisterSite",
     ["Site-Id"] = "site-1",
     Config = { version = "v1" },
+    Runtime = {
+      processId = "proc-site-1",
+      moduleId = "module-site-1",
+      scheduler = "scheduler-site-1",
+    },
     ["Actor-Role"] = "admin",
   })
+  assert_status(register_site_1, "OK", "register site with runtime status")
+  assert_eq(register_site_1.payload.runtime.processId, "proc-site-1", "register runtime process")
   local bind = registry.route(with_req {
     Action = "BindDomain",
     ["Site-Id"] = "site-1",
@@ -196,6 +203,7 @@ do
   local lookup = registry.route(with_req { Action = "GetSiteByHost", Host = "example.com" })
   assert_eq(lookup.status, "OK", "get site by host status")
   assert_eq(lookup.payload.siteId, "site-1", "domain->siteId")
+  assert_eq(lookup.payload.runtime.processId, "proc-site-1", "domain lookup runtime process")
 
   -- conflict: binding another site to same host should overwrite in stub (and keep deterministic)
   registry.route(
@@ -210,6 +218,68 @@ do
   assert_status(rebind, "OK", "rebind status")
   local lookup2 = registry.route(with_req { Action = "GetSiteByHost", Host = "example.com" })
   assert_eq(lookup2.payload.siteId, "site-2", "rebinding took effect")
+  assert_falsy(lookup2.payload.runtime, "rebind runtime absent before set")
+
+  local set_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = {
+      processId = "proc-site-2",
+      moduleId = "module-site-2",
+      scheduler = "scheduler-site-2",
+    },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(set_runtime, "OK", "set site runtime status")
+  assert_eq(set_runtime.payload.runtime.processId, "proc-site-2", "set site runtime process")
+
+  local get_runtime = registry.route(with_req {
+    Action = "GetSiteRuntime",
+    ["Site-Id"] = "site-2",
+  })
+  assert_status(get_runtime, "OK", "get site runtime status")
+  assert_eq(get_runtime.payload.runtime.moduleId, "module-site-2", "get site runtime module")
+
+  local get_cfg_runtime = registry.route(with_req {
+    Action = "GetSiteConfig",
+    ["Site-Id"] = "site-2",
+  })
+  assert_status(get_cfg_runtime, "OK", "get site config runtime status")
+  assert_eq(
+    get_cfg_runtime.payload.runtime.scheduler,
+    "scheduler-site-2",
+    "site config runtime scheduler"
+  )
+
+  local upsert_runtime = registry.route(with_req {
+    Action = "UpsertSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = {
+      processId = "proc-site-2b",
+      moduleId = "module-site-2b",
+    },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(upsert_runtime, "OK", "upsert site runtime status")
+  assert_eq(upsert_runtime.payload.runtime.processId, "proc-site-2b", "upsert site runtime process")
+
+  local bad_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = { processId = "bad runtime id" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_runtime, "ERROR", "set site runtime invalid status")
+  assert_code(bad_runtime, "INVALID_INPUT", "set site runtime invalid code")
+
+  local denied_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = { processId = "proc-denied" },
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(denied_runtime, "ERROR", "set site runtime forbidden status")
+  assert_code(denied_runtime, "FORBIDDEN", "set site runtime forbidden code")
 
   -- Gateway directory contract (multi-gateway routing)
   local gw1 = registry.route(with_req {
