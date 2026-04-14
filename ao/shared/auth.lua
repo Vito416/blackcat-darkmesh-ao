@@ -491,6 +491,30 @@ function Auth.verify_outbox_hmac(msg)
   return true
 end
 
+-- Optional action-aware wrapper for OUTBOX_HMAC enforcement.
+-- opts.require_for: only enforce when opts.require_for[action] == true
+-- opts.skip_for: skip enforcement when opts.skip_for[action] == true
+function Auth.verify_outbox_hmac_for_action(msg, opts)
+  opts = opts or {}
+  local action = msg and msg.Action
+  if type(action) ~= "string" or action == "" then
+    return Auth.verify_outbox_hmac(msg)
+  end
+
+  if type(opts.require_for) == "table" then
+    if not opts.require_for[action] then
+      return true
+    end
+    return Auth.verify_outbox_hmac(msg)
+  end
+
+  if type(opts.skip_for) == "table" and opts.skip_for[action] then
+    return true
+  end
+
+  return Auth.verify_outbox_hmac(msg)
+end
+
 local function rate_key(msg)
   local site = msg["Site-Id"] or "global"
   local actor = msg.Subject or msg["Actor-Id"] or msg["Actor-Role"] or "anon"

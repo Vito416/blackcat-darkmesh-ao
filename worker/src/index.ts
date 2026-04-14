@@ -579,6 +579,86 @@ function firstNonEmptyString(...values: unknown[]): string {
   return ''
 }
 
+function canonicalFieldValue(values: unknown[], mismatchMessage: string): string {
+  const provided = Array.from(
+    new Set(
+      values
+        .map((value) => trimString(value))
+        .filter((value) => !!value),
+    ),
+  )
+  if (provided.length > 1) {
+    throw new HTTPException(400, { message: mismatchMessage })
+  }
+  return provided[0] || ''
+}
+
+function payloadSiteId(payload: Record<string, unknown> | null | undefined): string {
+  if (!payload) return ''
+  return canonicalFieldValue([payload.siteId, payload.SiteId, payload['Site-Id']], 'site_id_mismatch')
+}
+
+function topLevelSiteId(record: Record<string, unknown>): string {
+  return canonicalFieldValue([record.siteId, record.SiteId, record['Site-Id']], 'site_id_mismatch')
+}
+
+function resolveCanonicalSiteId(
+  topLevel: string,
+  payload: string,
+  header: string,
+  required = true,
+): string {
+  const provided = [topLevel, payload, header].filter((value) => !!value)
+  if (provided.length === 0) {
+    if (required) throw new HTTPException(400, { message: 'site_id_required' })
+    return ''
+  }
+  const canonical = provided[0]
+  for (const candidate of provided.slice(1)) {
+    if (candidate !== canonical) {
+      throw new HTTPException(400, { message: 'site_id_mismatch' })
+    }
+  }
+  return canonical
+}
+
+function canonicalizeGatewayTemplateInput(input: GatewayTemplateCallInput, headerSiteRaw?: string) {
+  const payload = asRecord(input.payload) || {}
+  const topLevel = firstNonEmptyString(input.siteId, (input as any).SiteId, (input as any)['Site-Id'])
+  const payloadLevel = payloadSiteId(payload)
+  const header = trimString(headerSiteRaw)
+  const siteId = resolveCanonicalSiteId(topLevel, payloadLevel, header, true)
+  const normalizedPayload = { ...payload, siteId }
+  const normalizedInput: GatewayTemplateCallInput = {
+    ...input,
+    siteId,
+    payload: normalizedPayload,
+  }
+  return { siteId, payload: normalizedPayload, input: normalizedInput }
+}
+
+function resolveCanonicalSignatureRef(body: Record<string, unknown>, env: Env): string {
+  const provided = canonicalFieldValue(
+    [body.signatureRef, body.SignatureRef, body['Signature-Ref']],
+    'signature_ref_mismatch',
+  )
+  return provided || cleanEnv(env.WORKER_SIGNATURE_REF) || 'worker-ed25519'
+}
+
+function canonicalizeSignBody(body: Record<string, unknown>, env: Env) {
+  const payload = asRecord(body.payload) || asRecord(body.Payload) || {}
+  const siteId = resolveCanonicalSiteId(topLevelSiteId(body), payloadSiteId(payload), '', false)
+  const signatureRef = resolveCanonicalSignatureRef(body, env)
+  const normalizedPayload = siteId ? { ...payload, siteId } : { ...payload }
+  const normalized: Record<string, unknown> = {
+    ...body,
+    payload: normalizedPayload,
+    signatureRef,
+  }
+  if (siteId) normalized.siteId = siteId
+  return { normalized, siteId, signatureRef }
+}
+
 function randomId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
 }
@@ -664,22 +744,9 @@ function roleAllowed(allowedRoles: string[], role: string) {
 }
 
 function resolveSignRequestContext(body: Record<string, unknown>, env: Env) {
-  const payload = asRecord(body.payload)
-  const siteId = firstNonEmptyString(
-    body.siteId,
-    body.SiteId,
-    body['Site-Id'],
-    payload?.siteId,
-    payload?.SiteId,
-    payload?.['Site-Id'],
-  )
-  const signatureRef = firstNonEmptyString(
-    body.signatureRef,
-    body.SignatureRef,
-    body['Signature-Ref'],
-    env.WORKER_SIGNATURE_REF,
-    'worker-ed25519',
-  )
+  const payload = asRecord(body.payload) || asRecord(body.Payload)
+  const siteId = resolveCanonicalSiteId(topLevelSiteId(body), payloadSiteId(payload), '', false)
+  const signatureRef = resolveCanonicalSignatureRef(body, env)
   const action = firstNonEmptyString(body.action, body.Action)
   const role = firstNonEmptyString(body.role, body.Role, body['Actor-Role'])
   return { action, role, siteId, signatureRef }
@@ -1185,6 +1252,16 @@ function stableStringify(value: any): string {
 }
 
 function canonicalDetachedMessage(cmd: any): string {
+  const payload = asRecord(cmd.payload) || asRecord(cmd.Payload) || {}
+  const siteId = firstNonEmptyString(
+    cmd.siteId,
+    cmd.SiteId,
+    cmd['Site-Id'],
+    payload.siteId,
+    payload.SiteId,
+    payload['Site-Id'],
+  )
+  const signatureRef = firstNonEmptyString(cmd.signatureRef, cmd.SignatureRef, cmd['Signature-Ref'])
   const parts = [
     cmd.action || cmd.Action || '',
     cmd.tenant || cmd.Tenant || '',
@@ -1193,7 +1270,9 @@ function canonicalDetachedMessage(cmd: any): string {
     cmd.nonce || cmd.Nonce || '',
     cmd.role || cmd.Role || cmd['Actor-Role'] || '',
     stableStringify(cmd.payload || cmd.Payload || {}),
-    cmd.requestId || cmd['Request-Id'] || ''
+    cmd.requestId || cmd['Request-Id'] || '',
+    siteId,
+    signatureRef,
   ]
   return parts.join('|')
 }
@@ -1338,13 +1417,26 @@ function normalizeReadEnvelope(raw: any, action: string): { status: number; body
   return { status, body: envelope }
 }
 
-async function executeReadAction(c: any, action: 'ResolveRoute' | 'GetPage', input: GatewayTemplateCallInput) {
+async function executeReadAction(
+  c: any,
+  action: 'ResolveRoute' | 'GetPage',
+  input: GatewayTemplateCallInput,
+  authenticatedSiteId?: string,
+) {
   const sitePid = resolveSitePid(c.env)
   if (!sitePid) throw new HTTPException(500, { message: 'missing_ao_site_process_id' })
 
-  const payload = asRecord(input.payload) || asRecord(input) || {}
-  const siteId = firstNonEmptyString(input.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
-  if (!siteId) throw new HTTPException(400, { message: 'site_id_required' })
+  const payload = asRecord(input.payload) || {}
+  const siteId = resolveCanonicalSiteId(
+    firstNonEmptyString(input.siteId, (input as any).SiteId, (input as any)['Site-Id']),
+    payloadSiteId(payload),
+    '',
+    true,
+  )
+  if (authenticatedSiteId && siteId !== authenticatedSiteId) {
+    throw new HTTPException(403, { message: 'site_scope_mismatch' })
+  }
+  payload.siteId = siteId
   const requestId = firstNonEmptyString(
     input.requestId,
     c.req.header('x-request-id'),
@@ -1398,17 +1490,28 @@ function validateWriteRouteAction(bodyAction: unknown, expected: string): void {
   throw new HTTPException(400, { message: 'action_route_mismatch' })
 }
 
-function buildWriteCommand(c: any, input: GatewayTemplateCallInput, expected: string) {
+function buildWriteCommand(c: any, input: GatewayTemplateCallInput, expected: string, authenticatedSiteId: string) {
   validateWriteRouteAction(input.action, expected)
   const payload = buildWritePayload(input)
-  const siteId = firstNonEmptyString(input.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
-  if (siteId && !payload.siteId) payload.siteId = siteId
+  const siteId = resolveCanonicalSiteId(
+    firstNonEmptyString(input.siteId, (input as any).SiteId, (input as any)['Site-Id']),
+    payloadSiteId(payload),
+    trimString(c.req.header('x-bridge-site-id')),
+    true,
+  )
+  if (siteId !== authenticatedSiteId) {
+    throw new HTTPException(403, { message: 'site_scope_mismatch' })
+  }
+  payload.siteId = siteId
 
   const requestId = firstNonEmptyString(input.requestId, c.req.header('x-request-id'), randomId('gw-write'))
   const actor = firstNonEmptyString(input.actor, 'gateway-template')
   const role = firstNonEmptyString(input.role, 'admin')
   const tenant = firstNonEmptyString(input.tenant, payload.siteId)
   if (!tenant) throw new HTTPException(400, { message: 'tenant_required' })
+  if (tenant !== siteId) {
+    throw new HTTPException(403, { message: 'site_scope_mismatch' })
+  }
 
   const command: Record<string, unknown> = {
     action: expected,
@@ -1416,6 +1519,7 @@ function buildWriteCommand(c: any, input: GatewayTemplateCallInput, expected: st
     actor,
     role,
     tenant,
+    siteId,
     timestamp: firstNonEmptyString(input.timestamp, new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')),
     nonce: firstNonEmptyString(input.nonce, randomId('nonce')),
     payload,
@@ -1433,11 +1537,12 @@ async function maybeSignWriteCommand(env: Env, command: Record<string, unknown>)
   if (trimString(command.signature) && trimString(command.signatureRef)) return command
   const autoSign = boolEnv(env.GATEWAY_WRITE_AUTO_SIGN, true)
   if (!autoSign) throw new HTTPException(401, { message: 'signature_required' })
-  const signature = await signCommand(env, command)
+  const signatureRef = cleanEnv(env.WORKER_SIGNATURE_REF) || 'worker-ed25519'
+  const signableCommand = { ...command, signatureRef }
+  const signature = await signCommand(env, signableCommand)
   return {
-    ...command,
+    ...signableCommand,
     signature,
-    signatureRef: cleanEnv(env.WORKER_SIGNATURE_REF) || 'worker-ed25519',
   }
 }
 
@@ -1763,12 +1868,13 @@ app.post('/sign', async (c) => {
       throw new HTTPException(400, { message: 'unknown_field' })
     }
   }
-  const signContext = enforceSignPolicy(c.env, body)
-  const nonce = body.nonce || body.Nonce
+  const { normalized: signBody } = canonicalizeSignBody(body, c.env)
+  const signContext = enforceSignPolicy(c.env, signBody)
+  const nonce = signBody.nonce || signBody.Nonce
   if (!nonce || typeof nonce !== 'string' || nonce.length > 128) {
     throw new HTTPException(400, { message: 'missing_nonce' })
   }
-  const ts = body.timestamp || body.ts
+  const ts = signBody.timestamp || signBody.ts
   const tsNum = typeof ts === 'string' ? parseInt(ts, 10) : ts
   const windowSec = parseInt(c.env.SIGN_TS_WINDOW || '300', 10)
   const now = Math.floor(Date.now() / 1000)
@@ -1776,12 +1882,12 @@ app.post('/sign', async (c) => {
     throw new HTTPException(400, { message: 'stale_timestamp' })
   }
   await checkReplay(c, `sign:${nonce}`, windowSec + 30)
-  const payloadBytes = new TextEncoder().encode(JSON.stringify(body))
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(signBody))
   const maxBytes = parseInt(c.env.SIGN_MAX_BYTES || '4096', 10)
   if (maxBytes > 0 && payloadBytes.length > maxBytes) {
     throw new HTTPException(413, { message: 'payload_too_large' })
   }
-  const signature = await signCommand(c.env, body)
+  const signature = await signCommand(c.env, signBody)
   return c.json({ signature, signatureRef: signContext.signatureRef })
 })
 
@@ -1812,30 +1918,32 @@ app.get('/api/health', async (c) => {
 app.post('/api/public/resolve-route', async (c) => {
   const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
   if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
-  const payload = asRecord(body.payload) || {}
-  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
-  requireTemplateApiToken(c, siteId)
-  const out = await executeReadAction(c, 'ResolveRoute', body)
+  const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, canonical.siteId)
+  const out = await executeReadAction(c, 'ResolveRoute', canonical.input, canonical.siteId)
   return c.json(out.body, out.status)
 })
 
 app.post('/api/public/page', async (c) => {
   const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
   if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
-  const payload = asRecord(body.payload) || {}
-  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
-  requireTemplateApiToken(c, siteId)
-  const out = await executeReadAction(c, 'GetPage', body)
+  const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, canonical.siteId)
+  const out = await executeReadAction(c, 'GetPage', canonical.input, canonical.siteId)
   return c.json(out.body, out.status)
 })
 
 app.post('/api/checkout/order', async (c) => {
   const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
   if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
-  const payload = asRecord(body.payload) || {}
-  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
-  requireTemplateApiToken(c, siteId)
-  const command = buildWriteCommand(c, body, expectedWriteAction('/api/checkout/order'))
+  const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, canonical.siteId)
+  const command = buildWriteCommand(
+    c,
+    canonical.input,
+    expectedWriteAction('/api/checkout/order'),
+    canonical.siteId,
+  )
   const signed = await maybeSignWriteCommand(c.env, command)
   const transport = await sendWriteCommand(c, signed)
   const normalized = normalizeWriteEnvelope(c.env, transport.raw, {
@@ -1848,10 +1956,14 @@ app.post('/api/checkout/order', async (c) => {
 app.post('/api/checkout/payment-intent', async (c) => {
   const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
   if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
-  const payload = asRecord(body.payload) || {}
-  const siteId = firstNonEmptyString(body.siteId, payload.siteId, c.req.header('x-bridge-site-id'))
-  requireTemplateApiToken(c, siteId)
-  const command = buildWriteCommand(c, body, expectedWriteAction('/api/checkout/payment-intent'))
+  const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
+  requireTemplateApiToken(c, canonical.siteId)
+  const command = buildWriteCommand(
+    c,
+    canonical.input,
+    expectedWriteAction('/api/checkout/payment-intent'),
+    canonical.siteId,
+  )
   const signed = await maybeSignWriteCommand(c.env, command)
   const transport = await sendWriteCommand(c, signed)
   const normalized = normalizeWriteEnvelope(c.env, transport.raw, {

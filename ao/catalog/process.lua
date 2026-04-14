@@ -326,6 +326,46 @@ local role_policy = {
   Complete3DSChallenge = { "catalog-admin", "support", "admin" },
 }
 
+local hmac_skip_actions = {
+  GetProduct = true,
+  ListCategoryProducts = true,
+  SearchCatalog = true,
+  FacetSearch = true,
+  GetRecommendations = true,
+  GetOrder = true,
+  ListOrders = true,
+  GetShippingRates = true,
+  GetTaxRates = true,
+  GetShipment = true,
+  GetInventory = true,
+  RelatedProducts = true,
+  RecentlyViewed = true,
+  ListAddresses = true,
+  GetInvoice = true,
+  ListInvoices = true,
+  Bestsellers = true,
+  TrendingProducts = true,
+  ExportEventLog = true,
+  StreamTelemetry = true,
+  GetWebhook = true,
+  ListWebhooks = true,
+  ExportCatalogFeed = true,
+  ExportSearchFeed = true,
+  ExportCategoryFeed = true,
+  QuotePrice = true,
+  QuoteOrder = true,
+  CalculateTax = true,
+  RateShopCarriers = true,
+  VerifySignature = true,
+  ExportMerchantFeed = true,
+  ListLowStock = true,
+  GetCategory = true,
+  ListCategories = true,
+  ListBackorders = true,
+  ListNotificationFailures = true,
+  ExportRecommendations = true,
+}
+
 local state = persist.load("catalog_state", {
   products = {}, -- product:<site>:<sku> -> { payload }
   categories = {}, -- category:<site>:<id> -> { payload, products = {sku}}
@@ -7229,7 +7269,7 @@ local function route(msg)
     return codec.error("MISSING_ACTION", "Action is required")
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac(msg)
+  local ok_hmac, hmac_err = auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end

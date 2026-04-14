@@ -94,6 +94,23 @@ local public_actions = {
   GetNavigation = true,
 }
 
+local hmac_skip_actions = {
+  ResolveRoute = true,
+  GetPage = true,
+  GetLayout = true,
+  GetNavigation = true,
+  GetDraftAudit = true,
+  ListContentTypes = true,
+  GetAsset = true,
+  GetOrder = true,
+  ListOrders = true,
+  GetPublishLog = true,
+  ExportPublishLog = true,
+  GetPublishStatus = true,
+  GenerateSitemap = true,
+  GenerateRobots = true,
+}
+
 -- pseudo-state for scaffolding
 local state = persist.load("site_state", {
   routes = {}, -- route:<site>:<path>[:locale] -> { pageId, layoutId, type }
@@ -1897,7 +1914,7 @@ local function route(msg)
     return seen
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac(msg)
+  local ok_hmac, hmac_err = auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end

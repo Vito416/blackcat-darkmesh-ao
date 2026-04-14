@@ -55,6 +55,20 @@ local role_policy = {
   GetResolverFlags = { "admin", "registry-admin" },
 }
 
+local hmac_skip_actions = {
+  GetSiteByHost = true,
+  GetSiteConfig = true,
+  GetTrustedResolvers = true,
+  GetTrustedReleaseByVersion = true,
+  GetTrustedReleaseByRoot = true,
+  GetTrustedRoot = true,
+  GetIntegrityPolicy = true,
+  GetIntegrityAuthority = true,
+  GetIntegrityAuditState = true,
+  GetIntegritySnapshot = true,
+  GetResolverFlags = true,
+}
+
 -- pseudo-state kept in-memory for now; AO runtime would persist this.
 local state = persist.load("registry_state", {
   sites = {}, -- siteId => {config = {}, createdAt = ts}
@@ -1484,7 +1498,7 @@ local function route(msg)
     return codec.error("MISSING_ACTION", "Action is required")
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac(msg)
+  local ok_hmac, hmac_err = auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end

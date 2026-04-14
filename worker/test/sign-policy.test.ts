@@ -9,6 +9,7 @@ const baseEnv = {
   PAYLOAD_MAX_BYTES: '20480',
   RATE_LIMIT_MAX: '5',
   RATE_LIMIT_WINDOW: '60',
+  SIGN_RATE_LIMIT_MAX: '100',
   REPLAY_TTL: '600',
   NOTIFY_RETRY_MAX: '1',
   NOTIFY_RETRY_BACKOFF_MS: '0',
@@ -155,5 +156,48 @@ describe('Worker sign policy', () => {
     expect(res.status).toBe(403)
     const text = await res.text()
     expect(text).toContain('sign_action_not_allowed_for_site')
+  })
+
+  it('rejects mismatched top-level and payload site identifiers', async () => {
+    const body = signBody({ siteId: 'site-demo', payload: { siteId: 'site-other', orderId: 'ord-1' } })
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { SIGN_POLICY_JSON: policy },
+    )
+
+    expect(res.status).toBe(400)
+    const text = await res.text()
+    expect(text).toContain('site_id_mismatch')
+  })
+
+  it('rejects mismatched signatureRef aliases before policy evaluation', async () => {
+    const body = signBody({
+      signatureRef: 'worker-ed25519-site-demo',
+      'Signature-Ref': 'worker-ed25519-site-other',
+    })
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { SIGN_POLICY_JSON: policy },
+    )
+
+    expect(res.status).toBe(400)
+    const text = await res.text()
+    expect(text).toContain('signature_ref_mismatch')
   })
 })

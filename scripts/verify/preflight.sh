@@ -62,6 +62,13 @@ if command -v lua5.4 >/dev/null 2>&1; then
   SKIP_CATALOG=1 \
   SKIP_ACCESS=1 \
   lua5.4 "$ROOT_DIR/scripts/verify/contracts.lua"
+  echo "[verify] outbox HMAC separation"
+  OUTBOX_HMAC_SECRET=preflight-hmac-secret \
+  AUTH_REQUIRE_SIGNATURE=0 \
+  AUTH_REQUIRE_NONCE=0 \
+  AUTH_REQUIRE_TIMESTAMP=0 \
+  AUTH_REQUIRE_JWT=0 \
+  lua5.4 "$ROOT_DIR/scripts/verify/outbox_hmac_separation.lua"
   if [ "${RUN_INTEGRITY_REGISTRY_SPEC:-0}" = "1" ]; then
     echo "[verify] integrity registry lifecycle spec"
     METRICS_ENABLED=0 \
