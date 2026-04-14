@@ -51,6 +51,15 @@ local function print_line(label, value)
   io.stdout:write(label .. ": " .. tostring(value) .. "\n")
 end
 
+local function has_any_module(mods)
+  for _, mod in ipairs(mods) do
+    if pcall(require, mod) then
+      return true
+    end
+  end
+  return false
+end
+
 local states = {
   registry = registry._state,
   site = site._state,
@@ -75,7 +84,7 @@ print_line("audit.dir.size", dir_size(audit_dir))
 print_line("audit.dir.path", audit_dir)
 print_line("audit.rotated.count", rotated_count(audit_dir))
 print_line("deps.luv", pcall(require, "luv") and "yes" or "no")
-print_line("deps.ed25519", pcall(require, "ed25519") and "yes" or "no")
+print_line("deps.ed25519", has_any_module({ "ed25519", "sodium", "luasodium" }) and "yes" or "no")
 print_line("deps.lsqlite3", pcall(require, "lsqlite3") and "yes" or "no")
 print_line("deps.cjson", pcall(require, "cjson.safe") and "yes" or "no")
 print_line("deps.luaossl", pcall(require, "openssl") and "yes" or "no")
