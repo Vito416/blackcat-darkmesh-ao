@@ -2824,7 +2824,7 @@ local original_handlers_evaluate = nil
 local function ensure_registry_evaluate_wrapped(handlers_api)
   local api = handlers_api
   if type(api) ~= "table" then
-    api = Handlers
+    api = rawget(_G, "Handlers")
   end
   if type(api) ~= "table" or type(api.evaluate) ~= "function" then
     return false
@@ -2843,7 +2843,7 @@ local function ensure_registry_evaluate_wrapped(handlers_api)
 end
 
 local function ensure_registry_handler_registered()
-  local handlers_api = Handlers
+  local handlers_api = rawget(_G, "Handlers")
   if type(handlers_api) ~= "table" or type(handlers_api.add) ~= "function" then
     local ok_handlers, resolved_handlers = pcall(require, ".handlers")
     if
@@ -2852,7 +2852,6 @@ local function ensure_registry_handler_registered()
       and type(resolved_handlers.add) == "function"
     then
       handlers_api = resolved_handlers
-      Handlers = resolved_handlers
     else
       return false
     end
