@@ -106,6 +106,36 @@ Operational next:
 
 ---
 
+## 4.23) 2026-04-14 — WASM (wasp-path) regeneration + deploy check
+
+User concern addressed explicitly: deploy re-run via WASM regeneration path
+(`ao-build-module`), not only Lua bundle spawn.
+
+Steps executed:
+1. Patched embedded runtime source in `dist/registry/process.lua` with current `ao/registry/process.lua`.
+2. Rebuilt wasm:
+   - `scripts/deploy/rebuild_wasm_from_runtime.sh registry`
+3. Published wasm module:
+   - `vAq-bwwBrYrlE059sR2lRCxjihI7NR-BNia5LrOy7H4`
+4. Spawned wasm PID (extended mode):
+   - `TTHhPQcU-3SnaALn8Vvzp0Iolf5UKyI-Xy1elH7eZpE`
+
+Immediate probe right after spawn:
+- scheduler send `200`, slot assigned
+- `slot/current`/`compute` still in fresh-process unstable phase (`500` right after spawn)
+- strict semantic smoke is therefore expectedly red until module/PID maturity:
+  - `smoke_push_scheduler.mjs --strict-response true` -> `semantic_output_check_failed`
+
+L1 status at check time:
+- module `vAq-...` -> `202 Accepted`
+- PID tx `TTHh...` -> `404 Not Found`
+
+Interpretation:
+- WASM regeneration path is now confirmed executed.
+- Remaining failure is not “did we use wasm/wasp path”, but fresh finalization/index maturity.
+
+---
+
 ## 4.19) 2026-04-14 — registry gateway-directory rollout (v1.4.0 branch)
 
 Implemented in `ao/registry/process.lua`:
