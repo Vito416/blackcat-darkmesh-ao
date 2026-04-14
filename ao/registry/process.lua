@@ -2346,9 +2346,7 @@ local function merged_global_handle(original, msg)
   if type(original) == "function" then
     local ok_original, original_result = pcall(original, msg)
     if ok_original then
-      if original_result ~= nil then
-        return original_result
-      end
+      return original_result
     else
       return emit_handler_error(
         "HANDLER_CRASH",
@@ -2356,13 +2354,7 @@ local function merged_global_handle(original, msg)
       )
     end
   end
-
-  local normalized = enrich_message(msg or {})
-  local action = normalized.Action
-  if type(action) == "string" and action ~= "" then
-    return emit_handler_error("UNROUTED_ACTION", "No handler matched action", { action = action })
-  end
-  return emit_handler_error("UNROUTED_MESSAGE", "No handler matched message shape")
+  return nil
 end
 
 _G.Handle = function(msg)
