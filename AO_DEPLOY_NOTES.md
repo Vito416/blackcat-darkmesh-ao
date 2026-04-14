@@ -39,6 +39,37 @@ Operational implication:
 
 ---
 
+## 4.21) 2026-04-14 — retest after user finalization signal (registry path)
+
+Retest performed after confirmation that recent tx set is finalized:
+
+Status snapshot:
+- module `yv27509JLx9aGJo25WOpnZ98y7gop4tjKs-meI-yjmU` -> `arweave.net/tx/<id>/status` = `200`
+- PID `DusLIg2WaScjUa-XEAMVSl7uBw7Hhf-0RgbSz_1uOkI` -> still `404` on tx status at retest time
+- previous WASM module `ijHFeGy3_DS4idDGEIXA56NidEdDmuNPhzYedd1xvkw` remains finalized (`200`)
+
+Runtime probes:
+- `totyV22R...` (`GetSiteByHost` and `GetResolverFlags`) still returns shell/prompt output in `results.raw.Output` (no `{status,...}` envelope), now correctly flagged by strict smoke.
+- `DusLI...` currently accepts schedule/send (`200`) and returns slot, but compute path remains non-ready (`422` in strict smoke run).
+
+Worker bridge check:
+- production worker endpoint `/api/public/site-by-host` now deterministically maps this state to:
+  - `502`
+  - `code=INVALID_UPSTREAM_RESPONSE`
+  - `message=registry_shell_output_without_envelope`
+
+Command references used:
+- `node scripts/deploy/smoke_push_scheduler.mjs --pid toty... --action GetResolverFlags --strict-response true`
+- `node scripts/deploy/smoke_push_scheduler.mjs --pid DusLI... --action GetResolverFlags --strict-response true`
+- direct worker probe:
+  - `curl -X POST https://blackcat-inbox-production.../api/public/site-by-host -d '{"host":"example.com"}'`
+
+Conclusion:
+- Functional blocker remains on registry readback semantics (shell-only output / non-ready compute), not on transport.
+- Keep gateway read path blocked until strict smoke passes with real `{status,...}` envelope for `GetSiteByHost`.
+
+---
+
 ## 4.19) 2026-04-14 — registry gateway-directory rollout (v1.4.0 branch)
 
 Implemented in `ao/registry/process.lua`:
