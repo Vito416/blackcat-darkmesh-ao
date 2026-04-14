@@ -136,6 +136,36 @@ Interpretation:
 
 ---
 
+## 4.24) 2026-04-14 — second RCA fix: handler returned JSON but did not emit output
+
+Additional root-cause found after runtime-wire fix:
+- `handle_registry_action` returned JSON string directly, but did not `print(...)`.
+- In this runtime, that produced empty `results.raw.Output` even when the route executed.
+
+Fix:
+- `ao/registry/process.lua`
+  - added `emit_response_json(...)` helper (same pattern as `site` process),
+  - changed `handle_registry_action` to `print` envelope and return it.
+
+WASM re-run with this fix:
+- module: `PRgatcnFfvIHy-BIcj2j3Phtr2xuU50F1frOZlloY0c`
+- pid: `NJ8bZL3Q_OOgswGJ50jMNRKCFVUYwJxcKruJA9h2s-Q`
+
+Immediate probe status:
+- `push.forward.computer`: send `200`, slot assigned, but fresh `slot/current` + `compute` still `500`
+- `push-1.forward.computer`: send currently `500 {case_clause,failure}` for this fresh PID
+- strict smoke remains red until process reaches mature/indexed state.
+
+Contract regression gate:
+- `scripts/verify/contracts.lua` -> `contract tests passed`
+
+Next operational step:
+1. wait module/PID maturity,
+2. rerun strict smoke on `NJ8b...` (`GetSiteByHost`, `GetResolverFlags`),
+3. when semantic smoke passes, update worker `AO_REGISTRY_PROCESS_ID` to `NJ8b...`.
+
+---
+
 ## 4.19) 2026-04-14 — registry gateway-directory rollout (v1.4.0 branch)
 
 Implemented in `ao/registry/process.lua`:

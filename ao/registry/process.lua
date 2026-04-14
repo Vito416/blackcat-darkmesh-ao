@@ -2246,12 +2246,22 @@ local function enrich_message(msg)
   return out, tags
 end
 
+local function emit_response_json(json_text)
+  pcall(function()
+    if type(print) == "function" then
+      print(json_text)
+    end
+  end)
+  return json_text
+end
+
 local function handle_registry_action(msg)
   local normalized = enrich_message(msg or {})
   local ok_route, route_result = pcall(route, normalized)
   local resp = ok_route and route_result
     or codec.error("HANDLER_CRASH", tostring(route_result or "registry_handler_crash"))
-  return encode_json(resp)
+  local resp_json = encode_json(resp)
+  return emit_response_json(resp_json)
 end
 
 local function is_registry_action(msg)
