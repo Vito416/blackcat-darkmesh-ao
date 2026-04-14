@@ -2274,6 +2274,29 @@ local function is_registry_action(msg)
 end
 
 local registry_handler_registered = false
+local registry_evaluate_wrapped = false
+local original_handlers_evaluate = nil
+local function ensure_registry_evaluate_wrapped(handlers_api)
+  local api = handlers_api
+  if type(api) ~= "table" then
+    api = Handlers
+  end
+  if type(api) ~= "table" or type(api.evaluate) ~= "function" then
+    return false
+  end
+  if not registry_evaluate_wrapped then
+    original_handlers_evaluate = api.evaluate
+    api.evaluate = function(msg, env)
+      if is_registry_action(msg) then
+        return handle_registry_action(msg)
+      end
+      return original_handlers_evaluate(msg, env)
+    end
+    registry_evaluate_wrapped = true
+  end
+  return true
+end
+
 local function ensure_registry_handler_registered()
   local handlers_api = Handlers
   if type(handlers_api) ~= "table" or type(handlers_api.add) ~= "function" then
@@ -2294,6 +2317,7 @@ local function ensure_registry_handler_registered()
     handlers_api.add("Registry-Action", is_registry_action, handle_registry_action)
     registry_handler_registered = true
   end
+  ensure_registry_evaluate_wrapped(handlers_api)
   return true
 end
 

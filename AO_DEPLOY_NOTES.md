@@ -1139,3 +1139,28 @@ Follow-up rerun on finalized module:
 - Reports:
   - `tmp/smoke-HE9c-push-2026-04-14.json`
   - `tmp/smoke-ofQR-push-2026-04-14.json`
+
+---
+
+## 4.20) 2026-04-14 — evaluate-wrapper hardening attempt (v6)
+
+Additional hypothesis:
+- Registry route may still be skipped in some runtimes even when `Handlers.add(...)` is present, because the effective evaluate chain can diverge by runtime boot path.
+
+Code change:
+- Updated `ao/registry/process.lua` to also wrap `Handlers.evaluate` once:
+  - if `is_registry_action(msg)` then run `handle_registry_action(msg)` directly,
+  - otherwise delegate to original evaluate function.
+- Existing `Handlers.add("Registry-Action", ...)` path remains in place.
+
+Verification:
+- `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 AUTH_REQUIRE_TIMESTAMP=0 AUTH_RATE_LIMIT_MAX_REQUESTS=100000 lua5.4 scripts/verify/contracts.lua` -> `contract tests passed`
+- `stylua --check ao/registry/process.lua` -> pass
+
+WASM publish/spawn:
+- module: `37Ej_Ys_DMZ1oENGCUA3jXrv55Tyh0O6_EYOl7Qb6XQ` (`tmp/registry-module-gwdir-v6-wasm.json`)
+- pid: `i0MozNY_Z_nP2FC0Fpx-Whhx7j8sMK_yAvXzbhijsjA` (`tmp/registry-pid-gwdir-v6-wasm.json`)
+
+Immediate strict smoke:
+- `tmp/smoke-i0Moz-push-2026-04-14.json`
+- current behavior still in fresh readback failure window (`slot/current 500`, `compute 500`) so semantic confirmation remains pending maturity/index catch-up.
