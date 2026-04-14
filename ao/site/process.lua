@@ -480,7 +480,11 @@ function handlers.GetPage(msg)
     local page = state.pages[key] or state.pages[fallback]
     if not page or page.archived then
       return false,
-        codec.error("NOT_FOUND", "Page not found", { pageId = requested_page_id, version = version })
+        codec.error(
+          "NOT_FOUND",
+          "Page not found",
+          { pageId = requested_page_id, version = version }
+        )
     end
     -- enforce lazy/blur defaults on returned blocks (non-destructive)
     local content = page.content
@@ -1914,7 +1918,8 @@ local function route(msg)
     return seen
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
+  local ok_hmac, hmac_err =
+    auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end
@@ -2066,31 +2071,89 @@ end
 local function enrich_message(msg)
   local envelope = (type(msg) == "table" and (msg.Body or msg.body)) or {}
   local tags = msg.Tags or msg.tags or envelope.Tags or envelope.tags or {}
-  local data_obj = parse_json_object(msg.Data or msg.data) or parse_json_object(envelope.Data or envelope.data) or {}
+  local data_obj = parse_json_object(msg.Data or msg.data)
+    or parse_json_object(envelope.Data or envelope.data)
+    or {}
   local out = {}
   for k, v in pairs(data_obj) do
     out[k] = v
   end
-  out.Action = out.Action or out.action or msg.Action or msg.action or envelope.Action or envelope.action
+  out.Action = out.Action
+    or out.action
+    or msg.Action
+    or msg.action
+    or envelope.Action
+    or envelope.action
     or tag_value(tags, "Action")
-  out["Request-Id"] = out["Request-Id"] or out.requestId or msg["Request-Id"] or msg.requestId
-    or envelope["Request-Id"] or envelope.requestId or tag_value(tags, "Request-Id")
-  out["Site-Id"] = out["Site-Id"] or out.siteId or msg["Site-Id"] or msg.siteId or envelope["Site-Id"]
-    or envelope.siteId or tag_value(tags, "Site-Id")
-  out.Path = out.Path or out.path or msg.Path or msg.path or envelope.Path or envelope.path or tag_value(tags, "Path")
-  out["Page-Id"] = out["Page-Id"] or out.pageId or msg["Page-Id"] or msg.pageId or envelope["Page-Id"]
-    or envelope.pageId or tag_value(tags, "Page-Id")
-  out["Layout-Id"] = out["Layout-Id"] or out.layoutId or msg["Layout-Id"] or msg.layoutId or envelope["Layout-Id"]
-    or envelope.layoutId or tag_value(tags, "Layout-Id")
-  out["Actor-Role"] = out["Actor-Role"] or out.actorRole or msg["Actor-Role"] or msg.actorRole
-    or envelope["Actor-Role"] or envelope.actorRole or tag_value(tags, "Actor-Role")
-  out["Schema-Version"] = out["Schema-Version"] or out.schemaVersion or msg["Schema-Version"] or msg.schemaVersion
-    or envelope["Schema-Version"] or envelope.schemaVersion or tag_value(tags, "Schema-Version")
-  out.Signature = out.Signature or out.signature or msg.Signature or msg.signature or envelope.Signature
-    or envelope.signature or tag_value(tags, "Signature")
-  out.Nonce = out.Nonce or out.nonce or msg.Nonce or msg.nonce or envelope.Nonce or envelope.nonce
+  out["Request-Id"] = out["Request-Id"]
+    or out.requestId
+    or msg["Request-Id"]
+    or msg.requestId
+    or envelope["Request-Id"]
+    or envelope.requestId
+    or tag_value(tags, "Request-Id")
+  out["Site-Id"] = out["Site-Id"]
+    or out.siteId
+    or msg["Site-Id"]
+    or msg.siteId
+    or envelope["Site-Id"]
+    or envelope.siteId
+    or tag_value(tags, "Site-Id")
+  out.Path = out.Path
+    or out.path
+    or msg.Path
+    or msg.path
+    or envelope.Path
+    or envelope.path
+    or tag_value(tags, "Path")
+  out["Page-Id"] = out["Page-Id"]
+    or out.pageId
+    or msg["Page-Id"]
+    or msg.pageId
+    or envelope["Page-Id"]
+    or envelope.pageId
+    or tag_value(tags, "Page-Id")
+  out["Layout-Id"] = out["Layout-Id"]
+    or out.layoutId
+    or msg["Layout-Id"]
+    or msg.layoutId
+    or envelope["Layout-Id"]
+    or envelope.layoutId
+    or tag_value(tags, "Layout-Id")
+  out["Actor-Role"] = out["Actor-Role"]
+    or out.actorRole
+    or msg["Actor-Role"]
+    or msg.actorRole
+    or envelope["Actor-Role"]
+    or envelope.actorRole
+    or tag_value(tags, "Actor-Role")
+  out["Schema-Version"] = out["Schema-Version"]
+    or out.schemaVersion
+    or msg["Schema-Version"]
+    or msg.schemaVersion
+    or envelope["Schema-Version"]
+    or envelope.schemaVersion
+    or tag_value(tags, "Schema-Version")
+  out.Signature = out.Signature
+    or out.signature
+    or msg.Signature
+    or msg.signature
+    or envelope.Signature
+    or envelope.signature
+    or tag_value(tags, "Signature")
+  out.Nonce = out.Nonce
+    or out.nonce
+    or msg.Nonce
+    or msg.nonce
+    or envelope.Nonce
+    or envelope.nonce
     or tag_value(tags, "Nonce")
-  out.ts = out.ts or out.timestamp or msg.ts or msg.timestamp or envelope.ts or envelope.timestamp
+  out.ts = out.ts
+    or out.timestamp
+    or msg.ts
+    or msg.timestamp
+    or envelope.ts
+    or envelope.timestamp
     or tag_value(tags, "ts")
   out.From = msg.From or msg.from
   out.Tags = tags

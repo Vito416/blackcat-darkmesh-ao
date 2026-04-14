@@ -256,7 +256,8 @@ local function route(msg)
     return codec.error("MISSING_ACTION", "Action is required")
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
+  local ok_hmac, hmac_err =
+    auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end
