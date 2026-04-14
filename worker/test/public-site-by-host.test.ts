@@ -218,7 +218,8 @@ describe('/api/public/site-by-host', () => {
             data: {
               siteId: 'site-alpha',
               runtime: {
-                processId: 'SITE_PID_DYNAMIC',
+                processId: 'SITE_PID_ROUTER',
+                siteProcessId: 'SITE_PID_DYNAMIC',
               },
             },
           }),
@@ -264,5 +265,40 @@ describe('/api/public/site-by-host', () => {
     const readLookup = aoClient.message.mock.calls[1][0]
     expect(readLookup.process).toBe('SITE_PID_DYNAMIC')
     expect(readLookup.tags).toEqual(expect.arrayContaining([{ name: 'Action', value: 'ResolveRoute' }]))
+  })
+
+  it('rejects conflicting runtime process aliases in registry runtime payload', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-site-runtime')
+    aoClient.result.mockResolvedValueOnce({
+      raw: {
+        Output: JSON.stringify({
+          status: 'OK',
+          data: {
+            siteId: 'site-conflict',
+            runtime: {
+              siteProcessId: 'SITE_PID_ONE',
+              readPid: 'SITE_PID_TWO',
+            },
+          },
+        }),
+      },
+    })
+
+    const res = await callPath(
+      '/api/public/resolve-route',
+      {
+        siteId: 'site-conflict',
+        payload: { siteId: 'site-conflict', path: '/' },
+      },
+      {
+        GATEWAY_TEMPLATE_TOKEN_MAP: JSON.stringify({ 'site-conflict': 'tok-conflict' }),
+      },
+      {
+        authorization: 'Bearer tok-conflict',
+      },
+    )
+
+    expect(res.status).toBe(500)
+    await expect(res.text()).resolves.toContain('missing_ao_site_process_id')
   })
 })

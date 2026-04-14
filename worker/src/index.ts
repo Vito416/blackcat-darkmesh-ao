@@ -53,9 +53,9 @@ const DEFAULT_WRITE_RETRIES = 4
 const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{8,128}$/
 const SAFE_REQUEST_ID_RE = /^[A-Za-z0-9._-]{6,128}$/
 const RUNTIME_POINTER_FIELD_KEYS = [
-  'processId',
   'siteProcessId',
   'readProcessId',
+  'processId',
   'writeProcessId',
   'catalogProcessId',
   'accessProcessId',
@@ -84,6 +84,8 @@ const RUNTIME_POINTER_FIELD_KEYS = [
   'ProcessId',
   'Process-Id',
   'process_id',
+  'UpdatedAt',
+  'Updated-At',
   'moduleId',
   'ModuleId',
   'Module-Id',
@@ -96,16 +98,16 @@ const RUNTIME_POINTER_FIELD_KEYS = [
   'updated_at',
 ] as const
 const SITE_RUNTIME_PROCESS_FIELD_KEYS = [
-  'processId',
   'siteProcessId',
   'readProcessId',
-  'ProcessId',
-  'Process-Id',
-  'process_id',
+  'processId',
   'sitePid',
   'readPid',
   'site_process_id',
   'read_process_id',
+  'ProcessId',
+  'Process-Id',
+  'process_id',
 ] as const
 
 // Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
@@ -746,14 +748,46 @@ function extractRuntimePointerProjection(
 function resolveSiteRuntimeProcessId(
   ...sources: Array<Record<string, unknown> | null | undefined>
 ): string {
+  const readKeys = new Set(['siteProcessId', 'readProcessId', 'sitePid', 'readPid', 'site_process_id', 'read_process_id'])
+  const genericKeys = new Set(['processId', 'ProcessId', 'Process-Id', 'process_id'])
+  const readValues: Array<{ key: string; value: string }> = []
+  const genericValues: Array<{ key: string; value: string }> = []
+
   for (const source of sources) {
     if (!source) continue
     for (const key of SITE_RUNTIME_PROCESS_FIELD_KEYS) {
       const value = trimString(source[key])
-      if (value) return value
+      if (!value) continue
+      if (readKeys.has(key)) {
+        readValues.push({ key, value })
+        continue
+      }
+      if (genericKeys.has(key)) {
+        genericValues.push({ key, value })
+      }
     }
   }
-  return ''
+
+  if (readValues.length > 0) {
+    const uniqueReadValues = Array.from(new Set(readValues.map((entry) => entry.value)))
+    if (uniqueReadValues.length > 1) {
+      throw new Error(
+        `site_runtime_pid_conflict:${readValues.map((entry) => `${entry.key}=${entry.value}`).join(',')}`,
+      )
+    }
+    return uniqueReadValues[0] || ''
+  }
+
+  if (genericValues.length === 0) return ''
+
+  const uniqueGenericValues = Array.from(new Set(genericValues.map((entry) => entry.value)))
+  if (uniqueGenericValues.length > 1) {
+    throw new Error(
+      `site_runtime_pid_conflict:${genericValues.map((entry) => `${entry.key}=${entry.value}`).join(',')}`,
+    )
+  }
+
+  return uniqueGenericValues[0] || ''
 }
 
 function canonicalFieldValue(values: unknown[], mismatchMessage: string): string {

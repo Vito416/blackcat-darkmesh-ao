@@ -1252,6 +1252,8 @@ Gap closure implemented for universal gateway routing:
 - Worker `/api/public/site-by-host` now passes runtime pointers through to callers.
 - Worker runtime pointer projection now also forwards `ingest*`, `worker*`, and `updatedAt` aliases from registry envelopes for gateway-side routing/observability.
 - Worker read path can resolve site read PID from registry runtime pointers when `AO_SITE_PROCESS_ID` is not statically configured.
+  - Read PID precedence tightened: `siteProcessId/read*` now outrank generic `processId` so split router/read runtime pointers route correctly.
+  - Conflicting read PID aliases now fail closed (`site_runtime_pid_conflict`) instead of silently selecting one alias.
 - Write adapter now supports optional per-request write PID routing (`X-Write-Process-Id` / `writeProcessId`) behind explicit opt-in and token auth gates.
 
 Validation and tests:
