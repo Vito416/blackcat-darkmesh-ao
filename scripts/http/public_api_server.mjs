@@ -11,6 +11,8 @@ const DEFAULT_PORT = 8788
 const DEFAULT_RESULT_TIMEOUT_MS = 45000
 const DEFAULT_SITE_ACTION_TIMEOUT_MS = 30000
 const DEFAULT_RESULT_RETRIES = 4
+const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{8,128}$/
+const CORS_ALLOW_HEADERS = 'content-type,authorization,x-api-token,x-request-id,x-trace-id'
 
 const env = {
   port: positiveInt(process.env.PORT, DEFAULT_PORT),
@@ -62,7 +64,7 @@ function nowIso() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
-function json(res, status, body) {
+function json(res, status, body, meta = {}) {
   const payload = JSON.stringify(body)
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
@@ -72,12 +74,16 @@ function json(res, status, body) {
   res.setHeader('referrer-policy', 'no-referrer')
   res.setHeader('access-control-allow-origin', env.allowOrigin)
   res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
-  res.setHeader('access-control-allow-headers', 'content-type,authorization,x-api-token,x-request-id')
+  res.setHeader('access-control-allow-headers', CORS_ALLOW_HEADERS)
+  const requestId = trimString(meta.requestId || body?.requestId)
+  if (requestId) res.setHeader('x-request-id', requestId)
+  const traceId = resolveTraceId(meta.traceId || body?.traceId)
+  if (traceId) res.setHeader('x-trace-id', traceId)
   res.end(payload)
 }
 
-function unauthorized(res) {
-  json(res, 401, { ok: false, error: 'unauthorized' })
+function unauthorized(res, traceId = '') {
+  json(res, 401, { ok: false, error: 'unauthorized', traceId: traceId || undefined }, { traceId })
 }
 
 function readJsonBody(req, maxBytes = 128 * 1024) {
@@ -114,6 +120,12 @@ function trimString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function resolveTraceId(value) {
+  const normalized = trimString(value)
+  if (!normalized) return ''
+  return SAFE_TRACE_ID_RE.test(normalized) ? normalized : ''
+}
+
 function normalizePath(pathValue) {
   const path = trimString(pathValue)
   if (!path) return '/'
@@ -123,9 +135,13 @@ function normalizePath(pathValue) {
 function requestIdFrom(req, body) {
   const headerValue = trimString(req.headers['x-request-id'])
   if (headerValue) return headerValue.slice(0, 128)
-  const bodyValue = trimString(body.requestId)
+  const bodyValue = trimString(body.requestId || body['request-id'])
   if (bodyValue) return bodyValue.slice(0, 128)
   return `gw-read-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
+}
+
+function traceIdFrom(req, body = {}) {
+  return resolveTraceId(req.headers['x-trace-id'] || body.traceId || body['trace-id'])
 }
 
 function requireAuth(req) {
@@ -136,8 +152,8 @@ function requireAuth(req) {
   return bearer === env.authToken || tokenHeader === env.authToken
 }
 
-function buildCommonTags(action, requestId) {
-  return [
+function buildCommonTags(action, requestId, traceId = '') {
+  const tags = [
     { name: 'Action', value: action },
     { name: 'Request-Id', value: requestId },
     { name: 'Reply-To', value: env.sitePid },
@@ -151,6 +167,8 @@ function buildCommonTags(action, requestId) {
     { name: 'Input-Encoding', value: 'JSON-1' },
     { name: 'Output-Encoding', value: 'JSON-1' },
   ]
+  if (traceId) tags.push({ name: 'Trace-Id', value: traceId })
+  return tags
 }
 
 function buildReadData(action, requestId, payload) {
@@ -418,14 +436,19 @@ async function executeRead(action, req, body) {
     }
   }
   const requestId = requestIdFrom(req, body)
+  const traceId = traceIdFrom(req, body)
 
   const payload = body.payload && typeof body.payload === 'object' ? body.payload : body
   const siteId = trimString(body.siteId || payload.siteId)
   if (!siteId) {
-    return { status: 400, body: { ok: false, error: 'site_id_required' } }
+    return {
+      status: 400,
+      body: { ok: false, error: 'site_id_required', traceId: traceId || undefined },
+      meta: { requestId, traceId },
+    }
   }
 
-  const tags = buildCommonTags(action, requestId)
+  const tags = buildCommonTags(action, requestId, traceId)
   addTag(tags, 'Site-Id', siteId)
 
   if (action === 'ResolveRoute') {
@@ -436,7 +459,11 @@ async function executeRead(action, req, body) {
     const pageId = trimString(payload.pageId)
     const slug = trimString(payload.slug || payload.path)
     if (!pageId && !slug) {
-      return { status: 400, body: { ok: false, error: 'page_id_or_slug_required' } }
+      return {
+        status: 400,
+        body: { ok: false, error: 'page_id_or_slug_required', traceId: traceId || undefined },
+        meta: { requestId, traceId },
+      }
     }
     addTag(tags, 'Page-Id', pageId)
     addTag(tags, 'Slug', slug)
@@ -482,7 +509,8 @@ async function executeRead(action, req, body) {
         messageId: transport?.messageId || null,
       }
     }
-    return { status: normalized.status, body: normalized.body }
+    if (traceId) normalized.body.traceId = traceId
+    return { status: normalized.status, body: normalized.body, meta: { requestId, traceId } }
   } catch (error) {
     return {
       status: 502,
@@ -490,7 +518,9 @@ async function executeRead(action, req, body) {
         ok: false,
         error: 'ao_read_failed',
         message: error instanceof Error ? error.message : String(error),
+        traceId: traceId || undefined,
       },
+      meta: { requestId, traceId },
     }
   }
 }
@@ -498,12 +528,14 @@ async function executeRead(action, req, body) {
 const server = http.createServer(async (req, res) => {
   const method = (req.method || 'GET').toUpperCase()
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`)
+  const traceId = traceIdFrom(req, {})
 
   if (method === 'OPTIONS') {
     res.statusCode = 204
     res.setHeader('access-control-allow-origin', env.allowOrigin)
     res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS')
-    res.setHeader('access-control-allow-headers', 'content-type,authorization,x-api-token,x-request-id')
+    res.setHeader('access-control-allow-headers', CORS_ALLOW_HEADERS)
+    if (traceId) res.setHeader('x-trace-id', traceId)
     res.end('')
     return
   }
@@ -523,17 +555,17 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (!requireAuth(req)) {
-    unauthorized(res)
+    unauthorized(res, traceId)
     return
   }
 
   if (method !== 'POST') {
-    json(res, 405, { ok: false, error: 'method_not_allowed' })
+    json(res, 405, { ok: false, error: 'method_not_allowed', traceId: traceId || undefined }, { traceId })
     return
   }
 
   if (url.pathname !== '/api/public/resolve-route' && url.pathname !== '/api/public/page') {
-    json(res, 404, { ok: false, error: 'not_found' })
+    json(res, 404, { ok: false, error: 'not_found', traceId: traceId || undefined }, { traceId })
     return
   }
 
@@ -543,16 +575,16 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (message === 'payload_too_large') {
-      json(res, 413, { ok: false, error: 'payload_too_large' })
+      json(res, 413, { ok: false, error: 'payload_too_large', traceId: traceId || undefined }, { traceId })
       return
     }
-    json(res, 400, { ok: false, error: 'invalid_json' })
+    json(res, 400, { ok: false, error: 'invalid_json', traceId: traceId || undefined }, { traceId })
     return
   }
 
   const action = url.pathname === '/api/public/resolve-route' ? 'ResolveRoute' : 'GetPage'
   const out = await executeRead(action, req, body)
-  json(res, out.status, out.body)
+  json(res, out.status, out.body, out.meta || { traceId })
 })
 
 server.listen(env.port, env.host, () => {

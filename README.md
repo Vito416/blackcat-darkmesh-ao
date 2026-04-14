@@ -65,7 +65,7 @@ See `docs/ROADMAP.md` for the AO/Write split aligned to the v2 architecture brie
 - All comments and documentation in this repository stay in English.
 
 ## Development
-- Prereqs: `python3` (3.8+) and Lua (`lua5.1`–`lua5.4`) with rocks `lua-cjson`, `lsqlite3`, `luv`, `luaossl`, and `libsodium` headers for native crypto. Run `lua scripts/verify/deps_check.lua` to verify.
+- Prereqs: `python3` (3.8+) and Lua (`lua5.1`–`lua5.4`) with rocks `lua-cjson` and `libsodium` headers for native crypto. `luv`, `lsqlite3`, and `luaossl` are optional in preflight (runtime has fallback paths); set `DEPS_REQUIRE_LUV=1` to enforce `luv` in CI when needed. Run `lua scripts/verify/deps_check.lua` to verify.
 - Run static checks before opening a PR: `scripts/verify/preflight.sh`.
 - Contract smoke tests are bundled in the preflight script (runs under Lua 5.4).
 - Branches: `main` (releasable), `develop` (integration), `feature/*`, `adr/*`, `release/*`.

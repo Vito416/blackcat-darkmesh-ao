@@ -44,6 +44,7 @@ const DEFAULT_AO_MODE = 'mainnet'
 const DEFAULT_READ_TIMEOUT_MS = 30000
 const DEFAULT_WRITE_TIMEOUT_MS = 45000
 const DEFAULT_WRITE_RETRIES = 4
+const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{8,128}$/
 
 // Cache imported HMAC keys to avoid re-importing on every request (saves CPU on free tier)
 let inboxKey: CryptoKey | null = null
@@ -215,13 +216,19 @@ function normalizeTestEnv(env: Env) {
 app.use('*', async (c, next) => {
   normalizeTestEnv(c.env as any)
   ensureProdSecrets(c.env as any)
+  const incomingTraceId = resolveTraceId(c.req.header('x-trace-id'))
   c.header('Access-Control-Allow-Origin', '*')
   c.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Signature')
+  c.header(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Signature, X-Request-Id, X-Trace-Id, X-Api-Token',
+  )
   if (c.req.method === 'OPTIONS') {
+    if (incomingTraceId) c.header('x-trace-id', incomingTraceId)
     return c.text('', 204)
   }
   await next()
+  if (incomingTraceId) c.header('x-trace-id', incomingTraceId)
 })
 
 app.get('/health', (c) => c.json({ status: 'ok', now: new Date().toISOString() }))
@@ -539,6 +546,12 @@ function hostAllowed(u: URL, allowlistRaw?: string) {
 
 function trimString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function resolveTraceId(value: unknown): string {
+  const normalized = trimString(value)
+  if (!normalized) return ''
+  return SAFE_TRACE_ID_RE.test(normalized) ? normalized : ''
 }
 
 function cleanEnv(value: unknown): string {
@@ -1292,6 +1305,7 @@ function buildReadTags(
   siteId: string,
   sitePid: string,
   payload: Record<string, unknown>,
+  traceId = '',
 ) {
   const tags = [
     { name: 'Action', value: action },
@@ -1324,6 +1338,7 @@ function buildReadTags(
     if (locale) tags.push({ name: 'Locale', value: locale })
     if (version) tags.push({ name: 'Version', value: version })
   }
+  if (traceId) tags.push({ name: 'Trace-Id', value: traceId })
 
   return tags
 }
@@ -1442,7 +1457,8 @@ async function executeReadAction(
     c.req.header('x-request-id'),
     randomId('gw-read'),
   )
-  const tags = buildReadTags(action, requestId, siteId, sitePid, payload)
+  const traceId = resolveTraceId(firstNonEmptyString(c.req.header('x-trace-id'), (input as any).traceId))
+  const tags = buildReadTags(action, requestId, siteId, sitePid, payload, traceId)
   const data = buildReadData(action, requestId, siteId, payload)
   const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
   const ao = await writeAoClient(c.env)
@@ -1546,8 +1562,8 @@ async function maybeSignWriteCommand(env: Env, command: Record<string, unknown>)
   }
 }
 
-function writeMessageTags() {
-  return [
+function writeMessageTags(traceId = '') {
+  const tags = [
     { name: 'Action', value: 'Write-Command' },
     { name: 'Variant', value: 'ao.TN.1' },
     { name: 'Content-Type', value: 'application/json' },
@@ -1556,6 +1572,8 @@ function writeMessageTags() {
     { name: 'Data-Protocol', value: 'ao' },
     { name: 'Type', value: 'Message' },
   ]
+  if (traceId) tags.push({ name: 'Trace-Id', value: traceId })
+  return tags
 }
 
 function base64UrlNoPad(input: ArrayBuffer | Uint8Array): string {
@@ -1619,7 +1637,7 @@ function extractSlotOrMessage(value: unknown, depth = 0): string | undefined {
   return undefined
 }
 
-async function sendWriteCommand(c: any, command: Record<string, unknown>) {
+async function sendWriteCommand(c: any, command: Record<string, unknown>, traceId = '') {
   const pid = resolveWritePid(c.env)
   if (!pid) throw new HTTPException(500, { message: 'missing_write_process_id' })
   const timeoutMs = positiveIntEnv(c.env.GATEWAY_WRITE_TIMEOUT_MS, DEFAULT_WRITE_TIMEOUT_MS)
@@ -1633,7 +1651,7 @@ async function sendWriteCommand(c: any, command: Record<string, unknown>) {
         ao.request({
           path: `/${pid}~process@1.0/push`,
           target: pid,
-          tags: writeMessageTags(),
+          tags: writeMessageTags(traceId),
           data: JSON.stringify(command),
           method: 'POST',
           'signing-format': 'ans104',
@@ -1945,7 +1963,8 @@ app.post('/api/checkout/order', async (c) => {
     canonical.siteId,
   )
   const signed = await maybeSignWriteCommand(c.env, command)
-  const transport = await sendWriteCommand(c, signed)
+  const traceId = resolveTraceId(c.req.header('x-trace-id'))
+  const transport = await sendWriteCommand(c, signed, traceId)
   const normalized = normalizeWriteEnvelope(c.env, transport.raw, {
     requestId: trimString(signed.requestId),
     action: trimString(signed.action),
@@ -1965,7 +1984,8 @@ app.post('/api/checkout/payment-intent', async (c) => {
     canonical.siteId,
   )
   const signed = await maybeSignWriteCommand(c.env, command)
-  const transport = await sendWriteCommand(c, signed)
+  const traceId = resolveTraceId(c.req.header('x-trace-id'))
+  const transport = await sendWriteCommand(c, signed, traceId)
   const normalized = normalizeWriteEnvelope(c.env, transport.raw, {
     requestId: trimString(signed.requestId),
     action: trimString(signed.action),

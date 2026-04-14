@@ -191,6 +191,19 @@ test('public API health + route/method/auth/invalid-body contract', async (t) =>
       assert.equal(pageBody.error, 'method_not_allowed')
     })
 
+    await t.test('OPTIONS advertises trace header and echoes valid trace ID', async () => {
+      const res = await fetch(`${baseUrl}/api/public/page`, {
+        method: 'OPTIONS',
+        headers: {
+          ...authHeaders,
+          'x-trace-id': 'trace-contract-001',
+        },
+      })
+      assert.equal(res.status, 204)
+      assert.match(String(res.headers.get('access-control-allow-headers') || ''), /\bx-trace-id\b/i)
+      assert.equal(res.headers.get('x-trace-id'), 'trace-contract-001')
+    })
+
     await t.test('invalid JSON body is rejected on both endpoints', async () => {
       const routeRes = await postJson(
         baseUrl,
@@ -206,6 +219,22 @@ test('public API health + route/method/auth/invalid-body contract', async (t) =>
       const pageBody = await readJson(pageRes)
       assert.equal(pageRes.status, 400)
       assert.equal(pageBody.error, 'invalid_json')
+    })
+
+    await t.test('trace ID is propagated in error response headers', async () => {
+      const res = await postJson(
+        baseUrl,
+        '/api/public/resolve-route',
+        {},
+        {
+          ...authHeaders,
+          'x-trace-id': 'trace-contract-002',
+        },
+      )
+      const body = await readJson(res)
+      assert.equal(res.status, 400)
+      assert.equal(body.error, 'site_id_required')
+      assert.equal(res.headers.get('x-trace-id'), 'trace-contract-002')
     })
 
     await t.test('invalid request body fields return endpoint-specific errors', async () => {
