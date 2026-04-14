@@ -1085,3 +1085,47 @@ Verification:
 - `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 lua5.4 scripts/verify/contracts.lua`
 
 ---
+
+## 4.19) 2026-04-14 — registry handler self-registration hardening + redeploy v5
+
+Problem tracked:
+- Registry PIDs built from `blackcat-ao-registry-gwdir-v4-wasm` (`PRgat...` / `NJ8b...`) reached compute `200` but kept returning an empty `results.Output` string for registry actions (`semantic_output_check_failed` in strict smoke).
+- This matched the hypothesis that `Handlers.add("Registry-Action", ...)` could be skipped in some runtime init paths.
+
+Code fix in source:
+- Updated `ao/registry/process.lua`:
+  - added `ensure_registry_handler_registered()` that:
+    - verifies `Handlers.add` availability,
+    - falls back to `require(".handlers")` when needed,
+    - registers `Registry-Action` once via guard flag.
+  - calls self-registration at module init and again from fallback dispatch before routing.
+
+Verification before publish:
+- `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 AUTH_REQUIRE_TIMESTAMP=0 AUTH_RATE_LIMIT_MAX_REQUESTS=100000 lua5.4 scripts/verify/contracts.lua` -> `contract tests passed`
+- `stylua --check ao/registry/process.lua scripts/verify/contracts.lua` -> pass
+
+WASM rebuild + publish/spawn (v5):
+- module: `Zjk7Vw4w4EqTqOY95s8DNxiYDYy4zEDkqyVAiMDgUI8`
+  - artifact: `tmp/registry-module-gwdir-v5-wasm.json`
+- pid: `7EFJ_GS_SU9bKrD2Ocy9LSjTt-rzioVNdKHIngFmSvc`
+  - artifact: `tmp/registry-pid-gwdir-v5-wasm.json`
+
+Immediate post-spawn smoke (strict):
+- `push.forward.computer`:
+  - send `200`
+  - `slot/current` + `compute` still `500` (fresh PID resolve-stage window)
+  - report: `tmp/smoke-7EFJ-push-2026-04-14.json`
+- `push-1.forward.computer`:
+  - send currently `500` `{case_clause,failure}` on fresh PID
+  - report: `tmp/smoke-7EFJ-push1-2026-04-14.json`
+
+Control snapshot on previous v4 PID:
+- `NJ8b...` now returns stable transport `200`/`200`/`200` on both push nodes, but still empty semantic output in strict smoke:
+  - `tmp/smoke-nj8b-push-2026-04-14.json`
+  - `tmp/smoke-nj8b-push1-2026-04-14.json`
+
+Current interpretation:
+- v5 source fix is shipped to a new module/PID, but readback is still in fresh PID propagation state; semantic confirmation of the handler fix must be re-run after PID maturity/finalization.
+
+Next required step:
+- wait for module/PID maturity (`arweave.net/tx/.../status` no longer `Accepted`/`Not Found`), then rerun strict smoke + deep registry profile on `7EFJ...`.

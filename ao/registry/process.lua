@@ -2273,12 +2273,34 @@ local function is_registry_action(msg)
   return type(action) == "string" and handlers[action] ~= nil
 end
 
-local has_handlers = type(Handlers) == "table" and type(Handlers.add) == "function"
-if has_handlers then
-  Handlers.add("Registry-Action", is_registry_action, handle_registry_action)
+local registry_handler_registered = false
+local function ensure_registry_handler_registered()
+  local handlers_api = Handlers
+  if type(handlers_api) ~= "table" or type(handlers_api.add) ~= "function" then
+    local ok_handlers, resolved_handlers = pcall(require, ".handlers")
+    if
+      ok_handlers
+      and type(resolved_handlers) == "table"
+      and type(resolved_handlers.add) == "function"
+    then
+      handlers_api = resolved_handlers
+      Handlers = resolved_handlers
+    else
+      return false
+    end
+  end
+
+  if not registry_handler_registered then
+    handlers_api.add("Registry-Action", is_registry_action, handle_registry_action)
+    registry_handler_registered = true
+  end
+  return true
 end
 
+ensure_registry_handler_registered()
+
 local function fallback_handle(msg)
+  ensure_registry_handler_registered()
   if is_registry_action(msg) then
     return handle_registry_action(msg)
   end
