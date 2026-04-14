@@ -7,6 +7,39 @@ to AO push endpoints (`push.forward.computer`, `push-1.forward.computer`).
 
 ---
 
+## 4.19) 2026-04-14 — registry gateway-directory rollout (v1.4.0 branch)
+
+Implemented in `ao/registry/process.lua`:
+- `RegisterGateway`
+- `UpdateGatewayStatus`
+- `ResolveGatewayForHost`
+- `ListGateways`
+
+And added worker/public bridge endpoint:
+- `POST /api/public/site-by-host` (`worker/src/index.ts`) mapping to AO action `GetSiteByHost`.
+
+Deployed artifact IDs:
+- Registry module (WASM): `ijHFeGy3_DS4idDGEIXA56NidEdDmuNPhzYedd1xvkw`
+- Registry PID spawn: `totyV22Rrz9_GE4zV9CjfX54FylG9MMNKLcmaWW6rYs`
+
+Build/deploy path used:
+1. Patch embedded runtime source in `dist/registry/process.lua` with current `ao/registry/process.lua`.
+2. Rebuild WASM:
+   - `scripts/deploy/rebuild_wasm_from_runtime.sh registry`
+3. Publish:
+   - `node scripts/deploy/publish_wasm_module.mjs --wasm dist/registry/process.wasm --wallet ../blackcat-darkmesh-write/wallet.json --name blackcat-ao-registry`
+4. Spawn:
+   - `node scripts/deploy/spawn_process_wasm_tn.mjs --module <module_tx> --wallet ../blackcat-darkmesh-write/wallet.json --url https://push.forward.computer --name blackcat-ao-registry`
+
+Immediate post-spawn probe:
+- `integrity_registry_cli --action snapshot` against new PID returned push `500` (`{badmap,failure}`) before full indexing/finalization, so this PID must be rechecked after index/finalization window.
+
+Verification executed in repo:
+- `LUA_PATH='?.lua;?/init.lua;ao/?.lua;ao/?/init.lua' AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 AUTH_REQUIRE_TIMESTAMP=0 AUTH_RATE_LIMIT_MAX_REQUESTS=100000 lua5.4 scripts/verify/contracts.lua` -> `contract tests passed`
+- `worker`: `npm test -- --run test/public-site-by-host.test.ts test/bridge-site-isolation.test.ts` -> pass
+
+---
+
 ## 4.23) 2026-04-13 — Cloudflare gateway bridge write transport unblocked
 
 Scope:
