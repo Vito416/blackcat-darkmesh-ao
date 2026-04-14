@@ -7,13 +7,79 @@ function clean(value) {
   return out === '' ? undefined : out
 }
 
+function parseBool(value, fallback = false) {
+  const normalized = clean(value)
+  if (normalized === undefined) return fallback
+  const lower = normalized.toLowerCase()
+  if (lower === '1' || lower === 'true' || lower === 'yes' || lower === 'on') return true
+  if (lower === '0' || lower === 'false' || lower === 'no' || lower === 'off') return false
+  return fallback
+}
+
+function isShellPromptOutput(value) {
+  if (!value || typeof value !== 'object') return false
+  const record = value
+  const prompt = clean(record.prompt)
+  const data = clean(record.data)
+  if (!prompt) return false
+  if (clean(record['ao-types'])) return true
+  return typeof data === 'string' && data.includes('New Message From')
+}
+
+function deriveOutputSummary(computeParsed) {
+  const raw = computeParsed?.results?.raw || computeParsed?.raw || null
+  const outputCandidate =
+    raw?.Output ??
+    raw?.output ??
+    raw?.Data ??
+    raw?.data ??
+    computeParsed?.Output ??
+    computeParsed?.output ??
+    null
+
+  let envelope = null
+  let outputShape = 'empty'
+  if (typeof outputCandidate === 'string') {
+    outputShape = 'string'
+    if (outputCandidate.trim()) {
+      try {
+        envelope = JSON.parse(outputCandidate)
+        outputShape = 'json_string'
+      } catch {
+        envelope = null
+      }
+    }
+  } else if (outputCandidate && typeof outputCandidate === 'object') {
+    envelope = outputCandidate
+    outputShape = 'object'
+  }
+
+  const shellOutput = isShellPromptOutput(envelope)
+  const status = envelope && typeof envelope === 'object' ? clean(envelope.status) : undefined
+  const code = envelope && typeof envelope === 'object' ? clean(envelope.code) : undefined
+  const semanticOk = Boolean(status)
+
+  return {
+    outputShape,
+    shellOutput,
+    status: status || null,
+    code: code || null,
+    semanticOk,
+    outputPreview:
+      outputShape === 'string'
+        ? String(outputCandidate || '').slice(0, 180)
+        : JSON.stringify(envelope || {}).slice(0, 180),
+  }
+}
+
 function parseArgs(argv) {
   const args = {
     pid: clean(process.env.AO_PID),
     url: clean(process.env.AO_URL) || 'https://push.forward.computer',
     wallet: clean(process.env.WALLET) || clean(process.env.WALLET_PATH) || 'wallet.json',
     action: clean(process.env.AO_ACTION) || 'GetResolverFlags',
-    computeTimeoutMs: Number(clean(process.env.AO_COMPUTE_TIMEOUT_MS) || '30000')
+    computeTimeoutMs: Number(clean(process.env.AO_COMPUTE_TIMEOUT_MS) || '30000'),
+    strictResponse: parseBool(process.env.AO_SMOKE_STRICT_RESPONSE, false),
   }
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -21,8 +87,9 @@ function parseArgs(argv) {
     else if (arg === '--url') args.url = clean(argv[++i]) || args.url
     else if (arg === '--wallet') args.wallet = clean(argv[++i]) || args.wallet
     else if (arg === '--action') args.action = clean(argv[++i]) || args.action
+    else if (arg === '--strict-response') args.strictResponse = parseBool(argv[++i], true)
     else if (arg === '--help' || arg === '-h') {
-      console.log('Usage: node scripts/deploy/smoke_push_scheduler.mjs --pid <PID> --url https://push.forward.computer --action GetResolverFlags')
+      console.log('Usage: node scripts/deploy/smoke_push_scheduler.mjs --pid <PID> --url https://push.forward.computer --action GetResolverFlags [--strict-response true]')
       process.exit(0)
     } else {
       throw new Error(`Unknown arg: ${arg}`)
@@ -129,36 +196,50 @@ async function main() {
     computeParsed = null
   }
 
+  const outputSummary = computeParsed ? deriveOutputSummary(computeParsed) : null
+  const strictFailure =
+    args.strictResponse &&
+    (!computeParsed || !outputSummary?.semanticOk || outputSummary?.shellOutput === true)
+
+  const report = {
+    ok: !strictFailure,
+    action: args.action,
+    endpoint,
+    dataItemId: item.id,
+    slot,
+    strictResponse: args.strictResponse,
+    send: { status: sendRes.status, body: sendText.slice(0, 240) },
+    slotCurrent: { status: slotCurrent.status, body: (slotCurrent.text || '').slice(0, 120) },
+    compute: {
+      status: compute.status,
+      body: (compute.text || '').slice(0, 500),
+      parsedSummary: computeParsed
+        ? {
+            atSlot: computeParsed['at-slot'] ?? null,
+            hasResults: Boolean(computeParsed.results || computeParsed.raw),
+            hasError: Boolean(
+              (computeParsed.results?.raw?.Error &&
+                Object.keys(computeParsed.results.raw.Error).length > 0) ||
+                (computeParsed.raw?.Error && Object.keys(computeParsed.raw.Error).length > 0)
+            ),
+          }
+        : null,
+      outputSummary,
+    },
+  }
+
+  if (strictFailure) {
+    report.ok = false
+    report.error = 'semantic_output_check_failed'
+  }
+
   console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        action: args.action,
-        endpoint,
-        dataItemId: item.id,
-        slot,
-        send: { status: sendRes.status, body: sendText.slice(0, 240) },
-        slotCurrent: { status: slotCurrent.status, body: (slotCurrent.text || '').slice(0, 120) },
-        compute: {
-          status: compute.status,
-          body: (compute.text || '').slice(0, 500),
-          parsedSummary: computeParsed
-            ? {
-                atSlot: computeParsed['at-slot'] ?? null,
-                hasResults: Boolean(computeParsed.results || computeParsed.raw),
-                hasError: Boolean(
-                  (computeParsed.results?.raw?.Error &&
-                    Object.keys(computeParsed.results.raw.Error).length > 0) ||
-                    (computeParsed.raw?.Error && Object.keys(computeParsed.raw.Error).length > 0)
-                )
-              }
-            : null
-        }
-      },
-      null,
-      2
-    )
+    JSON.stringify(report, null, 2)
   )
+
+  if (strictFailure) {
+    process.exit(1)
+  }
 }
 
 main()

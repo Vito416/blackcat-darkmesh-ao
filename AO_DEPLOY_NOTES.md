@@ -1,9 +1,41 @@
 # AO Deploy Notes — blackcat-darkmesh-ao
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 This file is the operational source of truth for shipping `blackcat-darkmesh-ao`
 to AO push endpoints (`push.forward.computer`, `push-1.forward.computer`).
+
+---
+
+## 4.20) 2026-04-14 — shell-output false-positive guard for registry lookup
+
+Problem observed during live probe of current registry PID (`totyV22R...`):
+- transport/send + compute are `200`, but `results.raw.Output` is only AOS prompt text
+  (`"New Message From ... Action = GetSiteByHost"`) without `{status,...}` envelope.
+- This previously looked like a partial success in some probes and then surfaced as `422` in worker bridge.
+
+Fixes shipped in repo:
+- `worker/src/index.ts`
+  - added shell-output detection (`prompt` + `ao-types`/`New Message From`) in read normalizers.
+  - `/api/public/site-by-host` now returns clear `502`:
+    - `code: INVALID_UPSTREAM_RESPONSE`
+    - `message: registry_shell_output_without_envelope`
+  - missing `status` field in upstream envelope now maps to `502` (instead of ambiguous `422`).
+- `scripts/deploy/smoke_push_scheduler.mjs`
+  - added `--strict-response true` semantic mode.
+  - script now fails when compute output is shell-only and not a JSON envelope.
+- `worker/test/public-site-by-host.test.ts`
+  - added regression test for shell-only output mapping to `502`.
+
+Validation run:
+- `worker`: `npm test -- --run test/public-site-by-host.test.ts` -> pass
+- semantic probe (expected fail on shell output):
+  - `WALLET=../blackcat-darkmesh-write/wallet.json node scripts/deploy/smoke_push_scheduler.mjs --pid totyV22Rrz9_GE4zV9CjfX54FylG9MMNKLcmaWW6rYs --url https://push.forward.computer --action GetSiteByHost --strict-response true`
+  - result: `error=semantic_output_check_failed`, `shellOutput=true`
+
+Operational implication:
+- Deployment gate should treat shell-only output as non-ready/non-correct process behavior.
+- Keep using `--strict-response true` for gateway-critical read actions before wiring worker/gateway production config.
 
 ---
 

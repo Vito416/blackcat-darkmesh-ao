@@ -1474,6 +1474,16 @@ function buildSiteByHostData(requestId: string, host: string): string {
   })
 }
 
+function isShellPromptOutput(value: unknown): boolean {
+  const record = asRecord(value)
+  if (!record) return false
+  const prompt = trimString(record.prompt)
+  const data = trimString(record.data)
+  if (!prompt) return false
+  if (trimString((record as Record<string, unknown>)['ao-types'])) return true
+  return data.includes('New Message From')
+}
+
 function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<string, unknown> } {
   const normalized = raw?.results?.raw || raw?.raw || raw || {}
   const outputCandidate =
@@ -1511,7 +1521,30 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
     }
   }
 
-  if (String(envelope.status || '').toUpperCase() === 'OK') {
+  if (isShellPromptOutput(envelope)) {
+    return {
+      status: 502,
+      body: {
+        status: 'ERROR',
+        code: 'INVALID_UPSTREAM_RESPONSE',
+        message: 'registry_shell_output_without_envelope',
+      },
+    }
+  }
+
+  const envelopeStatus = trimString((envelope as Record<string, unknown>).status).toUpperCase()
+  if (!envelopeStatus) {
+    return {
+      status: 502,
+      body: {
+        status: 'ERROR',
+        code: 'INVALID_UPSTREAM_RESPONSE',
+        message: 'missing_status_field',
+      },
+    }
+  }
+
+  if (envelopeStatus === 'OK') {
     const payload = asRecord(envelope.data) || {}
     const siteId = firstNonEmptyString(payload.siteId, (envelope as any).siteId)
     const activeVersion = firstNonEmptyString(payload.activeVersion, (envelope as any).activeVersion)
@@ -1547,7 +1580,9 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
           ? 403
           : code === 'UNAUTHORIZED'
             ? 401
-            : 422
+            : code
+              ? 422
+              : 502
   return { status, body: envelope }
 }
 
@@ -1599,7 +1634,28 @@ function normalizeReadEnvelope(raw: any, action: string): { status: number; body
     }
   }
 
-  if (String(envelope.status || '').toUpperCase() === 'OK') {
+  if (isShellPromptOutput(envelope)) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: 'invalid_ao_response_shell_output',
+      },
+    }
+  }
+
+  const envelopeStatus = trimString((envelope as Record<string, unknown>).status).toUpperCase()
+  if (!envelopeStatus) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: 'invalid_ao_response_missing_status',
+      },
+    }
+  }
+
+  if (envelopeStatus === 'OK') {
     return { status: 200, body: envelope }
   }
 
@@ -1613,7 +1669,9 @@ function normalizeReadEnvelope(raw: any, action: string): { status: number; body
           ? 403
           : code === 'UNAUTHORIZED'
             ? 401
-            : 422
+            : code
+              ? 422
+              : 502
   return { status, body: envelope }
 }
 

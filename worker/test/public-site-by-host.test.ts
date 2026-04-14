@@ -103,6 +103,28 @@ describe('/api/public/site-by-host', () => {
     expect(json).toMatchObject({ status: 'ERROR', code: 'NOT_FOUND' })
   })
 
+  it('maps shell output without status envelope to 502', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-shell')
+    aoClient.result.mockResolvedValueOnce({
+      raw: {
+        Output: {
+          'ao-types': 'print=\"atom\"',
+          data: 'New Message From Zqk... Action = GetSiteByHost',
+          prompt: 'blackcat-ao-registry@aos-2.0.4>',
+        },
+      },
+    })
+
+    const res = await call({ host: 'shop.example.com' })
+    expect(res.status).toBe(502)
+    const json = await res.json()
+    expect(json).toMatchObject({
+      status: 'ERROR',
+      code: 'INVALID_UPSTREAM_RESPONSE',
+      message: 'registry_shell_output_without_envelope',
+    })
+  })
+
   it('rejects invalid input with 400', async () => {
     const res = await call({ host: 'https://bad.example.com' })
     expect(res.status).toBe(400)

@@ -143,6 +143,19 @@ Available profiles:
 - `integrity` (trusted release + authority + audit commitment + policy pause + snapshot lifecycle)
 - `write` (worker-signed write command probes)
 
+Quick semantic smoke check (detects shell-only output that previously looked like a pass):
+
+```bash
+WALLET=wallet.json node scripts/deploy/smoke_push_scheduler.mjs \
+  --pid <REGISTRY_PID> \
+  --url https://push.forward.computer \
+  --action GetSiteByHost \
+  --strict-response true
+```
+
+`--strict-response true` fails when compute returns only AOS shell/prompt output
+instead of a JSON envelope (`{status, code?, data?}`).
+
 ## Integrity registry operator CLI
 
 Use `scripts/cli/integrity_registry_cli.js` when you want to send a single
