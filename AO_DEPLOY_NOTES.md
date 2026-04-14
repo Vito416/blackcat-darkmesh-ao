@@ -1129,3 +1129,13 @@ Current interpretation:
 
 Next required step:
 - wait for module/PID maturity (`arweave.net/tx/.../status` no longer `Accepted`/`Not Found`), then rerun strict smoke + deep registry profile on `7EFJ...`.
+
+Follow-up rerun on finalized module:
+- Module `Zjk7...` reached finalized state (`block_height=1897547`, `confirmations=2`).
+- Spawned additional control PIDs from the same finalized module:
+  - `HE9c01jUotdSsO1qL3w1ds0a_eCoFI1AHrCYlklzOLo` (`extended`)
+  - `ofQRVJa3Auaq-hez6LbdH0zqSf59c7YhKetQWw9rCiI` (`minimal`)
+- Immediate strict smoke on both still shows fresh readback failure pattern (`slot/current 500`, `compute 500`), confirming this is not just “spawned before module finalized”.
+- Reports:
+  - `tmp/smoke-HE9c-push-2026-04-14.json`
+  - `tmp/smoke-ofQR-push-2026-04-14.json`
