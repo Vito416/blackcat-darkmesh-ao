@@ -422,11 +422,8 @@ local function normalize_gateway_domains(raw_domains)
   local seen = {}
   local out = {}
   for idx, domain in ipairs(raw_domains) do
-    local ok_domain, norm_or_err = validate_gateway_domain_label(
-      domain,
-      ("Domains[%d]"):format(idx),
-      true
-    )
+    local ok_domain, norm_or_err =
+      validate_gateway_domain_label(domain, ("Domains[%d]"):format(idx), true)
     if not ok_domain then
       return nil, norm_or_err, ("Domains[%d]"):format(idx)
     end
@@ -526,10 +523,8 @@ function handlers.RegisterGateway(msg)
   if not ok_country then
     return codec.error("INVALID_INPUT", err_country, { field = "Country" })
   end
-  local capacity_weight, err_weight = parse_gateway_numeric(
-    msg["Capacity-Weight"],
-    "Capacity-Weight"
-  )
+  local capacity_weight, err_weight =
+    parse_gateway_numeric(msg["Capacity-Weight"], "Capacity-Weight")
   if err_weight then
     return codec.error("INVALID_INPUT", err_weight, { field = "Capacity-Weight" })
   end
@@ -2044,7 +2039,8 @@ local function route(msg)
     return codec.error("MISSING_ACTION", "Action is required")
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
+  local ok_hmac, hmac_err =
+    auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end
@@ -2065,6 +2061,243 @@ local function route(msg)
   idem.record(msg["Request-Id"], resp)
   persist.save("registry_state", state)
   return resp
+end
+
+local function is_array(value)
+  if type(value) ~= "table" then
+    return false, 0
+  end
+  local max = 0
+  local count = 0
+  for k in pairs(value) do
+    if type(k) ~= "number" or k <= 0 or k % 1 ~= 0 then
+      return false, 0
+    end
+    if k > max then
+      max = k
+    end
+    count = count + 1
+  end
+  if max == 0 then
+    return true, 0
+  end
+  if max ~= count then
+    return false, 0
+  end
+  return true, max
+end
+
+local function json_quote(value)
+  local s = tostring(value)
+  s = s:gsub("\\", "\\\\")
+  s = s:gsub('"', '\\"')
+  s = s:gsub("\n", "\\n")
+  s = s:gsub("\r", "\\r")
+  s = s:gsub("\t", "\\t")
+  return '"' .. s .. '"'
+end
+
+local function encode_json_fallback(value, seen)
+  local t = type(value)
+  if t == "nil" then
+    return "null"
+  end
+  if t == "boolean" then
+    return value and "true" or "false"
+  end
+  if t == "number" then
+    if value ~= value or value == math.huge or value == -math.huge then
+      return "null"
+    end
+    return tostring(value)
+  end
+  if t == "string" then
+    return json_quote(value)
+  end
+  if t ~= "table" then
+    return json_quote(tostring(value))
+  end
+  seen = seen or {}
+  if seen[value] then
+    return json_quote "__cycle__"
+  end
+  seen[value] = true
+  local out = {}
+  local array_like, length = is_array(value)
+  if array_like then
+    for i = 1, length do
+      out[#out + 1] = encode_json_fallback(value[i], seen)
+    end
+    seen[value] = nil
+    return "[" .. table.concat(out, ",") .. "]"
+  end
+  local keys = {}
+  for key in pairs(value) do
+    keys[#keys + 1] = key
+  end
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+  for _, key in ipairs(keys) do
+    out[#out + 1] = json_quote(tostring(key)) .. ":" .. encode_json_fallback(value[key], seen)
+  end
+  seen[value] = nil
+  return "{" .. table.concat(out, ",") .. "}"
+end
+
+local function encode_json(value)
+  if json_ok and json then
+    local ok, encoded = pcall(json.encode, value)
+    if ok and type(encoded) == "string" then
+      return encoded
+    end
+  end
+  return encode_json_fallback(value, {})
+end
+
+local function tag_value(tags, key)
+  if type(tags) ~= "table" then
+    return nil
+  end
+  if tags[key] ~= nil then
+    return tags[key]
+  end
+  if tags[key:lower()] ~= nil then
+    return tags[key:lower()]
+  end
+  for _, entry in ipairs(tags) do
+    if type(entry) == "table" and (entry.name == key or entry.Name == key) then
+      return entry.value or entry.Value
+    end
+  end
+  return nil
+end
+
+local function parse_json_object(raw)
+  if type(raw) == "table" then
+    return raw
+  end
+  if type(raw) ~= "string" or raw == "" then
+    return nil
+  end
+  local ok, decoded = pcall(function()
+    if json_ok and json then
+      return json.decode(raw)
+    end
+    return nil
+  end)
+  if ok and type(decoded) == "table" then
+    return decoded
+  end
+  return nil
+end
+
+local function merge_string_keys(dst, src)
+  if type(src) ~= "table" then
+    return
+  end
+  for key, value in pairs(src) do
+    if type(key) == "string" and dst[key] == nil then
+      dst[key] = value
+    end
+  end
+end
+
+local function merge_tag_keys(dst, tags)
+  if type(tags) ~= "table" then
+    return
+  end
+  merge_string_keys(dst, tags)
+  for _, entry in ipairs(tags) do
+    if type(entry) == "table" then
+      local name = entry.name or entry.Name
+      local value = entry.value or entry.Value
+      if type(name) == "string" and dst[name] == nil and value ~= nil then
+        dst[name] = value
+      end
+    end
+  end
+end
+
+local function enrich_message(msg)
+  local envelope = (type(msg) == "table" and (msg.Body or msg.body)) or {}
+  local tags = msg.Tags or msg.tags or envelope.Tags or envelope.tags or {}
+  local data_obj = parse_json_object(msg.Data or msg.data)
+    or parse_json_object(envelope.Data or envelope.data)
+    or {}
+
+  local out = {}
+  merge_string_keys(out, data_obj)
+  merge_string_keys(out, envelope)
+  merge_string_keys(out, msg)
+  merge_tag_keys(out, tags)
+
+  out.Action = out.Action or out.action or tag_value(tags, "Action")
+  out["Request-Id"] = out["Request-Id"] or out.requestId or tag_value(tags, "Request-Id")
+  out["Actor-Role"] = out["Actor-Role"] or out.actorRole or tag_value(tags, "Actor-Role")
+  out["Schema-Version"] = out["Schema-Version"]
+    or out.schemaVersion
+    or tag_value(tags, "Schema-Version")
+  out.Signature = out.Signature or out.signature or tag_value(tags, "Signature")
+  out.Nonce = out.Nonce or out.nonce or tag_value(tags, "Nonce")
+  out.ts = out.ts or out.timestamp or tag_value(tags, "ts")
+  out.From = msg.From or msg.from
+  out.Tags = tags
+  return out, tags
+end
+
+local function handle_registry_action(msg)
+  local normalized = enrich_message(msg or {})
+  local ok_route, route_result = pcall(route, normalized)
+  local resp = ok_route and route_result
+    or codec.error("HANDLER_CRASH", tostring(route_result or "registry_handler_crash"))
+  return encode_json(resp)
+end
+
+local function is_registry_action(msg)
+  if type(msg) ~= "table" then
+    return false
+  end
+  local normalized = enrich_message(msg)
+  local action = normalized.Action
+  return type(action) == "string" and handlers[action] ~= nil
+end
+
+local has_handlers = type(Handlers) == "table" and type(Handlers.add) == "function"
+if has_handlers then
+  Handlers.add("Registry-Action", is_registry_action, handle_registry_action)
+end
+
+local function fallback_handle(msg)
+  if is_registry_action(msg) then
+    return handle_registry_action(msg)
+  end
+  return nil
+end
+
+local previous_Handle = _G.Handle
+local previous_handle = _G.handle
+local function merged_global_handle(original, msg)
+  local routed = fallback_handle(msg)
+  if routed ~= nil then
+    return routed
+  end
+  if type(original) == "function" then
+    return original(msg)
+  end
+  return nil
+end
+
+_G.Handle = function(msg)
+  return merged_global_handle(previous_Handle, msg)
+end
+
+_G.handle = function(msg)
+  local original = previous_handle
+  if type(original) ~= "function" then
+    original = previous_Handle
+  end
+  return merged_global_handle(original, msg)
 end
 
 return {

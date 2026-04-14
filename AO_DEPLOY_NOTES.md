@@ -70,6 +70,42 @@ Conclusion:
 
 ---
 
+## 4.22) 2026-04-14 — root-cause patch: registry runtime action wiring
+
+Direct RCA from behavior (`Action` logged in shell, but no registry envelope):
+- Registry process had `route(msg)` + handlers table, but **no AO runtime handler wiring** (`Handlers.add` / fallback `Handle` integration).
+- Site process already had this wiring block; registry did not.
+- Result: incoming scheduler messages were visible in shell logs, but registry action router was not executed in process runtime.
+
+Code fix implemented:
+- `ao/registry/process.lua`
+  - added runtime dispatch integration:
+    - `is_registry_action(...)`
+    - `handle_registry_action(...)`
+    - `Handlers.add("Registry-Action", ...)`
+    - fallback global `_G.Handle` / `_G.handle` merge
+  - added envelope normalization helpers for runtime input (`Tags`/`Data` parsing) + safe JSON encoding for handler output.
+
+Validation:
+- local contract suite still passes:
+  - `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 AUTH_REQUIRE_TIMESTAMP=0 lua5.4 scripts/verify/contracts.lua` -> `contract tests passed`
+
+Deploy artifacts for patched registry:
+- module (lua): `bnQ770w89FiehUv-pt7yKemzBfg9c5Pj1zD95ytt-w0`
+- pid: `wSWbCtDh9raS_OwDuDzwOPC8FhFUrhqWqfCLn4D-U6I`
+
+Immediate probe after spawn:
+- scheduler send `200`, slot assigned
+- `slot/current` + `compute` still in fresh-process unstable state (500 path right after spawn)
+- retest required after index/finalization maturity window
+
+Operational next:
+1. wait module/pid maturity,
+2. rerun strict semantic smoke (`GetResolverFlags`, `GetSiteByHost`),
+3. if strict passes, switch worker `AO_REGISTRY_PROCESS_ID` to `wSWb...`.
+
+---
+
 ## 4.19) 2026-04-14 — registry gateway-directory rollout (v1.4.0 branch)
 
 Implemented in `ao/registry/process.lua`:
