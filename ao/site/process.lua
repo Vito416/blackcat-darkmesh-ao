@@ -2080,7 +2080,14 @@ local function merge_message_fields(out, source)
     return
   end
   for k, v in pairs(source) do
-    if type(k) == "string" and out[k] == nil and k ~= "Tags" and k ~= "tags" and k ~= "Data" and k ~= "data" then
+    if
+      type(k) == "string"
+      and out[k] == nil
+      and k ~= "Tags"
+      and k ~= "tags"
+      and k ~= "Data"
+      and k ~= "data"
+    then
       out[k] = v
     end
   end
