@@ -1305,3 +1305,42 @@ Validation and tests:
 - `AUTH_REQUIRE_SIGNATURE=0 lua5.4 scripts/verify/integrity_registry_spec.lua` ✅
 - Worker tests (`npm test`) ✅
 - Write adapter contract tests (`npm run test:checkout-adapter-contract`) ✅
+
+---
+
+## 4.24) 2026-04-15 — worker replay contention live probe + strong-lock fix (Durable Object)
+
+Live replay drill (production worker endpoint):
+
+- Command:
+  - `WORKER_BASE_URL=https://blackcat-inbox-production.vitek-pasek.workers.dev INBOX_HMAC_SECRET=<redacted> REPLAY_DRILL_ATTEMPTS=4 node worker/ops/loadtest/replay-contention-drill.mjs --json`
+- Artifact:
+  - `worker/ops/loadtest/reports/replay-contention-live-20260415T155914Z.json`
+- Observed:
+  - `201` count = 3
+  - `409` count = 1
+  - `pass=false` (expected exactly one `201`)
+
+Interpretation:
+
+- The live worker still allows multi-accept under same-nonce contention (KV-only replay check is not strong enough under concurrent execution).
+- This is a real P1-02 blocker for strict replay guarantees.
+
+Fix implemented in source (pending deploy):
+
+- Added optional strong replay path using a Durable Object lock:
+  - new binding: `REPLAY_LOCKS`
+  - new toggle: `REPLAY_STRONG_MODE`
+  - new Durable Object class: `ReplayLockDurableObject`
+- Replay logic now:
+  - if `REPLAY_LOCKS` is configured, claim goes through DO (`/claim`) for single-winner semantics;
+  - if `REPLAY_STRONG_MODE=1` and binding is missing, fail closed with `500 missing_replay_lock_binding`;
+  - legacy KV replay path remains only as compatibility fallback when strong mode is not enabled.
+- Updated worker docs/config/runbook:
+  - `worker/wrangler.toml.example` (DO binding + migration + `REPLAY_STRONG_MODE=1`)
+  - `worker/ops/env.prod.example`
+  - `worker/README.md`
+  - `worker/ops/runbooks/replay-contention-drill.md`
+- Tests:
+  - `worker/test/inbox.test.ts` now covers strong-mode missing-binding fail-closed and DO-lock replay behavior.
+  - `worker npm test` ✅

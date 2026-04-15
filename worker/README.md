@@ -49,6 +49,7 @@ Secrets to keep here (examples)
 Env/config
 - `INBOX_TTL_DEFAULT`, `INBOX_TTL_MAX`
 - `INBOX_KV` (KV binding)
+- `REPLAY_LOCKS` (Durable Object binding, required for strong replay lock)
 - Scoped route tokens (recommended):
   - `WORKER_READ_TOKEN` for `GET /inbox/:subject/:nonce`
   - `WORKER_FORGET_TOKEN` for `POST /forget`
@@ -63,6 +64,7 @@ Env/config
 - `SUBJECT_MAX_ENVELOPES` (max live envelopes per subject)
 - `PAYLOAD_MAX_BYTES` (reject oversized payloads)
 - `REPLAY_TTL` (seconds; reject resubmission of same subject+nonce)
+- `REPLAY_STRONG_MODE` (`1` recommended in production; fail closed if `REPLAY_LOCKS` is missing)
 - `NOTIFY_RATE_MAX`, `NOTIFY_RATE_WINDOW` (per-IP for /notify)
 - `INBOX_HMAC_SECRET` (optional HMAC check for /inbox; header `X-Signature`)
 - `NOTIFY_HMAC_SECRET` (HMAC check for /notify; set `NOTIFY_HMAC_OPTIONAL=1` only if unsigned allowed)
@@ -86,6 +88,7 @@ Env/config
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).
+- Keep Durable Object migration/binding from `wrangler.toml.example` (`ReplayLockDurableObject` + `REPLAY_LOCKS`) before enabling `REPLAY_STRONG_MODE=1`.
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production` (or use deploy script below). Cloudflare Workers need `compatibility_flags = ["nodejs_compat"]` (already in `wrangler.toml.example`) to resolve `buffer`.

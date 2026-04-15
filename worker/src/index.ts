@@ -424,6 +424,12 @@ function replayWindow(c: any) {
   return ttl
 }
 
+function replayStrongModeEnabled(env: Env) {
+  const explicit = cleanEnv((env as any).REPLAY_STRONG_MODE)
+  if (explicit) return explicit === '1'
+  return false
+}
+
 function pruneReplayClaims(now: number) {
   for (const [key, expiresAt] of replayClaims.entries()) {
     if (expiresAt <= now) replayClaims.delete(key)
@@ -440,6 +446,26 @@ function claimReplayKey(key: string, ttlSec: number) {
   replayClaims.set(key, now + claimTtl)
 }
 
+async function checkReplayWithDurableObject(c: any, replayKey: string, ttl: number) {
+  const replayLocks = (c.env as Env).REPLAY_LOCKS
+  if (!replayLocks) {
+    throw new HTTPException(500, { message: 'missing_replay_lock_binding' })
+  }
+  const id = replayLocks.idFromName(replayKey)
+  const stub = replayLocks.get(id)
+  const res = await stub.fetch('https://replay-lock/claim', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ttl }),
+  })
+  if (res.status === 409) {
+    throw new HTTPException(409, { message: 'replay' })
+  }
+  if (!res.ok) {
+    throw new HTTPException(500, { message: 'replay_lock_unavailable' })
+  }
+}
+
 async function checkReplay(c: any, subj: string, nonce: string) {
   const ttl = replayWindow(c)
   if (ttl <= 0) return
@@ -447,6 +473,13 @@ async function checkReplay(c: any, subj: string, nonce: string) {
   claimReplayKey(replayKey, ttl)
   const kv = kvFor(c)
   try {
+    if ((c.env as Env).REPLAY_LOCKS) {
+      await checkReplayWithDurableObject(c, replayKey, ttl)
+      return
+    }
+    if (replayStrongModeEnabled(c.env as Env)) {
+      throw new HTTPException(500, { message: 'missing_replay_lock_binding' })
+    }
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const existing = await kv.get(replayKey)
@@ -3055,6 +3088,50 @@ app.post('/notify', async (c) => {
   }
   throw new HTTPException(400, { message: 'notify_unconfigured' })
 })
+
+export class ReplayLockDurableObject {
+  state: DurableObjectState
+
+  constructor(state: DurableObjectState) {
+    this.state = state
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (request.method !== 'POST' || url.pathname !== '/claim') {
+      return new Response('not_found', { status: 404 })
+    }
+
+    let ttl = 600
+    try {
+      const body = (await request.json()) as { ttl?: number }
+      if (typeof body.ttl === 'number' && Number.isFinite(body.ttl) && body.ttl > 0) {
+        ttl = Math.min(86400, Math.max(1, Math.floor(body.ttl)))
+      }
+    } catch {
+      // Keep default TTL on malformed payloads.
+    }
+
+    const now = nowSeconds()
+    const currentExp = await this.state.storage.get<number>('exp')
+    if (typeof currentExp === 'number' && currentExp > now) {
+      return new Response('replay', { status: 409 })
+    }
+
+    const nextExp = now + ttl
+    await this.state.storage.put('exp', nextExp)
+    this.state.storage.setAlarm((nextExp + 1) * 1000).catch(() => {})
+    return new Response('ok', { status: 201 })
+  }
+
+  async alarm() {
+    const now = nowSeconds()
+    const currentExp = await this.state.storage.get<number>('exp')
+    if (typeof currentExp !== 'number' || currentExp <= now) {
+      await this.state.storage.delete('exp')
+    }
+  }
+}
 
 // Cron/cleanup: bind route for Cloudflare scheduled event
 export default {

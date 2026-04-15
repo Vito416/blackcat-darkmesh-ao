@@ -10,6 +10,7 @@ This drill validates replay defense under concurrent same-nonce writes.
 ## Preconditions
 
 - Worker deployed with replay guard enabled (`REPLAY_TTL > 0`).
+- Strong replay lock enabled (`REPLAY_STRONG_MODE=1`) with `REPLAY_LOCKS` Durable Object binding configured.
 - Prefer `RATE_LIMIT_MAX=0` for the drill to avoid limiter noise.
 - Optional: set `INBOX_HMAC_SECRET` when signature verification is enabled.
 

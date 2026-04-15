@@ -12,6 +12,7 @@ export interface Env {
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW?: string
   REPLAY_TTL?: string
+  REPLAY_STRONG_MODE?: string
   SUBJECT_MAX_ENVELOPES?: string
   PAYLOAD_MAX_BYTES?: string
   NOTIFY_RATE_MAX?: string
@@ -54,4 +55,5 @@ export interface Env {
   GATEWAY_WRITE_AUTO_SIGN?: string
   SIGN_POLICY_JSON?: string
   SIGN_ALLOWLIST_JSON?: string
+  REPLAY_LOCKS?: DurableObjectNamespace
 }

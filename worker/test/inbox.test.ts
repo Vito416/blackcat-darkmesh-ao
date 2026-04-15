@@ -23,6 +23,39 @@ async function req(path: string, init: RequestInit = {}) {
   return mod.fetch(r, env as any, {} as any)
 }
 
+function replayLockNamespaceMock() {
+  const locks = new Map<string, number>()
+  return {
+    idFromName(name: string) {
+      return name
+    },
+    get(id: unknown) {
+      const replayKey = String(id)
+      return {
+        async fetch(_url: string, init?: RequestInit) {
+          const now = Math.floor(Date.now() / 1000)
+          let ttl = 600
+          try {
+            const raw = typeof init?.body === 'string' ? init.body : '{}'
+            const body = JSON.parse(raw) as { ttl?: number }
+            if (typeof body.ttl === 'number' && Number.isFinite(body.ttl) && body.ttl > 0) {
+              ttl = Math.floor(body.ttl)
+            }
+          } catch {
+            // keep default
+          }
+          const exp = locks.get(replayKey) || 0
+          if (exp > now) {
+            return new Response('replay', { status: 409 })
+          }
+          locks.set(replayKey, now + ttl)
+          return new Response('ok', { status: 201 })
+        },
+      }
+    },
+  }
+}
+
 describe('Inbox flow', () => {
   it('stores and fetches then deletes', async () => {
     const res = await req('/inbox', {
@@ -74,6 +107,60 @@ describe('Inbox flow', () => {
     const nonce = 'n-race'
     const body = JSON.stringify({ subject, nonce, payload: 'cipher' })
     const raceEnv = { ...env, RATE_LIMIT_MAX: '0' }
+
+    const [a, b] = await Promise.all([
+      mod.fetch(
+        new Request('http://localhost/inbox', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }),
+        raceEnv as any,
+        {} as any,
+      ),
+      mod.fetch(
+        new Request('http://localhost/inbox', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }),
+        raceEnv as any,
+        {} as any,
+      ),
+    ])
+
+    const statuses = [a.status, b.status].sort((x, y) => x - y)
+    expect(statuses).toEqual([201, 409])
+  })
+
+  it('fails closed in strong replay mode when replay lock binding is missing', async () => {
+    const strongEnv = { ...env, REPLAY_STRONG_MODE: '1', RATE_LIMIT_MAX: '0' }
+    const subject = `subj-strong-${Date.now()}`
+    const nonce = `n-${Date.now()}`
+    const res = await mod.fetch(
+      new Request('http://localhost/inbox', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subject, nonce, payload: 'cipher' }),
+      }),
+      strongEnv as any,
+      {} as any,
+    )
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('missing_replay_lock_binding')
+  })
+
+  it('enforces replay guard via durable-object lock in strong mode', async () => {
+    const subject = `subj-do-${Date.now()}`
+    const nonce = 'n-race'
+    const body = JSON.stringify({ subject, nonce, payload: 'cipher' })
+    const raceEnv = {
+      ...env,
+      RATE_LIMIT_MAX: '0',
+      REPLAY_STRONG_MODE: '1',
+      REPLAY_LOCKS: replayLockNamespaceMock(),
+    }
 
     const [a, b] = await Promise.all([
       mod.fetch(

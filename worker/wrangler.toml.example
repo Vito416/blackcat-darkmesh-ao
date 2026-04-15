@@ -11,6 +11,7 @@ INBOX_TTL_MAX = "86400"
 RATE_LIMIT_MAX = "50"
 RATE_LIMIT_WINDOW = "60"
 REPLAY_TTL = "600"
+REPLAY_STRONG_MODE = "1"
 SUBJECT_MAX_ENVELOPES = "10"
 PAYLOAD_MAX_BYTES = "16384"
 NOTIFY_RATE_MAX = "20"
@@ -40,12 +41,21 @@ crons = ["0 * * * *"]
 binding = "INBOX_KV"
 id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
+[[durable_objects.bindings]]
+name = "REPLAY_LOCKS"
+class_name = "ReplayLockDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ReplayLockDurableObject"]
+
 [env.production.vars]
 INBOX_TTL_DEFAULT = "3600"
 INBOX_TTL_MAX = "86400"
 RATE_LIMIT_MAX = "50"
 RATE_LIMIT_WINDOW = "60"
 REPLAY_TTL = "600"
+REPLAY_STRONG_MODE = "1"
 SUBJECT_MAX_ENVELOPES = "10"
 PAYLOAD_MAX_BYTES = "16384"
 NOTIFY_RATE_MAX = "20"
@@ -81,3 +91,6 @@ MAX_JANITOR_KEYS = "2000"
   [[env.production.kv_namespaces]]
   binding = "INBOX_KV"
   id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  [[env.production.durable_objects.bindings]]
+  name = "REPLAY_LOCKS"
+  class_name = "ReplayLockDurableObject"
