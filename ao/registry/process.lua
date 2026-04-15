@@ -1765,7 +1765,18 @@ local function parse_bool(value, field)
   return nil, ("invalid_boolean:%s"):format(field)
 end
 
-local function get_active_release()
+local function get_active_release(component_id)
+  if component_id then
+    local active_version = state.integrity.active[component_id]
+    if active_version then
+      local key = release_key(component_id, active_version)
+      local release = state.integrity.releases[key]
+      if release then
+        return release
+      end
+    end
+  end
+
   local root = state.integrity.policy.activeRoot
   if not root then
     return nil
@@ -1774,7 +1785,14 @@ local function get_active_release()
   if not key then
     return nil
   end
-  return state.integrity.releases[key]
+  local release = state.integrity.releases[key]
+  if not release then
+    return nil
+  end
+  if component_id and release.componentId ~= component_id then
+    return nil
+  end
+  return release
 end
 
 function handlers.PublishTrustedRelease(msg)
@@ -2090,9 +2108,17 @@ function handlers.GetTrustedRoot(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local active_release = get_active_release()
+  local component_id = read_component_id(msg)
+  local ok_component, err_component =
+    validate_token_field(component_id, "Component-Id", 96, "^[%w%-%._]+$")
+  if not ok_component then
+    return codec.error("INVALID_INPUT", err_component, { field = "Component-Id" })
+  end
+  local active_release = get_active_release(component_id)
   if not active_release then
-    return codec.error("NOT_FOUND", "Active trusted root is not set")
+    return codec.error("NOT_FOUND", "Active trusted root is not set", {
+      componentId = component_id,
+    })
   end
   return codec.ok {
     componentId = active_release.componentId,

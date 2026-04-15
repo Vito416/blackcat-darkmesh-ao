@@ -201,6 +201,7 @@ function parseArgs(argv) {
       case '--upgrade':
       case '--emergency':
       case '--reporter':
+      case '--reporter-ref':
       case '--accepted-at':
       case '--merkle-root':
       case '--actor':
@@ -400,7 +401,7 @@ function buildRequestEnvelope(action, args, payload) {
         params.Reporter = value
         break
       case 'signatureRefs':
-        params['Signature-Refs'] = Array.isArray(value) ? JSON.stringify(value) : String(value)
+        params['Signature-Refs'] = Array.isArray(value) ? value : String(value)
         break
       case 'seqFrom':
         params['Seq-From'] = String(value)
