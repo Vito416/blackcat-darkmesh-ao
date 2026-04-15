@@ -1344,3 +1344,29 @@ Fix implemented in source (pending deploy):
 - Tests:
   - `worker/test/inbox.test.ts` now covers strong-mode missing-binding fail-closed and DO-lock replay behavior.
   - `worker npm test` ✅
+
+Follow-up (same day, deployed + re-verified):
+
+- Deployment:
+  - `npx wrangler deploy --env production`
+  - live version IDs observed during rollout:
+    - `2e9c0f4e-696e-478c-b08b-b9fe4fdd72af`
+    - `ab2d0a43-c95a-444d-9ace-a5eea4a602f1`
+    - `745fd04a-3587-4430-ac16-37cfb5507041`
+    - `e4ab8708-5444-41aa-85a0-38ff844d7160` (final for this batch)
+- Cloudflare free-plan migration correction:
+  - DO migration had to use `new_sqlite_classes` (not `new_classes`) for successful deploy.
+- Replay drill post-deploy:
+  - `worker/ops/loadtest/reports/replay-contention-live-20260415T161919Z-postdo.json`
+  - `worker/ops/loadtest/reports/replay-contention-live-20260415T162523Z-postdo-verified.json`
+  - observed: `201=1`, `409=3`, `pass=true` -> P1-02 blocker closed.
+- Scoped token live rotation + verification:
+  - rotated live scoped secrets (`WORKER_READ_TOKEN`, `WORKER_FORGET_TOKEN`, `WORKER_NOTIFY_TOKEN`, `WORKER_SIGN_TOKEN`);
+  - final probe artifact:
+    - `../blackcat-darkmesh-gateway/ops/decommission/live-probes/2026-04-15/worker-token-scope-live-2026-04-15-v4.json`
+  - observed:
+    - read: `404` (authorized probe on missing entry), bad token `401`
+    - forget: `200`, bad token `401`
+    - notify: `200`, bad token `401`
+    - sign: `200`, bad token `401`
+  - P1-01 live scoped token separation confirmed.

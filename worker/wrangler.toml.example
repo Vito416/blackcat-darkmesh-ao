@@ -47,7 +47,7 @@ class_name = "ReplayLockDurableObject"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["ReplayLockDurableObject"]
+new_sqlite_classes = ["ReplayLockDurableObject"]
 
 [env.production.vars]
 INBOX_TTL_DEFAULT = "3600"

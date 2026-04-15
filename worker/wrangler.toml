@@ -11,6 +11,7 @@ INBOX_TTL_MAX = "86400"
 RATE_LIMIT_MAX = "50"
 RATE_LIMIT_WINDOW = "60"
 REPLAY_TTL = "600"
+REPLAY_STRONG_MODE = "1"
 SUBJECT_MAX_ENVELOPES = "10"
 PAYLOAD_MAX_BYTES = "16384"
 NOTIFY_RATE_MAX = "20"
@@ -43,12 +44,21 @@ crons = ["0 * * * *"]
 binding = "INBOX_KV"
 id = "0a00b23608a2417690d6f8a84c49ca72"
 
+[[durable_objects.bindings]]
+name = "REPLAY_LOCKS"
+class_name = "ReplayLockDurableObject"
+
+[[migrations]]
+tag = "v2-replay-lock-2026-04-15"
+new_sqlite_classes = ["ReplayLockDurableObject"]
+
 [env.production.vars]
 INBOX_TTL_DEFAULT = "3600"
 INBOX_TTL_MAX = "86400"
 RATE_LIMIT_MAX = "50"
 RATE_LIMIT_WINDOW = "60"
 REPLAY_TTL = "600"
+REPLAY_STRONG_MODE = "1"
 SUBJECT_MAX_ENVELOPES = "10"
 PAYLOAD_MAX_BYTES = "16384"
 NOTIFY_RATE_MAX = "20"
@@ -79,3 +89,6 @@ GATEWAY_WRITE_AUTO_SIGN = "1"
   [[env.production.kv_namespaces]]
   binding = "INBOX_KV"
   id = "0a00b23608a2417690d6f8a84c49ca72"
+  [[env.production.durable_objects.bindings]]
+  name = "REPLAY_LOCKS"
+  class_name = "ReplayLockDurableObject"
