@@ -462,9 +462,10 @@ function handlers.GetPage(msg)
       if string.sub(route_path, 1, 1) ~= "/" then
         route_path = "/" .. route_path
       end
-      local _, normalized_path =
+      local detected_locale, normalized_path =
         i18n.detect_locale(route_path, locale_cfg.supported, locale_cfg.default)
-      local key_locale = ids.route_key(msg["Site-Id"], normalized_path, locale)
+      local slug_locale = detected_locale or locale
+      local key_locale = ids.route_key(msg["Site-Id"], normalized_path, slug_locale)
       local key_default = ids.route_key(msg["Site-Id"], normalized_path, locale_cfg.default)
       local key_plain = ids.route_key(msg["Site-Id"], normalized_path)
       local route = state.routes[key_locale] or state.routes[key_default] or state.routes[key_plain]
@@ -473,6 +474,7 @@ function handlers.GetPage(msg)
           codec.error("NOT_FOUND", "Page not found", { path = requested_slug, version = version })
       end
       requested_page_id = route.pageId
+      locale = route.locale or slug_locale
     end
 
     local key = ids.page_key(msg["Site-Id"], requested_page_id, version, locale)
