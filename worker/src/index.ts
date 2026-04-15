@@ -466,6 +466,30 @@ async function checkReplayWithDurableObject(c: any, replayKey: string, ttl: numb
   }
 }
 
+async function clearReplayWithDurableObject(c: any, replayKey: string) {
+  const replayLocks = (c.env as Env).REPLAY_LOCKS
+  if (!replayLocks) return
+  const id = replayLocks.idFromName(replayKey)
+  const stub = replayLocks.get(id)
+  const res = await stub.fetch('https://replay-lock/forget', { method: 'POST' })
+  if (!res.ok) {
+    throw new HTTPException(500, { message: 'replay_lock_unavailable' })
+  }
+}
+
+async function persistReplayMarker(c: any, replayKey: string, ttl: number) {
+  const kv = kvFor(c)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await kv.put(replayKey, '1', { expirationTtl: ttl })
+      return
+    } catch (e) {
+      if (!isSqliteBusy(e) || attempt === 2) throw e
+      await sleep(5 * (attempt + 1))
+    }
+  }
+}
+
 async function checkReplay(c: any, subj: string, nonce: string) {
   const ttl = replayWindow(c)
   if (ttl <= 0) return
@@ -475,6 +499,18 @@ async function checkReplay(c: any, subj: string, nonce: string) {
   try {
     if ((c.env as Env).REPLAY_LOCKS) {
       await checkReplayWithDurableObject(c, replayKey, ttl)
+      try {
+        // Keep a replay marker in KV so /forget can enumerate replay keys even
+        // when locking is enforced via Durable Objects.
+        await persistReplayMarker(c, replayKey, ttl)
+      } catch (err) {
+        try {
+          await clearReplayWithDurableObject(c, replayKey)
+        } catch (_) {
+          // Prefer surfacing the original marker-persist failure.
+        }
+        throw err
+      }
       return
     }
     if (replayStrongModeEnabled(c.env as Env)) {
@@ -2807,9 +2843,28 @@ app.post('/forget', async (c) => {
       else await kv.delete(k.name)
     }
   }
+  const forgetReplayLocks = async (keys: { name: string }[]) => {
+    if (!(c.env as Env).REPLAY_LOCKS) return
+    for (const k of keys) {
+      if (canWait) {
+        c.executionCtx.waitUntil(
+          clearReplayWithDurableObject(c, k.name).catch(() => {
+            inc('worker_forget_replay_lock_error_total')
+          }),
+        )
+      } else {
+        try {
+          await clearReplayWithDurableObject(c, k.name)
+        } catch {
+          inc('worker_forget_replay_lock_error_total')
+        }
+      }
+    }
+  }
   const runDeletes = async () => {
     await deleteKeys(inboxKeys)
     await deleteKeys(replayKeys)
+    await forgetReplayLocks(replayKeys)
   }
   if (overflow) {
     await runDeletes()
@@ -3106,7 +3161,14 @@ export class ReplayLockDurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
-    if (request.method !== 'POST' || url.pathname !== '/claim') {
+    if (request.method !== 'POST') {
+      return new Response('not_found', { status: 404 })
+    }
+    if (url.pathname === '/forget') {
+      await this.state.storage.delete('exp')
+      return new Response('ok', { status: 200 })
+    }
+    if (url.pathname !== '/claim') {
       return new Response('not_found', { status: 404 })
     }
 

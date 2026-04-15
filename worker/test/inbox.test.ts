@@ -32,7 +32,15 @@ function replayLockNamespaceMock() {
     get(id: unknown) {
       const replayKey = String(id)
       return {
-        async fetch(_url: string, init?: RequestInit) {
+        async fetch(urlRaw: string, init?: RequestInit) {
+          const url = new URL(urlRaw)
+          if (url.pathname === '/forget') {
+            locks.delete(replayKey)
+            return new Response('ok', { status: 200 })
+          }
+          if (url.pathname !== '/claim') {
+            return new Response('not_found', { status: 404 })
+          }
           const now = Math.floor(Date.now() / 1000)
           let ttl = 600
           try {
@@ -185,6 +193,66 @@ describe('Inbox flow', () => {
 
     const statuses = [a.status, b.status].sort((x, y) => x - y)
     expect(statuses).toEqual([201, 409])
+  })
+
+  it('clears durable replay lock via /forget', async () => {
+    const subject = `subj-do-forget-${Date.now()}`
+    const nonce = 'n-forget'
+    const body = JSON.stringify({ subject, nonce, payload: 'cipher' })
+    const replayLocks = replayLockNamespaceMock()
+    const replayEnv = {
+      ...env,
+      RATE_LIMIT_MAX: '0',
+      REPLAY_STRONG_MODE: '1',
+      REPLAY_LOCKS: replayLocks,
+    }
+
+    const first = await mod.fetch(
+      new Request('http://localhost/inbox', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      }),
+      replayEnv as any,
+      {} as any,
+    )
+    expect(first.status).toBe(201)
+
+    const blocked = await mod.fetch(
+      new Request('http://localhost/inbox', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      }),
+      replayEnv as any,
+      {} as any,
+    )
+    expect(blocked.status).toBe(409)
+
+    const forget = await mod.fetch(
+      new Request('http://localhost/forget', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ subject }),
+      }),
+      replayEnv as any,
+      {} as any,
+    )
+    expect(forget.status).toBe(200)
+
+    const afterForget = await mod.fetch(
+      new Request('http://localhost/inbox', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      }),
+      replayEnv as any,
+      {} as any,
+    )
+    expect(afterForget.status).toBe(201)
   })
 
   it('rejects malformed forget payload', async () => {

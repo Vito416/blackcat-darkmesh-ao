@@ -2075,6 +2075,17 @@ local function parse_json_object(raw)
   return nil
 end
 
+local function merge_message_fields(out, source)
+  if type(out) ~= "table" or type(source) ~= "table" then
+    return
+  end
+  for k, v in pairs(source) do
+    if type(k) == "string" and out[k] == nil and k ~= "Tags" and k ~= "tags" and k ~= "Data" and k ~= "data" then
+      out[k] = v
+    end
+  end
+end
+
 local function enrich_message(msg)
   local envelope = (type(msg) == "table" and (msg.Body or msg.body)) or {}
   local tags = msg.Tags or msg.tags or envelope.Tags or envelope.tags or {}
@@ -2085,6 +2096,10 @@ local function enrich_message(msg)
   for k, v in pairs(data_obj) do
     out[k] = v
   end
+  merge_message_fields(out, envelope)
+  merge_message_fields(out, msg)
+  merge_message_fields(out, envelope.payload or envelope.Payload)
+  merge_message_fields(out, out.payload or out.Payload)
   out.Action = out.Action
     or out.action
     or msg.Action
