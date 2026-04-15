@@ -2665,14 +2665,18 @@ local function route(msg)
     return codec.error("FORBIDDEN", role_err)
   end
 
-  local idem_scope_key = table.concat({
-    tostring(msg["Request-Id"] or ""),
-    tostring(msg.Action or ""),
-    tostring(msg.From or msg["Actor-Id"] or msg.Signature or ""),
-  }, "|")
-  local seen = idem.check(idem_scope_key)
-  if seen then
-    return seen
+  local request_id = tostring(msg["Request-Id"] or "")
+  local idem_scope_key = nil
+  if request_id ~= "" then
+    idem_scope_key = table.concat({
+      request_id,
+      tostring(msg.Action or ""),
+      tostring(msg.From or msg["Actor-Id"] or ""),
+    }, "|")
+    local seen = idem.check(idem_scope_key)
+    if seen then
+      return seen
+    end
   end
 
   local handler = handlers[msg.Action]
@@ -2683,7 +2687,9 @@ local function route(msg)
   local resp = handler(msg)
   metrics.inc("registry." .. msg.Action .. ".count")
   metrics.tick()
-  idem.record(idem_scope_key, resp)
+  if idem_scope_key then
+    idem.record(idem_scope_key, resp)
+  end
   persist.save("registry_state", state)
   return resp
 end
