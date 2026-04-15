@@ -2481,9 +2481,13 @@ app.post('/sign', async (c) => {
   if (!nonce || typeof nonce !== 'string' || nonce.length > 128) {
     throw new HTTPException(400, { message: 'missing_nonce' })
   }
-  const ts = signBody.timestamp || signBody.ts
+  const ts = signBody.ts ?? signBody.timestamp
   const tsNum = parseUnixOrIsoTimestamp(ts)
-  const windowSec = parseInt(c.env.SIGN_TS_WINDOW || '300', 10)
+  const windowSecRaw = Number.parseInt(c.env.SIGN_TS_WINDOW || '300', 10)
+  if (!Number.isFinite(windowSecRaw) || windowSecRaw <= 0) {
+    throw new HTTPException(500, { message: 'invalid_sign_ts_window' })
+  }
+  const windowSec = Math.trunc(windowSecRaw)
   const now = Math.floor(Date.now() / 1000)
   if (!tsNum || Math.abs(now - tsNum) > windowSec) {
     throw new HTTPException(400, { message: 'stale_timestamp' })

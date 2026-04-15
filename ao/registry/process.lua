@@ -2595,11 +2595,6 @@ local function route(msg)
     end
   end
 
-  local seen = idem.check(msg["Request-Id"])
-  if seen then
-    return seen
-  end
-
   local ok_hmac, hmac_err =
     auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
@@ -2611,6 +2606,16 @@ local function route(msg)
     return codec.error("FORBIDDEN", role_err)
   end
 
+  local idem_scope_key = table.concat({
+    tostring(msg["Request-Id"] or ""),
+    tostring(msg.Action or ""),
+    tostring(msg.From or msg["Actor-Id"] or msg.Signature or ""),
+  }, "|")
+  local seen = idem.check(idem_scope_key)
+  if seen then
+    return seen
+  end
+
   local handler = handlers[msg.Action]
   if not handler then
     return codec.unknown_action(msg.Action)
@@ -2619,7 +2624,7 @@ local function route(msg)
   local resp = handler(msg)
   metrics.inc("registry." .. msg.Action .. ".count")
   metrics.tick()
-  idem.record(msg["Request-Id"], resp)
+  idem.record(idem_scope_key, resp)
   persist.save("registry_state", state)
   return resp
 end

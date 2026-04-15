@@ -136,6 +136,47 @@ describe('Worker sign policy', () => {
     expect(text).toContain('invalid_json')
   })
 
+  it('uses ts precedence for freshness checks when both ts and timestamp are present', async () => {
+    const oldTs = Math.floor(Date.now() / 1000) - 3600
+    const body = signBody({ timestamp: Math.floor(Date.now() / 1000), ts: oldTs })
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      {},
+    )
+
+    expect(res.status).toBe(400)
+    const text = await res.text()
+    expect(text).toContain('stale_timestamp')
+  })
+
+  it('fails closed when SIGN_TS_WINDOW is invalid', async () => {
+    const body = signBody()
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { SIGN_TS_WINDOW: 'invalid' },
+    )
+
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('invalid_sign_ts_window')
+  })
+
   it('fails closed when policy is configured without any allowlist rules', async () => {
     const body = signBody()
     const res = await call(
