@@ -8,7 +8,8 @@
     "deploy": "wrangler publish",
     "lint": "echo \"(add eslint if needed)\"",
     "test": "npx vitest run",
-    "test:stress": "npx vitest run test/stress.test.ts"
+    "test:stress": "npx vitest run test/stress.test.ts",
+    "ops:drill:replay": "node ops/loadtest/replay-contention-drill.mjs --json"
   },
   "dependencies": {
     "@noble/ed25519": "^2.2.3",

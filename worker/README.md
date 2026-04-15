@@ -131,6 +131,8 @@ Env vars (extra)
 
 Runbook snippets
 - Secrets rotation: `wrangler secret put <NAME> --env production` for WORKER_AUTH_TOKEN / INBOX_HMAC_SECRET / NOTIFY_HMAC_SECRET / METRICS_BEARER_TOKEN; then `wrangler deploy --env production`.
+- Scoped-token rotation (P1-01): see `ops/runbooks/token-scope-rotation.md`.
+- Replay contention drill (P1-02): `npm run ops:drill:replay` or see `ops/runbooks/replay-contention-drill.md`.
 - Cron/janitor verification: `wrangler tail --env production` and watch scheduled runs (*/5). Optionally `wrangler deployments` to confirm latest version live.
 - Backup stance: KV is a short-lived cache of encrypted envelopes; data loss is acceptable by design. If you need retention, mirror writes to R2/D1 outside the worker path.
 - Monitoring hook (Prom/Grafana): scrape `/metrics` with bearer auth. Example Prom job:
