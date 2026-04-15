@@ -183,7 +183,7 @@ function buildCommonTags(action, requestId, traceId = '', replyTo = env.sitePid)
 
 function processPidForAction(action) {
   if (action === 'GetSiteByHost') {
-    return env.registryPid || env.sitePid
+    return env.registryPid
   }
   return env.sitePid
 }

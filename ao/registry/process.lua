@@ -2652,6 +2652,13 @@ local function route(msg)
     if not ok_sec then
       return codec.error("FORBIDDEN", sec_err)
     end
+  else
+    -- Public-read mode still needs throttling, otherwise host/runtime lookups
+    -- can be spammed when auth is intentionally bypassed.
+    local ok_rl, rl_err = auth.check_rate_limit(msg)
+    if not ok_rl then
+      return codec.error("FORBIDDEN", rl_err)
+    end
   end
 
   local ok_hmac, hmac_err =

@@ -1294,7 +1294,7 @@ function resolveSitePid(env: Env): string {
 }
 
 function resolveRegistryPid(env: Env): string {
-  return cleanEnv((env as any).AO_REGISTRY_PROCESS_ID) || resolveSitePid(env)
+  return cleanEnv((env as any).AO_REGISTRY_PROCESS_ID)
 }
 
 function resolveWritePid(env: Env): string {
