@@ -2698,13 +2698,27 @@ local function route(msg)
     return codec.error("FORBIDDEN", role_err)
   end
 
+  local function scope_value(...)
+    for idx = 1, select("#", ...) do
+      local candidate = select(idx, ...)
+      if type(candidate) == "string" and candidate ~= "" then
+        return candidate
+      end
+    end
+    return ""
+  end
+
   local request_id = tostring(msg["Request-Id"] or "")
   local idem_scope_key = nil
   if request_id ~= "" then
+    local scope_site_id = scope_value(msg["Site-Id"], msg.siteId, msg.SiteId, msg.site_id)
+    local scope_host = string.lower(scope_value(msg.Host, msg["Site-Host"], msg.Domain))
     idem_scope_key = table.concat({
       request_id,
       tostring(msg.Action or ""),
       tostring(msg.From or msg["Actor-Id"] or ""),
+      scope_site_id,
+      scope_host,
     }, "|")
     local seen = idem.check(idem_scope_key)
     if seen then
