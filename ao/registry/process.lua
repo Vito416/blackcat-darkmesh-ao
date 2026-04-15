@@ -92,6 +92,15 @@ local public_read_actions = {
   ListGateways = true,
   GetSiteRuntime = true,
 }
+local site_id_guard_actions = {
+  RegisterSite = true,
+  SetSiteRuntime = true,
+  UpsertSiteRuntime = true,
+  BindDomain = true,
+  SetActiveVersion = true,
+  GrantRole = true,
+}
+local site_id_guard_fields = { "Site-Id", "siteId", "SiteId", "site_id" }
 local PUBLIC_READ_REQUIRE_AUTH = (os.getenv "REGISTRY_PUBLIC_READ_REQUIRE_AUTH" or "0") == "1"
 
 -- pseudo-state kept in-memory for now; AO runtime would persist this.
@@ -908,6 +917,33 @@ normalize_site_id = function(value, field)
     return nil, err_len
   end
   return site_id
+end
+
+local function enforce_site_id_fail_closed(msg)
+  local action = msg.Action
+  if not site_id_guard_actions[action] then
+    return true
+  end
+
+  local canonical = nil
+  for _, key in ipairs(site_id_guard_fields) do
+    local value = msg[key]
+    if value ~= nil then
+      local ok_type, err_type = validation.assert_type(value, "string", "Site-Id")
+      if not ok_type then
+        return false, err_type
+      end
+      if canonical ~= nil and canonical ~= value then
+        return false, "conflicting_site_id_fields"
+      end
+      canonical = value
+    end
+  end
+
+  if canonical ~= nil and msg["Site-Id"] == nil then
+    msg["Site-Id"] = canonical
+  end
+  return true
 end
 
 local function normalize_gateway_domains(raw_domains)
@@ -2603,6 +2639,11 @@ local function route(msg)
       return codec.unknown_action(msg.Action)
     end
     return codec.error("MISSING_ACTION", "Action is required")
+  end
+
+  local ok_site_guard, site_guard_err = enforce_site_id_fail_closed(msg)
+  if not ok_site_guard then
+    return codec.error("INVALID_INPUT", site_guard_err, { field = "Site-Id" })
   end
 
   local requires_auth = PUBLIC_READ_REQUIRE_AUTH or not public_read_actions[msg.Action]

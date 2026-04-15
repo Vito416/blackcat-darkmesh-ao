@@ -574,6 +574,25 @@ do
   assert_status(extra, "ERROR", "register extra status")
   assert_code(extra, "UNSUPPORTED_FIELD", "register extra code")
 
+  local bad_site_type = registry.route(with_req {
+    Action = "BindDomain",
+    ["Site-Id"] = { "site-bad-type" },
+    Host = "bad-type.example",
+    ["Actor-Role"] = "admin",
+  })
+  assert_status(bad_site_type, "ERROR", "site id type guard status")
+  assert_code(bad_site_type, "INVALID_INPUT", "site id type guard code")
+
+  local conflicting_site_ids = registry.route(with_req {
+    Action = "BindDomain",
+    ["Site-Id"] = "site-1",
+    siteId = "site-2",
+    Host = "conflict-site-id.example",
+    ["Actor-Role"] = "admin",
+  })
+  assert_status(conflicting_site_ids, "ERROR", "site id conflict status")
+  assert_code(conflicting_site_ids, "INVALID_INPUT", "site id conflict code")
+
   -- Invalid flags/policies schema
   local bad_cfg = registry.route(with_req {
     Action = "RegisterSite",

@@ -69,6 +69,37 @@ describe('Inbox flow', () => {
     expect(getRes.status).toBe(404)
   })
 
+  it('enforces replay guard atomically for concurrent same nonce writes', async () => {
+    const subject = `subj-race-${Date.now()}`
+    const nonce = 'n-race'
+    const body = JSON.stringify({ subject, nonce, payload: 'cipher' })
+    const raceEnv = { ...env, RATE_LIMIT_MAX: '0' }
+
+    const [a, b] = await Promise.all([
+      mod.fetch(
+        new Request('http://localhost/inbox', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }),
+        raceEnv as any,
+        {} as any,
+      ),
+      mod.fetch(
+        new Request('http://localhost/inbox', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }),
+        raceEnv as any,
+        {} as any,
+      ),
+    ])
+
+    const statuses = [a.status, b.status].sort((x, y) => x - y)
+    expect(statuses).toEqual([201, 409])
+  })
+
   it('rejects malformed forget payload', async () => {
     const res = await req('/forget', {
       method: 'POST',
@@ -92,5 +123,23 @@ describe('Inbox flow', () => {
     expect(res.status).toBe(500)
     const text = await res.text()
     expect(text).toContain('missing_read_token')
+  })
+
+  it('rejects strict mode when scoped tokens are not unique', async () => {
+    const strictEnv = {
+      ...env,
+      WORKER_STRICT_TOKEN_SCOPES: '1',
+      WORKER_READ_TOKEN: 'same-token',
+      WORKER_FORGET_TOKEN: 'same-token',
+      WORKER_NOTIFY_TOKEN: 'notify-token',
+      WORKER_SIGN_TOKEN: 'sign-token',
+    }
+    const reqObj = new Request('http://localhost/inbox/subj/n1', {
+      headers: { Authorization: 'Bearer same-token' },
+    })
+    const res = await mod.fetch(reqObj, strictEnv as any, {} as any)
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('scoped_tokens_not_unique')
   })
 })

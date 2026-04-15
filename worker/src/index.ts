@@ -453,6 +453,13 @@ async function checkReplay(c: any, subj: string, nonce: string) {
         if (existing) {
           throw new HTTPException(409, { message: 'replay' })
         }
+        const claimMarker = `claim:${randomId('replay')}`
+        await kv.put(replayKey, claimMarker, { expirationTtl: ttl })
+        // Atomic-ish ownership check: only the caller that still sees its own marker wins.
+        const owned = await kv.get(replayKey)
+        if (owned !== claimMarker) {
+          throw new HTTPException(409, { message: 'replay' })
+        }
         await kv.put(replayKey, '1', { expirationTtl: ttl })
         return
       } catch (e) {
@@ -509,6 +516,33 @@ function strictTokenScopesEnabled(env: Env) {
   return secretsEnforced(env) || productionLikeEnv(env)
 }
 
+function ensureStrictScopedTokenTopology(env: Env, requiredKey?: string) {
+  if (!strictTokenScopesEnabled(env)) return
+  const scoped = [
+    ['WORKER_READ_TOKEN', cleanEnv((env as any).WORKER_READ_TOKEN)],
+    ['WORKER_FORGET_TOKEN', cleanEnv((env as any).WORKER_FORGET_TOKEN)],
+    ['WORKER_NOTIFY_TOKEN', cleanEnv((env as any).WORKER_NOTIFY_TOKEN)],
+    ['WORKER_SIGN_TOKEN', cleanEnv((env as any).WORKER_SIGN_TOKEN)],
+  ] as const
+
+  const missing = scoped
+    .filter(([name, token]) => name !== requiredKey && !token)
+    .map(([name]) => name)
+  if (missing.length > 0) {
+    throw new HTTPException(500, { message: 'missing_scoped_token_config' })
+  }
+
+  const seen = new Map<string, string>()
+  for (const [name, token] of scoped) {
+    const value = token as string
+    const existing = seen.get(value)
+    if (existing) {
+      throw new HTTPException(500, { message: 'scoped_tokens_not_unique' })
+    }
+    seen.set(value, name)
+  }
+}
+
 function requireScopedToken(
   c: any,
   options: {
@@ -528,6 +562,7 @@ function requireScopedToken(
   if (!expected) {
     throw new HTTPException(500, { message: options.missingMessage })
   }
+  ensureStrictScopedTokenTopology(c.env, String(options.primaryKey))
   const token = readBearerToken(c)
   if (!token || token !== expected) {
     throw new HTTPException(401, { message: 'unauthorized' })
@@ -563,6 +598,7 @@ function requireSignToken(c: any) {
   if (!tokenEnv) {
     throw new HTTPException(500, { message: 'missing_sign_token' })
   }
+  ensureStrictScopedTokenTopology(c.env, 'WORKER_SIGN_TOKEN')
   const token = readBearerToken(c)
   if (!token || token !== tokenEnv) {
     throw new HTTPException(401, { message: 'unauthorized' })
