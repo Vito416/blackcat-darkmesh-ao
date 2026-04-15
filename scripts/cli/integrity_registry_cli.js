@@ -192,6 +192,16 @@ function parseArgs(argv) {
       case '--out':
         args.out = take()
         break
+      case '--activate':
+        if (next === undefined || String(next).startsWith('--')) {
+          args.activate = true
+        } else {
+          args.activate = take()
+        }
+        break
+      case '--no-activate':
+        args.activate = false
+        break
       case '--root':
       case '--version':
       case '--uri-hash':
@@ -323,16 +333,19 @@ function buildActionPayload(action, args) {
 
 function buildRequestEnvelope(action, args, payload) {
   const nowIso = args.timestamp || isoNow()
+  const nowTs = unixNow().toString()
   const requestId = args.requestId || randomId(`req-${action.toLowerCase()}`)
   const nonce = args.nonce || randomId('nonce')
   const body = {
-    action,
-    requestId,
-    actorRole: args.actorRole,
-    componentId: args.componentId || 'gateway',
-    timestamp: nowIso,
-    nonce,
-    payload
+    Action: action,
+    'Request-Id': requestId,
+    Nonce: nonce,
+    ts: nowTs,
+    Timestamp: nowIso,
+    'Actor-Role': args.actorRole,
+    'Schema-Version': args.schemaVersion,
+    'Component-Id': payload.componentId || args.componentId || 'gateway',
+    Variant: args.variant
   }
 
   const params = {
@@ -342,7 +355,7 @@ function buildRequestEnvelope(action, args, payload) {
     Action: action,
     'Request-Id': requestId,
     Nonce: nonce,
-    ts: unixNow().toString(),
+    ts: nowTs,
     Timestamp: nowIso,
     'Actor-Role': args.actorRole,
     'Schema-Version': args.schemaVersion,
@@ -363,63 +376,83 @@ function buildRequestEnvelope(action, args, payload) {
     switch (key) {
       case 'componentId':
         params['Component-Id'] = value
+        body['Component-Id'] = value
         break
       case 'policyHash':
         params['Policy-Hash'] = value
+        body['Policy-Hash'] = value
         break
       case 'maxCheckInAgeSec':
         params['Max-CheckIn-Age-Sec'] = String(value)
+        body['Max-CheckIn-Age-Sec'] = String(value)
         break
       case 'uriHash':
         params['Uri-Hash'] = value
+        body['Uri-Hash'] = value
         break
       case 'metaHash':
         params['Meta-Hash'] = value
+        body['Meta-Hash'] = value
         break
       case 'activePolicyHash':
         params['Policy-Hash'] = value
+        body['Policy-Hash'] = value
         break
       case 'paused':
         params.Paused = String(value)
+        body.Paused = String(value)
         break
       case 'reason':
         params.Reason = value
+        body.Reason = value
         break
       case 'root':
         params.Root = value
+        body.Root = value
         break
       case 'version':
         params.Version = value
+        body.Version = value
         break
       case 'upgrade':
         params.Upgrade = value
+        body.Upgrade = value
         break
       case 'emergency':
         params.Emergency = value
+        body.Emergency = value
         break
       case 'reporter':
         params.Reporter = value
+        body.Reporter = value
         break
       case 'signatureRefs':
         params['Signature-Refs'] = Array.isArray(value) ? value : String(value)
+        body['Signature-Refs'] = Array.isArray(value) ? value : [String(value)]
         break
       case 'seqFrom':
         params['Seq-From'] = String(value)
+        body['Seq-From'] = String(value)
         break
       case 'seqTo':
         params['Seq-To'] = String(value)
+        body['Seq-To'] = String(value)
         break
       case 'merkleRoot':
         params['Merkle-Root'] = value
+        body['Merkle-Root'] = value
         break
       case 'reporterRef':
         params['Reporter-Ref'] = value
+        body['Reporter-Ref'] = value
         break
       case 'acceptedAt':
         params['Accepted-At'] = value
+        body['Accepted-At'] = value
         break
       case 'activate':
         params.Activate = String(Boolean(value))
+        body.Activate = String(Boolean(value))
         break
       default:
         break
