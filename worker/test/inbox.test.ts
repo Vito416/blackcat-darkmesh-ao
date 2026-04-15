@@ -5,6 +5,10 @@ const env = {
   INBOX_TTL_DEFAULT: '60',
   INBOX_TTL_MAX: '300',
   FORGET_TOKEN: 'test-token',
+  WORKER_READ_TOKEN: 'test-token',
+  WORKER_FORGET_TOKEN: 'test-token',
+  WORKER_NOTIFY_TOKEN: 'test-token',
+  WORKER_SIGN_TOKEN: 'test-token',
   RATE_LIMIT_MAX: '5',
   RATE_LIMIT_WINDOW: '60',
   REPLAY_TTL: '600',
@@ -77,5 +81,16 @@ describe('Inbox flow', () => {
     expect(res.status).toBe(400)
     const text = await res.text()
     expect(text).toContain('invalid_json')
+  })
+
+  it('enforces scoped read token when strict scopes are enabled', async () => {
+    const strictEnv = { ...env, WORKER_STRICT_TOKEN_SCOPES: '1', WORKER_READ_TOKEN: '' }
+    const reqObj = new Request('http://localhost/inbox/subj/n1', {
+      headers: { Authorization: 'Bearer test-token' },
+    })
+    const res = await mod.fetch(reqObj, strictEnv as any, {} as any)
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('missing_read_token')
   })
 })

@@ -18,6 +18,9 @@ local RL_WINDOW = tonumber(os.getenv "AUTH_RATE_LIMIT_WINDOW_SECONDS" or "60")
 local RL_MAX = tonumber(os.getenv "AUTH_RATE_LIMIT_MAX_REQUESTS" or "200")
 local RL_SITE_MAX = tonumber(os.getenv "AUTH_RATE_LIMIT_MAX_PER_SITE" or "200")
 local RL_CALLER_MAX = tonumber(os.getenv "AUTH_RATE_LIMIT_MAX_PER_CALLER" or "200")
+local RL_MAX_BUCKETS = tonumber(os.getenv "AUTH_RATE_LIMIT_MAX_BUCKETS" or "4096")
+local RL_BUCKET_TTL =
+  tonumber(os.getenv "AUTH_RATE_LIMIT_BUCKET_TTL_SECONDS" or tostring(RL_WINDOW * 4))
 local RL_STATE_FILE = os.getenv "AUTH_RATE_LIMIT_FILE"
 local RL_SQLITE = os.getenv "AUTH_RATE_LIMIT_SQLITE"
 local SIG_SECRET = os.getenv "AUTH_SIGNATURE_SECRET"
@@ -183,6 +186,9 @@ local function placeholder_secret(secret)
 end
 
 function Auth.consume_jwt(msg)
+  if REQUIRE_JWT and (not JWT_SECRET or JWT_SECRET == "") then
+    return false, "jwt_secret_missing"
+  end
   if not JWT_SECRET or JWT_SECRET == "" then
     return true
   end
@@ -527,6 +533,38 @@ local function prune_rate()
   for k, v in pairs(rate_store) do
     if v.reset < now then
       rate_store[k] = nil
+    end
+  end
+  if RL_BUCKET_TTL and RL_BUCKET_TTL > 0 then
+    for k, v in pairs(rate_store) do
+      local reset = tonumber(v.reset) or now
+      if now - reset > RL_BUCKET_TTL then
+        rate_store[k] = nil
+      end
+    end
+  end
+  if RL_MAX_BUCKETS and RL_MAX_BUCKETS > 0 then
+    local count = 0
+    local oldest_key, oldest_reset
+    for k, v in pairs(rate_store) do
+      count = count + 1
+      local reset = tonumber(v.reset) or now
+      if not oldest_reset or reset < oldest_reset then
+        oldest_reset = reset
+        oldest_key = k
+      end
+    end
+    while count > RL_MAX_BUCKETS and oldest_key do
+      rate_store[oldest_key] = nil
+      count = count - 1
+      oldest_key, oldest_reset = nil, nil
+      for k, v in pairs(rate_store) do
+        local reset = tonumber(v.reset) or now
+        if not oldest_reset or reset < oldest_reset then
+          oldest_reset = reset
+          oldest_key = k
+        end
+      end
     end
   end
 end

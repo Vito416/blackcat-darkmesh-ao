@@ -13,6 +13,7 @@ local persist = require "ao.shared.persist"
 
 local handlers = {}
 local validate_gateway_domain_label
+local normalize_site_id
 local allowed_actions = {
   "GetSiteByHost",
   "GetSiteConfig",
@@ -706,20 +707,20 @@ function handlers.GetSiteConfig(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len, err = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len then
-    return codec.error("INVALID_INPUT", err, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
-  local site = state.sites[msg["Site-Id"]]
+  local site = state.sites[site_id]
   if not site then
-    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
   local payload = {
-    siteId = msg["Site-Id"],
+    siteId = site_id,
     config = site.config,
-    activeVersion = state.active_versions[msg["Site-Id"]],
+    activeVersion = state.active_versions[site_id],
   }
-  local runtime = runtime_for_site(msg["Site-Id"])
+  local runtime = runtime_for_site(site_id)
   if runtime then
     payload.runtime = runtime
   end
@@ -745,19 +746,19 @@ function handlers.GetSiteRuntime(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len, err = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len then
-    return codec.error("INVALID_INPUT", err, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
-  if not state.sites[msg["Site-Id"]] then
-    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
-  local runtime = runtime_for_site(msg["Site-Id"])
+  local runtime = runtime_for_site(site_id)
   if not runtime then
-    return codec.error("NOT_FOUND", "Site runtime not set", { siteId = msg["Site-Id"] })
+    return codec.error("NOT_FOUND", "Site runtime not set", { siteId = site_id })
   end
   return codec.ok {
-    siteId = msg["Site-Id"],
+    siteId = site_id,
     runtime = runtime,
   }
 end
@@ -890,6 +891,23 @@ validate_gateway_domain_label = function(value, field, allow_wildcard)
     return false, ("invalid_format:%s"):format(field)
   end
   return true, normalized
+end
+
+normalize_site_id = function(value, field)
+  local label = field or "Site-Id"
+  local ok_type, err_type = validation.assert_type(value, "string", label)
+  if not ok_type then
+    return nil, err_type
+  end
+  local site_id = tostring(value)
+  if site_id == "" then
+    return nil, ("invalid_format:%s"):format(label)
+  end
+  local ok_len, err_len = validation.check_length(site_id, 128, label)
+  if not ok_len then
+    return nil, err_len
+  end
+  return site_id
 end
 
 local function normalize_gateway_domains(raw_domains)
@@ -1294,9 +1312,9 @@ function handlers.RegisterSite(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len, err = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len then
-    return codec.error("INVALID_INPUT", err, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
   local config = msg.Config or {}
   if msg.Config ~= nil then
@@ -1324,39 +1342,39 @@ function handlers.RegisterSite(msg)
       return codec.error("INVALID_INPUT", runtime_err, { field = runtime_field or "Runtime" })
     end
   end
-  local existing = state.sites[msg["Site-Id"]]
+  local existing = state.sites[site_id]
   if existing then
     local payload = {
-      siteId = msg["Site-Id"],
+      siteId = site_id,
       createdAt = existing.createdAt,
       config = existing.config,
-      activeVersion = state.active_versions[msg["Site-Id"]],
+      activeVersion = state.active_versions[site_id],
       note = "already_registered",
     }
-    local existing_runtime = runtime_for_site(msg["Site-Id"])
+    local existing_runtime = runtime_for_site(site_id)
     if existing_runtime then
       payload.runtime = existing_runtime
     end
     return codec.ok(payload)
   end
-  state.sites[msg["Site-Id"]] = {
+  state.sites[site_id] = {
     config = config,
     createdAt = now_iso(),
   }
-  state.active_versions[msg["Site-Id"]] = config.version or msg.Version or nil
+  state.active_versions[site_id] = config.version or msg.Version or nil
   if runtime then
-    local upserted, upsert_err, upsert_field = upsert_site_runtime(msg["Site-Id"], runtime)
+    local upserted, upsert_err, upsert_field = upsert_site_runtime(site_id, runtime)
     if not upserted then
       return codec.error("INVALID_INPUT", upsert_err, { field = upsert_field or "Runtime" })
     end
   end
   audit.record("registry", "RegisterSite", msg, nil)
   local payload = {
-    siteId = msg["Site-Id"],
-    createdAt = state.sites[msg["Site-Id"]].createdAt,
-    activeVersion = state.active_versions[msg["Site-Id"]],
+    siteId = site_id,
+    createdAt = state.sites[site_id].createdAt,
+    activeVersion = state.active_versions[site_id],
   }
-  local current_runtime = runtime_for_site(msg["Site-Id"])
+  local current_runtime = runtime_for_site(site_id)
   if current_runtime then
     payload.runtime = current_runtime
   end
@@ -1384,12 +1402,12 @@ function handlers.SetSiteRuntime(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len, err = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len then
-    return codec.error("INVALID_INPUT", err, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
-  if not state.sites[msg["Site-Id"]] then
-    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
   local runtime, runtime_err, runtime_field = normalize_runtime_pointer(msg.Runtime, {
     field_name = "Runtime",
@@ -1397,16 +1415,16 @@ function handlers.SetSiteRuntime(msg)
   if not runtime then
     return codec.error("INVALID_INPUT", runtime_err, { field = runtime_field or "Runtime" })
   end
-  local upserted, upsert_err, upsert_field = upsert_site_runtime(msg["Site-Id"], runtime)
+  local upserted, upsert_err, upsert_field = upsert_site_runtime(site_id, runtime)
   if not upserted then
     return codec.error("INVALID_INPUT", upsert_err, { field = upsert_field or "Runtime" })
   end
   audit.record("registry", msg.Action or "SetSiteRuntime", msg, nil, {
-    siteId = msg["Site-Id"],
+    siteId = site_id,
     processId = upserted.processId,
   })
   return codec.ok {
-    siteId = msg["Site-Id"],
+    siteId = site_id,
     runtime = upserted,
   }
 end
@@ -1434,23 +1452,23 @@ function handlers.BindDomain(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len_id, err_id = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len_id then
-    return codec.error("INVALID_INPUT", err_id, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
   local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
   if not ok_host then
     return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
   end
   local normalized_host = normalized_host_or_err
-  if not state.sites[msg["Site-Id"]] then
-    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
-  state.domains[normalized_host] = msg["Site-Id"]
+  state.domains[normalized_host] = site_id
   audit.record("registry", "BindDomain", msg, nil, { host = normalized_host })
   return codec.ok {
     host = normalized_host,
-    siteId = msg["Site-Id"],
+    siteId = site_id,
   }
 end
 
@@ -1476,9 +1494,9 @@ function handlers.SetActiveVersion(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len_id, err_id = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len_id then
-    return codec.error("INVALID_INPUT", err_id, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
   local ok_len_ver, err_ver = validation.check_length(msg.Version, 128, "Version")
   if not ok_len_ver then
@@ -1490,10 +1508,10 @@ function handlers.SetActiveVersion(msg)
       return codec.error("INVALID_INPUT", err_exp, { field = "ExpectedVersion" })
     end
   end
-  if not state.sites[msg["Site-Id"]] then
-    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
-  local current = state.active_versions[msg["Site-Id"]]
+  local current = state.active_versions[site_id]
   if msg.ExpectedVersion and current and current ~= msg.ExpectedVersion then
     return codec.error(
       "VERSION_CONFLICT",
@@ -1501,9 +1519,9 @@ function handlers.SetActiveVersion(msg)
       { expected = msg.ExpectedVersion, current = current }
     )
   end
-  state.active_versions[msg["Site-Id"]] = msg.Version
+  state.active_versions[site_id] = msg.Version
   local resp = codec.ok {
-    siteId = msg["Site-Id"],
+    siteId = site_id,
     activeVersion = msg.Version,
   }
   audit.record("registry", "SetActiveVersion", msg, resp, { version = msg.Version })
@@ -1532,9 +1550,9 @@ function handlers.GrantRole(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len_id, err_id = validation.check_length(msg["Site-Id"], 128, "Site-Id")
-  if not ok_len_id then
-    return codec.error("INVALID_INPUT", err_id, { field = "Site-Id" })
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
   end
   local ok_len_subj, err_subj = validation.check_length(msg.Subject, 128, "Subject")
   if not ok_len_subj then
@@ -1544,14 +1562,14 @@ function handlers.GrantRole(msg)
   if not ok_len_role then
     return codec.error("INVALID_INPUT", err_role, { field = "Role" })
   end
-  if not state.sites[msg["Site-Id"]] then
-    return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
-  state.roles[msg["Site-Id"]] = state.roles[msg["Site-Id"]] or {}
-  state.roles[msg["Site-Id"]][msg.Subject] = msg.Role
+  state.roles[site_id] = state.roles[site_id] or {}
+  state.roles[site_id][msg.Subject] = msg.Role
   audit.record("registry", "GrantRole", msg, nil, { subject = msg.Subject, role = msg.Role })
   return codec.ok {
-    siteId = msg["Site-Id"],
+    siteId = site_id,
     subject = msg.Subject,
     role = msg.Role,
   }

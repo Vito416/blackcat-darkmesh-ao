@@ -137,6 +137,7 @@ app.onError((err, c) => {
 // Simple in-memory KV shim for tests to avoid SQLite locks in Miniflare
 type KvEntry = { value: string; exp?: number }
 const memoryKv = new Map<string, KvEntry>()
+const replayClaims = new Map<string, number>()
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -147,6 +148,12 @@ function useMemoryKv(env: any) {
   if (flag === 1 || flag === '1' || flag === true) return true
   if (flag === 0 || flag === '0' || flag === false) return false
   return !!flag
+}
+
+function productionLikeEnv(env: Env): boolean {
+  const mode = firstNonEmptyString(env.CF_ENV, env.ENVIRONMENT, env.NODE_ENV, env.DEPLOY_ENV)
+  const normalized = mode.toLowerCase()
+  return normalized === 'production' || normalized === 'staging' || normalized === 'prod-like'
 }
 
 function kvFor(c: any) {
@@ -417,23 +424,44 @@ function replayWindow(c: any) {
   return ttl
 }
 
+function pruneReplayClaims(now: number) {
+  for (const [key, expiresAt] of replayClaims.entries()) {
+    if (expiresAt <= now) replayClaims.delete(key)
+  }
+}
+
+function claimReplayKey(key: string, ttlSec: number) {
+  const now = nowSeconds()
+  pruneReplayClaims(now)
+  if (replayClaims.has(key)) {
+    throw new HTTPException(409, { message: 'replay' })
+  }
+  const claimTtl = Math.max(1, Math.min(15, ttlSec))
+  replayClaims.set(key, now + claimTtl)
+}
+
 async function checkReplay(c: any, subj: string, nonce: string) {
   const ttl = replayWindow(c)
   if (ttl <= 0) return
   const replayKey = `replay:${subj}:${nonce}`
+  claimReplayKey(replayKey, ttl)
   const kv = kvFor(c)
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const existing = await kv.get(replayKey)
-      if (existing) {
-        throw new HTTPException(409, { message: 'replay' })
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const existing = await kv.get(replayKey)
+        if (existing) {
+          throw new HTTPException(409, { message: 'replay' })
+        }
+        await kv.put(replayKey, '1', { expirationTtl: ttl })
+        return
+      } catch (e) {
+        if (!isSqliteBusy(e) || attempt === 2) throw e
+        await sleep(5 * (attempt + 1))
       }
-      await kv.put(replayKey, '1', { expirationTtl: ttl })
-      return
-    } catch (e) {
-      if (!isSqliteBusy(e) || attempt === 2) throw e
-      await sleep(5 * (attempt + 1))
     }
+  } finally {
+    replayClaims.delete(replayKey)
   }
 }
 
@@ -470,25 +498,73 @@ async function signRateLimit(c: any) {
   }
 }
 
-// simple token check for forget/notify
-function requireToken(c: any) {
-  const tokenEnv = c.env.WORKER_AUTH_TOKEN || c.env.FORGET_TOKEN
-  if (!tokenEnv) {
-    requireSecret(c.env, 'WORKER_AUTH_TOKEN', 'missing_auth_token')
+function readBearerToken(c: any) {
+  const auth = c.req.header('Authorization') || c.req.header('authorization') || ''
+  return auth.startsWith('Bearer ') ? auth.slice(7) : ''
+}
+
+function strictTokenScopesEnabled(env: Env) {
+  const explicit = cleanEnv((env as any).WORKER_STRICT_TOKEN_SCOPES)
+  if (explicit) return explicit !== '0'
+  return secretsEnforced(env) || productionLikeEnv(env)
+}
+
+function requireScopedToken(
+  c: any,
+  options: {
+    primaryKey: keyof Env | string
+    fallbackKeys?: Array<keyof Env | string>
+    missingMessage: string
+  },
+) {
+  const strict = strictTokenScopesEnabled(c.env)
+  let expected = cleanEnv((c.env as any)[options.primaryKey])
+  if (!expected && !strict) {
+    for (const key of options.fallbackKeys || []) {
+      expected = cleanEnv((c.env as any)[key])
+      if (expected) break
+    }
   }
-  const token = c.req.header('Authorization') || c.req.header('authorization') || ''
-  if (tokenEnv && token !== `Bearer ${tokenEnv}`) {
+  if (!expected) {
+    throw new HTTPException(500, { message: options.missingMessage })
+  }
+  const token = readBearerToken(c)
+  if (!token || token !== expected) {
     throw new HTTPException(401, { message: 'unauthorized' })
   }
 }
 
+function requireReadToken(c: any) {
+  requireScopedToken(c, {
+    primaryKey: 'WORKER_READ_TOKEN',
+    fallbackKeys: ['WORKER_AUTH_TOKEN', 'FORGET_TOKEN'],
+    missingMessage: 'missing_read_token',
+  })
+}
+
+function requireForgetToken(c: any) {
+  requireScopedToken(c, {
+    primaryKey: 'WORKER_FORGET_TOKEN',
+    fallbackKeys: ['WORKER_AUTH_TOKEN', 'FORGET_TOKEN'],
+    missingMessage: 'missing_forget_token',
+  })
+}
+
+function requireNotifyToken(c: any) {
+  requireScopedToken(c, {
+    primaryKey: 'WORKER_NOTIFY_TOKEN',
+    fallbackKeys: ['WORKER_AUTH_TOKEN', 'FORGET_TOKEN'],
+    missingMessage: 'missing_notify_token',
+  })
+}
+
 function requireSignToken(c: any) {
-  const tokenEnv = c.env.WORKER_SIGN_TOKEN
+  const tokenEnv = cleanEnv(c.env.WORKER_SIGN_TOKEN)
   if (!tokenEnv) {
     throw new HTTPException(500, { message: 'missing_sign_token' })
   }
-  const token = c.req.header('Authorization') || c.req.header('authorization') || ''
-  if (tokenEnv && token !== `Bearer ${tokenEnv}`) {
+  const token = readBearerToken(c)
+  if (!token || token !== tokenEnv) {
     throw new HTTPException(401, { message: 'unauthorized' })
   }
 }
@@ -2608,7 +2684,7 @@ app.post('/api/checkout/payment-intent', async (c) => {
 })
 
 app.get('/inbox/:subject/:nonce', async (c) => {
-  requireToken(c)
+  requireReadToken(c)
   const subj = c.req.param('subject')
   const nonce = c.req.param('nonce')
   const kv = kvFor(c)
@@ -2628,7 +2704,7 @@ app.get('/inbox/:subject/:nonce', async (c) => {
 })
 
 app.post('/forget', async (c) => {
-  requireToken(c)
+  requireForgetToken(c)
   let body: { subject?: string }
   try {
     body = await c.req.json<{ subject?: string }>()
@@ -2726,7 +2802,7 @@ app.get('/metrics', async (c) => {
 })
 
 app.post('/notify', async (c) => {
-  requireToken(c)
+  requireNotifyToken(c)
   const raw = await c.req.text()
   gauge('worker_notify_hmac_optional', c.env.NOTIFY_HMAC_OPTIONAL === '1' ? 1 : 0)
   await verifyNotifySignature(c, raw)

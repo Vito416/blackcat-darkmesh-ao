@@ -3,6 +3,11 @@ export interface Env {
   INBOX_TTL_DEFAULT?: string
   INBOX_TTL_MAX?: string
   WORKER_AUTH_TOKEN?: string
+  WORKER_READ_TOKEN?: string
+  WORKER_FORGET_TOKEN?: string
+  WORKER_NOTIFY_TOKEN?: string
+  WORKER_SIGN_TOKEN?: string
+  WORKER_STRICT_TOKEN_SCOPES?: string
   FORGET_TOKEN?: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW?: string

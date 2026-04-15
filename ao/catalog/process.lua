@@ -35,6 +35,9 @@ local S3_RETRIES = tonumber(os.getenv "CATALOG_S3_RETRIES" or "") or 2
 local EVENT_LOG_LIMIT = tonumber(os.getenv "CATALOG_EVENT_LOG_LIMIT" or "") or 5000
 local RATE_LIMIT_WINDOW = tonumber(os.getenv "CATALOG_RATE_LIMIT_WINDOW" or "") or 60
 local RATE_LIMIT_MAX = tonumber(os.getenv "CATALOG_RATE_LIMIT_MAX" or "") or 120
+local RATE_LIMIT_MAX_BUCKETS = tonumber(os.getenv "CATALOG_RATE_LIMIT_MAX_BUCKETS" or "") or 4096
+local RATE_LIMIT_BUCKET_TTL = tonumber(os.getenv "CATALOG_RATE_LIMIT_BUCKET_TTL" or "")
+  or (RATE_LIMIT_WINDOW * 4)
 local GA4_ENDPOINT = os.getenv "CATALOG_GA4_ENDPOINT"
 local GA4_API_SECRET = os.getenv "CATALOG_GA4_API_SECRET"
 local GA4_MEASUREMENT_ID = os.getenv "CATALOG_GA4_MEASUREMENT_ID"
@@ -920,6 +923,29 @@ end
 
 local function check_rate_limit(key)
   local now = os.time()
+  for bucket_key, bucket in pairs(state.rate_limits) do
+    local start = type(bucket) == "table" and tonumber(bucket.window_start) or nil
+    if not start or (now - start) > RATE_LIMIT_BUCKET_TTL then
+      state.rate_limits[bucket_key] = nil
+    end
+  end
+  local bucket_count = 0
+  for _ in pairs(state.rate_limits) do
+    bucket_count = bucket_count + 1
+  end
+  if bucket_count > RATE_LIMIT_MAX_BUCKETS then
+    local oldest_key, oldest_start = nil, nil
+    for bucket_key, bucket in pairs(state.rate_limits) do
+      local start = type(bucket) == "table" and tonumber(bucket.window_start) or now
+      if not oldest_start or start < oldest_start then
+        oldest_start = start
+        oldest_key = bucket_key
+      end
+    end
+    if oldest_key then
+      state.rate_limits[oldest_key] = nil
+    end
+  end
   local bucket = state.rate_limits[key]
   if not bucket or now - bucket.window_start >= RATE_LIMIT_WINDOW then
     state.rate_limits[key] = { count = 1, window_start = now }
