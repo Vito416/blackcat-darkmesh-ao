@@ -127,7 +127,9 @@ jobs:
           lua5.4 tests/security/rate_limit_replay_spec.lua
           lua5.4 tests/security/pii_regression_spec.lua
           lua5.4 tests/integration/analytics_spec.lua
-          lua5.4 tests/integration/analytics_spec.lua
+
+      - name: Public API contract tests (node:test)
+        run: node --test tests/http/public_api_server.contract.test.mjs
 
       - name: Bundle export (if export file present)
         env:

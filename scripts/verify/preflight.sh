@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 
 root = Path(os.environ["ROOT_DIR"])
-schemas = sorted((root / "schemas").glob("*.json"))
+schemas = sorted((root / "schemas").rglob("*.json"))
 if not schemas:
     raise SystemExit("No schemas found under schemas/")
 
@@ -68,7 +68,7 @@ if command -v lua5.4 >/dev/null 2>&1; then
   AUTH_REQUIRE_NONCE=0 \
   AUTH_REQUIRE_TIMESTAMP=0 \
   AUTH_RATE_LIMIT_MAX_REQUESTS=100000 \
-  SKIP_CONTRACTS=1 \
+  SKIP_CONTRACTS="${SKIP_CONTRACTS:-0}" \
   SKIP_CATALOG=1 \
   SKIP_ACCESS=1 \
   LUA_PATH="${LUA_PATH_EFFECTIVE}" \

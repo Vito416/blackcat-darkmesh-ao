@@ -2,7 +2,7 @@
 -- Uses in-memory handler state; ensures deterministic behavior matches contracts.
 -- Set SKIP_CONTRACTS=1 to skip the entire suite (useful for CI quick passes).
 
-if os.getenv "SKIP_CONTRACTS" then
+if os.getenv "SKIP_CONTRACTS" == "1" then
   return
 end
 

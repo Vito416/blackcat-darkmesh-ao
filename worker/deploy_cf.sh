@@ -11,6 +11,10 @@ ENV=production
 rand_hex() { openssl rand -hex 32; }
 
 WORKER_AUTH_TOKEN="$(rand_hex)"
+WORKER_READ_TOKEN="$(rand_hex)"
+WORKER_FORGET_TOKEN="$(rand_hex)"
+WORKER_NOTIFY_TOKEN="$(rand_hex)"
+WORKER_SIGN_TOKEN="$(rand_hex)"
 INBOX_HMAC_SECRET="$(rand_hex)"
 NOTIFY_HMAC_SECRET="$(rand_hex)"
 METRICS_BEARER_TOKEN="$(rand_hex)"
@@ -58,6 +62,10 @@ fi
 echo "=== Set secrets ==="
 put_secret() { printf '%s' "$2" | $WR secret put "$1" --env "$ENV" >/dev/null; }
 put_secret WORKER_AUTH_TOKEN "$WORKER_AUTH_TOKEN"
+put_secret WORKER_READ_TOKEN "$WORKER_READ_TOKEN"
+put_secret WORKER_FORGET_TOKEN "$WORKER_FORGET_TOKEN"
+put_secret WORKER_NOTIFY_TOKEN "$WORKER_NOTIFY_TOKEN"
+put_secret WORKER_SIGN_TOKEN "$WORKER_SIGN_TOKEN"
 put_secret INBOX_HMAC_SECRET "$INBOX_HMAC_SECRET"
 put_secret NOTIFY_HMAC_SECRET "$NOTIFY_HMAC_SECRET"
 put_secret METRICS_BEARER_TOKEN "$METRICS_BEARER_TOKEN"
@@ -70,6 +78,10 @@ $WR deploy --env "$ENV"
 
 echo "=== Summary ==="
 echo "Worker auth token:   $WORKER_AUTH_TOKEN"
+echo "Worker read token:   $WORKER_READ_TOKEN"
+echo "Worker forget token: $WORKER_FORGET_TOKEN"
+echo "Worker notify token: $WORKER_NOTIFY_TOKEN"
+echo "Worker sign token:   $WORKER_SIGN_TOKEN"
 echo "Inbox HMAC secret:   $INBOX_HMAC_SECRET"
 echo "Notify HMAC secret:  $NOTIFY_HMAC_SECRET"
 echo "Metrics bearer:      $METRICS_BEARER_TOKEN"

@@ -28,8 +28,8 @@ Data model
 API (baseline)
 - `POST /inbox` body `{ subject, nonce, payload, ttlSeconds? }` → 201; stores + sets TTL.
 - `GET /inbox/:subject/:nonce` → 200 `{ payload, exp }`; deletes after read.
-- `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <WORKER_AUTH_TOKEN>` (`FORGET_TOKEN` still accepted for legacy configs).
-- `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
+- `POST /forget` body `{ subject }` → 200; auth via `Authorization: Bearer <WORKER_FORGET_TOKEN>` (legacy fallback still supported outside strict mode).
+- `POST /notify` (optional) body `{ to?, webhookUrl?, subject?, text?, html?, data? }` → 200; uses SendGrid/webhook and never persists plaintext payload.
 - `GET /health` — liveness check, returns `{ status: "ok" }`.
 - `GET /api/health` — AO bridge readiness (site/write pid + wallet presence).
 - `POST /api/public/site-by-host` — AO registry lookup (`GetSiteByHost`) for host → site metadata.
@@ -49,10 +49,16 @@ Secrets to keep here (examples)
 Env/config
 - `INBOX_TTL_DEFAULT`, `INBOX_TTL_MAX`
 - `INBOX_KV` (KV binding)
-- `WORKER_AUTH_TOKEN` (Bearer guard for /forget and /notify; `FORGET_TOKEN` still accepted for backward compatibility)
+- Scoped route tokens (recommended):
+  - `WORKER_READ_TOKEN` for `GET /inbox/:subject/:nonce`
+  - `WORKER_FORGET_TOKEN` for `POST /forget`
+  - `WORKER_NOTIFY_TOKEN` for `POST /notify`
+  - `WORKER_SIGN_TOKEN` for `POST /sign`
+- Legacy fallback token: `WORKER_AUTH_TOKEN` (`FORGET_TOKEN` also accepted in non-strict mode)
+- `WORKER_STRICT_TOKEN_SCOPES=1` to fail closed when scoped token vars are missing (default in prod-like mode)
 - `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN` (protect /metrics)
 - `SENDGRID_KEY` / `NOTIFY_WEBHOOK` (optional)
-- `NOTIFY_WEBHOOK_ALLOWLIST` (comma-separated hostnames allowed for webhook URLs; empty = allow all; **set in prod**)
+- `NOTIFY_WEBHOOK_ALLOWLIST` (comma-separated hostnames allowed for webhook URLs; empty = deny all/fail-closed)
 - `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` (per-IP for inbox/notify)
 - `SUBJECT_MAX_ENVELOPES` (max live envelopes per subject)
 - `PAYLOAD_MAX_BYTES` (reject oversized payloads)

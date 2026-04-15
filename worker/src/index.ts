@@ -2942,7 +2942,6 @@ app.post('/notify', async (c) => {
     }
   }
 
-  await notifySubjectLimit(c, subjectKey)
   await breakerAllows()
   async function sendWithRetry(fn: (signal: AbortSignal) => Promise<Response>, label: string) {
     let attempt = 0
@@ -3005,7 +3004,7 @@ app.post('/notify', async (c) => {
           },
           body: JSON.stringify({
             personalizations: [{ to: [{ email: body.to }] }],
-            from: { email: 'no-reply@example.com' },
+            from: { email: c.env.NOTIFY_FROM || 'no-reply@example.com' },
             subject: body.subject || 'Notification',
             content: [{ type: body.html ? 'text/html' : 'text/plain', value: body.html || body.text || '' }],
           }),
