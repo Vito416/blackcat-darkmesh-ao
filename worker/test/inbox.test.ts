@@ -27,12 +27,16 @@ describe('Inbox flow', () => {
       body: JSON.stringify({ subject: 'subj', nonce: 'n1', payload: 'cipher' }),
     })
     expect([201, 409]).toContain(res.status)
-    const getRes = await req('/inbox/subj/n1')
+    const getRes = await req('/inbox/subj/n1', {
+      headers: { Authorization: 'Bearer test-token' },
+    })
     expect([200, 404]).toContain(getRes.status) // if replay caused overwrite/clean
     if (getRes.status === 200) {
       const body = await getRes.json()
       expect(body.payload).toBe('cipher')
-      const notFound = await req('/inbox/subj/n1')
+      const notFound = await req('/inbox/subj/n1', {
+        headers: { Authorization: 'Bearer test-token' },
+      })
       expect(notFound.status).toBe(404)
     }
   })
@@ -55,7 +59,9 @@ describe('Inbox flow', () => {
     const body = await res.json()
     expect(body.deleted).toBeGreaterThanOrEqual(1)
     expect(body.replayDeleted).toBeGreaterThanOrEqual(1)
-    const getRes = await req('/inbox/subj2/n2')
+    const getRes = await req('/inbox/subj2/n2', {
+      headers: { Authorization: 'Bearer test-token' },
+    })
     expect(getRes.status).toBe(404)
   })
 })

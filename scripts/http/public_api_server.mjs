@@ -20,6 +20,7 @@ const env = {
   hbUrl: clean(process.env.AO_HB_URL) || clean(process.env.HB_URL) || DEFAULT_HB_URL,
   scheduler: clean(process.env.AO_HB_SCHEDULER) || clean(process.env.HB_SCHEDULER) || DEFAULT_SCHEDULER,
   sitePid: clean(process.env.AO_SITE_PROCESS_ID) || clean(process.env.SITE_PID) || '',
+  registryPid: clean(process.env.AO_REGISTRY_PROCESS_ID) || clean(process.env.REGISTRY_PID) || '',
   authToken: clean(process.env.AO_PUBLIC_API_TOKEN) || '',
   allowOrigin: clean(process.env.AO_PUBLIC_API_ALLOW_ORIGIN) || '*',
   mode: clean(process.env.AO_MODE) || 'mainnet',
@@ -161,11 +162,11 @@ function requireAuth(req) {
   return bearer === env.authToken || tokenHeader === env.authToken
 }
 
-function buildCommonTags(action, requestId, traceId = '') {
+function buildCommonTags(action, requestId, traceId = '', replyTo = env.sitePid) {
   const tags = [
     { name: 'Action', value: action },
     { name: 'Request-Id', value: requestId },
-    { name: 'Reply-To', value: env.sitePid },
+    { name: 'Reply-To', value: replyTo },
     { name: 'signing-format', value: 'ans104' },
     { name: 'accept-bundle', value: 'true' },
     { name: 'require-codec', value: 'application/json' },
@@ -178,6 +179,13 @@ function buildCommonTags(action, requestId, traceId = '') {
   ]
   if (traceId) tags.push({ name: 'Trace-Id', value: traceId })
   return tags
+}
+
+function processPidForAction(action) {
+  if (action === 'GetSiteByHost') {
+    return env.registryPid || env.sitePid
+  }
+  return env.sitePid
 }
 
 function buildReadData(action, requestId, payload) {
@@ -313,12 +321,12 @@ async function runWithTimeout(label, promiseFactory, ms) {
   return Promise.race([promiseFactory(), timeoutPromise(label, ms)])
 }
 
-async function tryDryrun(tags, data) {
+async function tryDryrun(processPid, tags, data) {
   const output = await runWithTimeout(
     'dryrun',
     () =>
       ao.dryrun({
-        process: env.sitePid,
+        process: processPid,
         tags,
         data,
       }),
@@ -339,14 +347,14 @@ function loadFallbackWallet() {
   return { wallet: fallbackWallet, signer: fallbackSigner }
 }
 
-async function sendSchedulerMessage(tags, data) {
+async function sendSchedulerMessage(processPid, tags, data) {
   const { signer } = loadFallbackWallet()
   const item = createData(data, signer, {
-    target: env.sitePid,
+    target: processPid,
     tags,
   })
   await item.sign(signer)
-  const endpoint = `${env.hbUrl.replace(/\/$/, '')}/~scheduler@1.0/schedule?target=${env.sitePid}`
+  const endpoint = `${env.hbUrl.replace(/\/$/, '')}/~scheduler@1.0/schedule?target=${processPid}`
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -373,9 +381,9 @@ async function sendSchedulerMessage(tags, data) {
   }
 }
 
-async function fetchCompute(slot) {
+async function fetchCompute(processPid, slot) {
   const endpoint =
-    `${env.hbUrl.replace(/\/$/, '')}/${env.sitePid}~process@1.0/compute=${slot}` +
+    `${env.hbUrl.replace(/\/$/, '')}/${processPid}~process@1.0/compute=${slot}` +
     '?accept-bundle=true&require-codec=application/json'
   const response = await fetch(endpoint, { method: 'GET' })
   const text = await response.text().catch(() => '')
@@ -389,8 +397,8 @@ async function fetchCompute(slot) {
   }
 }
 
-async function schedulerFallback(tags, data) {
-  const sent = await sendSchedulerMessage(tags, data)
+async function schedulerFallback(processPid, tags, data) {
+  const sent = await sendSchedulerMessage(processPid, tags, data)
   if (!sent.ok || !Number.isFinite(sent.slot)) {
     const parsedBody = sent?.parsed?.body
     const parsedBodyText = typeof parsedBody === 'string' ? parsedBody : ''
@@ -428,7 +436,7 @@ async function schedulerFallback(tags, data) {
     try {
       const output = await runWithTimeout(
         'compute',
-        () => fetchCompute(sent.slot),
+        () => fetchCompute(processPid, sent.slot),
         env.resultTimeoutMs,
       )
       return { mode: 'scheduler', output, slot: sent.slot, messageId: sent.messageId }
@@ -441,12 +449,13 @@ async function schedulerFallback(tags, data) {
 }
 
 async function executeRead(action, req, body) {
-  if (!env.sitePid) {
+  const processPid = processPidForAction(action)
+  if (!processPid) {
     return {
       status: 503,
       body: {
         ok: false,
-        error: 'ao_site_pid_missing',
+        error: action === 'GetSiteByHost' ? 'ao_registry_pid_missing' : 'ao_site_pid_missing',
       },
     }
   }
@@ -465,7 +474,7 @@ async function executeRead(action, req, body) {
     }
   }
 
-  const tags = buildCommonTags(action, requestId, traceId)
+  const tags = buildCommonTags(action, requestId, traceId, processPid)
   addTag(tags, 'Site-Id', siteId)
 
   if (action === 'GetSiteByHost') {
@@ -513,7 +522,7 @@ async function executeRead(action, req, body) {
 
     if (!env.disableDryrun) {
       try {
-        transport = await tryDryrun(tags, data)
+        transport = await tryDryrun(processPid, tags, data)
         aoOutput = transport.output
       } catch (error) {
         if (!env.fallbackToScheduler) throw error
@@ -524,7 +533,7 @@ async function executeRead(action, req, body) {
       if (!env.fallbackToScheduler) {
         throw new Error('dryrun_failed_no_fallback')
       }
-      transport = await schedulerFallback(tags, data)
+      transport = await schedulerFallback(processPid, tags, data)
       aoOutput = transport.output
     }
 
@@ -572,6 +581,7 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       service: 'ao-public-api',
       sitePidConfigured: Boolean(env.sitePid),
+      registryPidConfigured: Boolean(env.registryPid),
       hbUrl: env.hbUrl,
       scheduler: env.scheduler,
       dryrunEnabled: !env.disableDryrun,
@@ -632,6 +642,7 @@ server.listen(env.port, env.host, () => {
       hbUrl: env.hbUrl,
       scheduler: env.scheduler,
       sitePidConfigured: Boolean(env.sitePid),
+      registryPidConfigured: Boolean(env.registryPid),
       dryrunEnabled: !env.disableDryrun,
       schedulerFallback: env.fallbackToScheduler,
       startedAt: nowIso(),

@@ -130,28 +130,8 @@ app.onError((err, c) => {
   }
   const message = err instanceof Error ? err.message : String(err)
   const stack = err instanceof Error ? err.stack || '' : ''
-  const causeRaw = err instanceof Error ? (err as any).cause : null
-  const causeMessage =
-    causeRaw instanceof Error
-      ? causeRaw.message
-      : typeof causeRaw === 'string'
-        ? causeRaw
-        : causeRaw && typeof causeRaw === 'object'
-          ? JSON.stringify(causeRaw)
-          : ''
-  const causeStack = causeRaw instanceof Error ? causeRaw.stack || '' : ''
   logEvent('unhandled_error', { message, stack }, 'error')
-  return c.json(
-    {
-      ok: false,
-      error: 'internal_error',
-      message,
-      stack: stack ? stack.slice(0, 400) : '',
-      cause: causeMessage || '',
-      causeStack: causeStack ? causeStack.slice(0, 400) : '',
-    },
-    500,
-  )
+  return c.json({ ok: false, error: 'internal_error' }, 500)
 })
 
 // Simple in-memory KV shim for tests to avoid SQLite locks in Miniflare
@@ -1495,27 +1475,15 @@ function stableStringify(value: any): string {
 }
 
 function canonicalDetachedMessage(cmd: any): string {
-  const payload = asRecord(cmd.payload) || asRecord(cmd.Payload) || {}
-  const siteId = firstNonEmptyString(
-    cmd.siteId,
-    cmd.SiteId,
-    cmd['Site-Id'],
-    payload.siteId,
-    payload.SiteId,
-    payload['Site-Id'],
-  )
-  const signatureRef = firstNonEmptyString(cmd.signatureRef, cmd.SignatureRef, cmd['Signature-Ref'])
   const parts = [
     cmd.action || cmd.Action || '',
-    cmd.tenant || cmd.Tenant || '',
+    cmd.tenant || cmd.Tenant || cmd['Tenant-Id'] || '',
     cmd.actor || cmd.Actor || '',
-    cmd.timestamp || cmd.ts || '',
-    cmd.nonce || cmd.Nonce || '',
+    cmd.ts || cmd.timestamp || cmd['X-Timestamp'] || '',
+    cmd.nonce || cmd.Nonce || cmd['X-Nonce'] || '',
     cmd.role || cmd.Role || cmd['Actor-Role'] || '',
     stableStringify(cmd.payload || cmd.Payload || {}),
     cmd.requestId || cmd['Request-Id'] || '',
-    siteId,
-    signatureRef,
   ]
   return parts.join('|')
 }
@@ -2405,7 +2373,12 @@ async function verifyNotifySignature(c: any, body: string) {
 app.post('/inbox', async (c) => {
   const raw = await c.req.text()
   await verifyInboxSignature(c, raw)
-  const body = JSON.parse(raw || '{}') as { subject: string; nonce: string; payload: string; ttlSeconds?: number }
+  let body: { subject: string; nonce: string; payload: string; ttlSeconds?: number }
+  try {
+    body = JSON.parse(raw || '{}') as { subject: string; nonce: string; payload: string; ttlSeconds?: number }
+  } catch {
+    throw new HTTPException(400, { message: 'invalid_json' })
+  }
   if (!body.subject || !body.nonce || !body.payload) {
     throw new HTTPException(400, { message: 'missing_fields' })
   }
@@ -2597,13 +2570,19 @@ app.post('/api/checkout/payment-intent', async (c) => {
 })
 
 app.get('/inbox/:subject/:nonce', async (c) => {
+  requireToken(c)
   const subj = c.req.param('subject')
   const nonce = c.req.param('nonce')
   const kv = kvFor(c)
   await rateLimit(c)
   const raw = await kv.get(key(subj, nonce))
   if (!raw) throw new HTTPException(404, { message: 'not_found' })
-  const item = JSON.parse(raw) as InboxItem
+  let item: InboxItem
+  try {
+    item = JSON.parse(raw) as InboxItem
+  } catch {
+    throw new HTTPException(500, { message: 'inbox_item_corrupt' })
+  }
   await kv.delete(key(subj, nonce))
   logEvent('inbox_get', { subject: subj })
   inc('worker_inbox_get_total')
@@ -2708,13 +2687,25 @@ app.post('/notify', async (c) => {
   const raw = await c.req.text()
   gauge('worker_notify_hmac_optional', c.env.NOTIFY_HMAC_OPTIONAL === '1' ? 1 : 0)
   await verifyNotifySignature(c, raw)
-  const body = JSON.parse(raw || '{}') as {
+  let body: {
     to?: string
     subject?: string
     text?: string
     html?: string
     data?: any
     webhookUrl?: string
+  }
+  try {
+    body = JSON.parse(raw || '{}') as {
+      to?: string
+      subject?: string
+      text?: string
+      html?: string
+      data?: any
+      webhookUrl?: string
+    }
+  } catch {
+    throw new HTTPException(400, { message: 'invalid_json' })
   }
   if (!body.to && !body.webhookUrl && !c.env.NOTIFY_WEBHOOK) {
     throw new HTTPException(400, { message: 'missing_destination' })

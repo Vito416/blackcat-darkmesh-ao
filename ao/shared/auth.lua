@@ -232,10 +232,11 @@ local function prune_nonces()
   end
   if count > NONCE_MAX then
     -- drop oldest
-    local oldest_key, oldest_val
+    local oldest_key, oldest_exp
     for k, v in pairs(nonce_store) do
-      if not oldest_val or v < oldest_val then
-        oldest_val = v
+      local exp = v.exp or v
+      if not oldest_exp or exp < oldest_exp then
+        oldest_exp = exp
         oldest_key = k
       end
     end
