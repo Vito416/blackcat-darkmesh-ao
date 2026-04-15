@@ -12,6 +12,7 @@ local json_ok, json = pcall(require, "cjson.safe")
 local persist = require "ao.shared.persist"
 
 local handlers = {}
+local validate_gateway_domain_label
 local allowed_actions = {
   "GetSiteByHost",
   "GetSiteConfig",
@@ -82,6 +83,15 @@ local hmac_skip_actions = {
   GetIntegritySnapshot = true,
   GetResolverFlags = true,
 }
+
+local public_read_actions = {
+  GetSiteByHost = true,
+  GetSiteConfig = true,
+  ResolveGatewayForHost = true,
+  ListGateways = true,
+  GetSiteRuntime = true,
+}
+local PUBLIC_READ_REQUIRE_AUTH = (os.getenv "REGISTRY_PUBLIC_READ_REQUIRE_AUTH" or "0") == "1"
 
 -- pseudo-state kept in-memory for now; AO runtime would persist this.
 local state = persist.load("registry_state", {
@@ -657,13 +667,14 @@ function handlers.GetSiteByHost(msg)
   if not ok_extra then
     return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
   end
-  local ok_len, err = validation.check_length(msg.Host, 255, "Host")
-  if not ok_len then
-    return codec.error("INVALID_INPUT", err, { field = "Host" })
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
   end
-  local site_id = state.domains[msg.Host]
+  local normalized_host = normalized_host_or_err
+  local site_id = state.domains[normalized_host]
   if not site_id then
-    return codec.error("NOT_FOUND", "Domain not bound", { host = msg.Host })
+    return codec.error("NOT_FOUND", "Domain not bound", { host = normalized_host })
   end
   local payload = {
     siteId = site_id,
@@ -763,7 +774,11 @@ local function normalize_host_label(value)
   if type(value) ~= "string" then
     return nil
   end
-  return string.lower(value)
+  local normalized = string.lower(value):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%.+$", "")
+  if normalized == "" then
+    return nil
+  end
+  return normalized
 end
 
 local function validate_gateway_id(value)
@@ -852,7 +867,7 @@ local function validate_gateway_last_seen(value)
   return true
 end
 
-local function validate_gateway_domain_label(value, field, allow_wildcard)
+validate_gateway_domain_label = function(value, field, allow_wildcard)
   local normalized = normalize_host_label(value)
   if not normalized then
     return false, ("invalid_type:%s"):format(field)
@@ -931,9 +946,6 @@ local function host_matches_gateway_domain(host, domain)
     return false
   end
   local suffix = domain:sub(3)
-  if host == suffix then
-    return true
-  end
   local tail = "." .. suffix
   return host:sub(-#tail) == tail
 end
@@ -1426,17 +1438,18 @@ function handlers.BindDomain(msg)
   if not ok_len_id then
     return codec.error("INVALID_INPUT", err_id, { field = "Site-Id" })
   end
-  local ok_len_host, err_host = validation.check_length(msg.Host, 255, "Host")
-  if not ok_len_host then
-    return codec.error("INVALID_INPUT", err_host, { field = "Host" })
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
   end
+  local normalized_host = normalized_host_or_err
   if not state.sites[msg["Site-Id"]] then
     return codec.error("NOT_FOUND", "Site not registered", { siteId = msg["Site-Id"] })
   end
-  state.domains[msg.Host] = msg["Site-Id"]
-  audit.record("registry", "BindDomain", msg, nil, { host = msg.Host })
+  state.domains[normalized_host] = msg["Site-Id"]
+  audit.record("registry", "BindDomain", msg, nil, { host = normalized_host })
   return codec.ok {
-    host = msg.Host,
+    host = normalized_host,
     siteId = msg["Site-Id"],
   }
 end
@@ -2566,22 +2579,25 @@ local function route(msg)
     return codec.missing_tags(missing)
   end
 
-  local ok_sec, sec_err = auth.enforce(msg)
-  if not ok_sec then
-    return codec.error("FORBIDDEN", sec_err)
-  end
-
-  local seen = idem.check(msg["Request-Id"])
-  if seen then
-    return seen
-  end
-
   local ok_action, err = validation.require_action(msg, allowed_actions)
   if not ok_action then
     if err == "unknown_action" then
       return codec.unknown_action(msg.Action)
     end
     return codec.error("MISSING_ACTION", "Action is required")
+  end
+
+  local requires_auth = PUBLIC_READ_REQUIRE_AUTH or not public_read_actions[msg.Action]
+  if requires_auth then
+    local ok_sec, sec_err = auth.enforce(msg)
+    if not ok_sec then
+      return codec.error("FORBIDDEN", sec_err)
+    end
+  end
+
+  local seen = idem.check(msg["Request-Id"])
+  if seen then
+    return seen
   end
 
   local ok_hmac, hmac_err =

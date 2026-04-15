@@ -483,9 +483,9 @@ function requireToken(c: any) {
 }
 
 function requireSignToken(c: any) {
-  const tokenEnv = c.env.WORKER_SIGN_TOKEN || c.env.WORKER_AUTH_TOKEN
+  const tokenEnv = c.env.WORKER_SIGN_TOKEN
   if (!tokenEnv) {
-    requireSecret(c.env, 'WORKER_SIGN_TOKEN', 'missing_sign_token')
+    throw new HTTPException(500, { message: 'missing_sign_token' })
   }
   const token = c.req.header('Authorization') || c.req.header('authorization') || ''
   if (tokenEnv && token !== `Bearer ${tokenEnv}`) {
@@ -958,6 +958,14 @@ function resolveSignPolicyRaw(env: Env) {
   return cleanEnv(env.SIGN_POLICY_JSON) || cleanEnv(env.SIGN_ALLOWLIST_JSON)
 }
 
+function signPolicyRequired(env: Env) {
+  const explicit = cleanEnv((env as any).SIGN_POLICY_REQUIRED)
+  if (explicit) {
+    return explicit !== '0'
+  }
+  return secretsEnforced(env)
+}
+
 function roleAllowed(allowedRoles: string[], role: string) {
   return allowedRoles.includes('*') || allowedRoles.includes(role)
 }
@@ -973,7 +981,12 @@ function resolveSignRequestContext(body: Record<string, unknown>, env: Env) {
 
 function enforceSignPolicy(env: Env, body: Record<string, unknown>) {
   const rawPolicy = resolveSignPolicyRaw(env)
-  if (!rawPolicy) return resolveSignRequestContext(body, env)
+  if (!rawPolicy) {
+    if (signPolicyRequired(env)) {
+      throw new HTTPException(500, { message: 'missing_sign_policy' })
+    }
+    return resolveSignRequestContext(body, env)
+  }
 
   const policy = parseSignPolicy(rawPolicy)
   if (!policy) {
@@ -1048,6 +1061,22 @@ function enforceSignPolicy(env: Env, body: Record<string, unknown>) {
   }
 
   return context
+}
+
+function parseUnixOrIsoTimestamp(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value)
+  }
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number.parseInt(trimmed, 10)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  const parsedMs = Date.parse(trimmed)
+  if (!Number.isFinite(parsedMs)) return null
+  return Math.floor(parsedMs / 1000)
 }
 
 function expectedTemplateToken(env: Env, siteId: string): string {
@@ -2407,7 +2436,12 @@ app.post('/inbox', async (c) => {
 app.post('/sign', async (c) => {
   requireSignToken(c)
   await signRateLimit(c)
-  const body = await c.req.json<any>()
+  let body: any
+  try {
+    body = await c.req.json<any>()
+  } catch {
+    throw new HTTPException(400, { message: 'invalid_json' })
+  }
   if (!body || typeof body !== 'object') {
     throw new HTTPException(400, { message: 'invalid_body' })
   }
@@ -2448,13 +2482,13 @@ app.post('/sign', async (c) => {
     throw new HTTPException(400, { message: 'missing_nonce' })
   }
   const ts = signBody.timestamp || signBody.ts
-  const tsNum = typeof ts === 'string' ? parseInt(ts, 10) : ts
+  const tsNum = parseUnixOrIsoTimestamp(ts)
   const windowSec = parseInt(c.env.SIGN_TS_WINDOW || '300', 10)
   const now = Math.floor(Date.now() / 1000)
   if (!tsNum || Math.abs(now - tsNum) > windowSec) {
     throw new HTTPException(400, { message: 'stale_timestamp' })
   }
-  await checkReplay(c, `sign:${nonce}`, windowSec + 30)
+  await checkReplay(c, 'sign', nonce)
   const payloadBytes = new TextEncoder().encode(JSON.stringify(signBody))
   const maxBytes = parseInt(c.env.SIGN_MAX_BYTES || '4096', 10)
   if (maxBytes > 0 && payloadBytes.length > maxBytes) {
@@ -2591,7 +2625,12 @@ app.get('/inbox/:subject/:nonce', async (c) => {
 
 app.post('/forget', async (c) => {
   requireToken(c)
-  const body = await c.req.json<{ subject: string }>()
+  let body: { subject?: string }
+  try {
+    body = await c.req.json<{ subject?: string }>()
+  } catch {
+    throw new HTTPException(400, { message: 'invalid_json' })
+  }
   if (!body.subject) throw new HTTPException(400, { message: 'missing_subject' })
   const prefix = `${body.subject}:`
   const replayPrefix = `replay:${body.subject}:`

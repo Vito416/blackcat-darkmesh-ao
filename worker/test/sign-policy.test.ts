@@ -16,6 +16,7 @@ const baseEnv = {
   NOTIFY_BREAKER_THRESHOLD: '2',
   FORGET_TOKEN: 't',
   WORKER_AUTH_TOKEN: 't',
+  WORKER_SIGN_TOKEN: 't',
   WORKER_ED25519_PRIV_HEX:
     '1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100',
 }
@@ -74,6 +75,65 @@ describe('Worker sign policy', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  it('fails closed when SIGN_POLICY_REQUIRED=1 and no policy is configured', async () => {
+    const body = signBody()
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { SIGN_POLICY_REQUIRED: '1' },
+    )
+
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('missing_sign_policy')
+  })
+
+  it('requires WORKER_SIGN_TOKEN for /sign', async () => {
+    const body = signBody()
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { WORKER_SIGN_TOKEN: '' },
+    )
+
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('missing_sign_token')
+  })
+
+  it('returns 400 invalid_json for malformed /sign payload', async () => {
+    const res = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body: '{',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      {},
+    )
+
+    expect(res.status).toBe(400)
+    const text = await res.text()
+    expect(text).toContain('invalid_json')
   })
 
   it('fails closed when policy is configured without any allowlist rules', async () => {

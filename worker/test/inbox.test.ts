@@ -64,4 +64,18 @@ describe('Inbox flow', () => {
     })
     expect(getRes.status).toBe(404)
   })
+
+  it('rejects malformed forget payload', async () => {
+    const res = await req('/forget', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Authorization: 'Bearer test-token',
+      },
+      body: '{',
+    })
+    expect(res.status).toBe(400)
+    const text = await res.text()
+    expect(text).toContain('invalid_json')
+  })
 })
