@@ -2120,6 +2120,13 @@ function handlers.GetTrustedRoot(msg)
       componentId = component_id,
     })
   end
+  if active_release.revokedAt then
+    return codec.error("NOT_FOUND", "Active trusted root is revoked", {
+      componentId = component_id,
+      root = active_release.root,
+      revokedAt = active_release.revokedAt,
+    })
+  end
   return codec.ok {
     componentId = active_release.componentId,
     version = active_release.version,

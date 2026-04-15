@@ -1915,9 +1915,35 @@ local function route(msg)
     end
   end
 
+  local function scope_value(...)
+    for i = 1, select("#", ...) do
+      local v = select(i, ...)
+      if type(v) == "string" and v ~= "" then
+        return v
+      end
+    end
+    return ""
+  end
+
   local request_id = tostring(msg["Request-Id"] or "")
+  local idem_scope_key = nil
   if request_id ~= "" then
-    local seen = idem.check(request_id)
+    local scope_site_id = scope_value(msg["Site-Id"], msg.siteId, msg.SiteId, msg.site_id)
+    local scope_subject = scope_value(
+      msg.Path,
+      msg.path,
+      msg.Slug,
+      msg.slug,
+      msg["Page-Id"],
+      msg.pageId,
+      msg["Layout-Id"],
+      msg.layoutId,
+      msg["Asset-Id"],
+      msg.assetId
+    )
+    idem_scope_key =
+      table.concat({ request_id, tostring(msg.Action or ""), scope_site_id, scope_subject }, "|")
+    local seen = idem.check(idem_scope_key)
     if seen then
       return seen
     end
@@ -1942,8 +1968,8 @@ local function route(msg)
   local resp = handler(msg)
   metrics.inc("site." .. msg.Action .. ".count")
   metrics.tick()
-  if request_id ~= "" then
-    idem.record(request_id, resp)
+  if idem_scope_key then
+    idem.record(idem_scope_key, resp)
   end
   persist.save("site_state", state)
   return resp
