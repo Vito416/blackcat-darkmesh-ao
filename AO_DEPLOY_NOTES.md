@@ -1,9 +1,51 @@
 # AO Deploy Notes — blackcat-darkmesh-ao
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 This file is the operational source of truth for shipping `blackcat-darkmesh-ao`
 to AO push endpoints (`push.forward.computer`, `push-1.forward.computer`).
+
+---
+
+## 4.25) 2026-04-15 — local HB/CU parity fix + blocker closure
+
+Issue:
+- Local diagnostics were not equivalent to `push` / `push-1` because local CU runtime
+  drifted from the path used by delegated compute.
+
+Root cause:
+- `local-cu` ran in default CU mode instead of HB mode.
+- `dev_delegated_compute` calls `POST /result/:slot`, but local CU route was effectively
+  GET-only (`/result/:slot`) in the shipped image.
+
+Fix committed in repo:
+- `scripts/local/start_hb_stack.sh`
+  - sets local CU defaults:
+    - `UNIT_MODE=hbu`
+    - `HB_URL=http://localhost:8734`
+  - applies startup hot-patch for local image parity:
+    - `app.get('/result/:messageUid', ...)` -> `app.all('/result/:messageUid', ...)`
+    - restarts local CU automatically
+
+Validation (same PID, strict assertions):
+- local (`http://localhost:8734`): PASS
+- push (`https://push.forward.computer`): PASS
+- push-1 (`https://push-1.forward.computer`): PASS
+
+Observed transient after parity switch:
+- First local compute attempt can return:
+  - `422 Non-incrementing slot: expected 1 but got 0`
+- Re-run immediately passes once slot state is warmed.
+
+Conclusion:
+- The blocker was local stack parity (HB <-> local-CU integration), not AO process
+  business logic in `-ao`/`-write`.
+
+Quick local parity checklist:
+1. `bash scripts/local/start_hb_stack.sh`
+2. Run strict local deep test against target PID.
+3. Run strict push/push-1 deep test against the same PID.
+4. If only local fails, inspect `docker logs` for `hyperbeam-edge` + `local-cu` before changing process code.
 
 ---
 
