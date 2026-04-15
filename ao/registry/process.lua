@@ -2821,10 +2821,21 @@ end
 local registry_handler_registered = false
 local registry_evaluate_wrapped = false
 local original_handlers_evaluate = nil
+local function resolve_handlers_api()
+  if type(_G) == "table" and type(_G.Handlers) == "table" then
+    return _G.Handlers
+  end
+  local env = _ENV
+  if type(env) == "table" and type(env.Handlers) == "table" then
+    return env.Handlers
+  end
+  return nil
+end
+
 local function ensure_registry_evaluate_wrapped(handlers_api)
   local api = handlers_api
   if type(api) ~= "table" then
-    api = _ENV.Handlers
+    api = resolve_handlers_api()
   end
   if type(api) ~= "table" or type(api.evaluate) ~= "function" then
     return false
@@ -2843,7 +2854,7 @@ local function ensure_registry_evaluate_wrapped(handlers_api)
 end
 
 local function ensure_registry_handler_registered()
-  local handlers_api = _ENV.Handlers
+  local handlers_api = resolve_handlers_api()
   if type(handlers_api) ~= "table" or type(handlers_api.add) ~= "function" then
     local ok_handlers, resolved_handlers = pcall(require, ".handlers")
     if
