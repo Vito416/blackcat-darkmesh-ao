@@ -1913,9 +1913,12 @@ local function route(msg)
     end
   end
 
-  local seen = idem.check(msg["Request-Id"])
-  if seen then
-    return seen
+  local request_id = tostring(msg["Request-Id"] or "")
+  if request_id ~= "" then
+    local seen = idem.check(request_id)
+    if seen then
+      return seen
+    end
   end
 
   local ok_hmac, hmac_err =
@@ -1937,7 +1940,9 @@ local function route(msg)
   local resp = handler(msg)
   metrics.inc("site." .. msg.Action .. ".count")
   metrics.tick()
-  idem.record(msg["Request-Id"], resp)
+  if request_id ~= "" then
+    idem.record(request_id, resp)
+  end
   persist.save("site_state", state)
   return resp
 end

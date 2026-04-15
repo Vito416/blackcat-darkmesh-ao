@@ -55,10 +55,15 @@ if command -v lua5.4 >/dev/null 2>&1; then
   else
     LUA_PATH_EFFECTIVE="${LUA_PATH_BASE}"
   fi
+  if [ -n "${ROCKS_LUA_CPATH}" ]; then
+    LUA_CPATH_EFFECTIVE="${ROCKS_LUA_CPATH};;"
+  else
+    LUA_CPATH_EFFECTIVE=";;"
+  fi
   if [ "${RUN_DEPS_CHECK:-0}" -eq 1 ]; then
     echo "[verify] deps check"
     LUA_PATH="${LUA_PATH_EFFECTIVE}" \
-    LUA_CPATH="${ROCKS_LUA_CPATH}" \
+    LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
       lua5.4 "$ROOT_DIR/scripts/verify/deps_check.lua"
   fi
   echo "[verify] contract smoke tests"
@@ -72,7 +77,7 @@ if command -v lua5.4 >/dev/null 2>&1; then
   SKIP_CATALOG=1 \
   SKIP_ACCESS=1 \
   LUA_PATH="${LUA_PATH_EFFECTIVE}" \
-  LUA_CPATH="${ROCKS_LUA_CPATH}" \
+  LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
     lua5.4 "$ROOT_DIR/scripts/verify/contracts.lua"
   echo "[verify] outbox HMAC separation"
   OUTBOX_HMAC_SECRET=preflight-hmac-secret \
@@ -81,20 +86,20 @@ if command -v lua5.4 >/dev/null 2>&1; then
   AUTH_REQUIRE_TIMESTAMP=0 \
   AUTH_REQUIRE_JWT=0 \
   LUA_PATH="${LUA_PATH_EFFECTIVE}" \
-  LUA_CPATH="${ROCKS_LUA_CPATH}" \
+  LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
     lua5.4 "$ROOT_DIR/scripts/verify/outbox_hmac_separation.lua"
   if [ "${RUN_INTEGRITY_REGISTRY_SPEC:-0}" = "1" ]; then
     echo "[verify] integrity registry lifecycle spec"
     METRICS_ENABLED=0 \
     METRICS_DISABLED=1 \
     LUA_PATH="${LUA_PATH_EFFECTIVE}" \
-    LUA_CPATH="${ROCKS_LUA_CPATH}" \
+    LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
       lua5.4 "$ROOT_DIR/scripts/verify/integrity_registry_spec.lua"
   fi
   if [ "${RUN_FUZZ:-0}" -eq 1 ]; then
     echo "[verify] fuzz/property tests"
     LUA_PATH="${LUA_PATH_EFFECTIVE}" \
-    LUA_CPATH="${ROCKS_LUA_CPATH}" \
+    LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
       lua5.4 "$ROOT_DIR/scripts/verify/fuzz.lua"
   fi
 fi

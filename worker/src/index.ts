@@ -1638,6 +1638,55 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   ])
 }
 
+async function executeAoRead(
+  env: Env,
+  ao: any,
+  process: string,
+  tags: Array<{ name: string; value: string }>,
+  data: string,
+  timeoutMs: number,
+  labelPrefix: string,
+) {
+  if (typeof ao?.dryrun === 'function') {
+    return withTimeout(
+      ao.dryrun({
+        process,
+        tags,
+        data,
+      }),
+      timeoutMs,
+      `${labelPrefix}_dryrun`,
+    )
+  }
+
+  if (typeof ao?.message !== 'function' || typeof ao?.result !== 'function') {
+    throw new Error('ao_read_methods_unavailable')
+  }
+
+  const slotOrMessage = await withTimeout(
+    ao.message({
+      process,
+      tags,
+      data,
+    }),
+    timeoutMs,
+    `${labelPrefix}_message`,
+  )
+
+  try {
+    return await withTimeout(
+      ao.result({
+        process,
+        message: String(slotOrMessage),
+      }),
+      timeoutMs,
+      `${labelPrefix}_result`,
+    )
+  } catch {
+    return fetchComputeFallback(env, process, String(slotOrMessage), timeoutMs)
+  }
+}
+
 function stableStringify(value: any): string {
   if (value === null || value === undefined) return 'null'
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
@@ -2078,30 +2127,16 @@ async function resolveSiteRuntimeBySiteId(c: any, siteId: string, traceId = ''):
   const tags = buildSiteRuntimeLookupTags(requestId, registryPid, siteId, traceId)
   const data = buildSiteRuntimeLookupData(requestId, siteId)
   const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
-  const ao = await writeAoClient(c.env)
-  const slotOrMessage = await withTimeout(
-    ao.message({
-      process: registryPid,
-      tags,
-      data,
-    }),
+  const ao = await readAoClient(c.env)
+  const result = await executeAoRead(
+    c.env,
+    ao,
+    registryPid,
+    tags,
+    data,
     timeoutMs,
-    'ao_registry_site_runtime_message',
+    'ao_registry_site_runtime',
   )
-
-  let result: any = null
-  try {
-    result = await withTimeout(
-      ao.result({
-        process: registryPid,
-        message: String(slotOrMessage),
-      }),
-      timeoutMs,
-      'ao_registry_site_runtime_result',
-    )
-  } catch {
-    result = await fetchComputeFallback(c.env, registryPid, String(slotOrMessage), timeoutMs)
-  }
 
   return normalizeSiteRuntimeLookupEnvelope(result)
 }
@@ -2148,29 +2183,16 @@ async function executeReadAction(
   const tags = buildReadTags(action, requestId, siteId, sitePid, payload, traceId)
   const data = buildReadData(action, requestId, siteId, payload)
   const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
-  const ao = await writeAoClient(c.env)
-  const slotOrMessage = await withTimeout(
-    ao.message({
-      process: sitePid,
-      tags,
-      data,
-    }),
+  const ao = await readAoClient(c.env)
+  const result = await executeAoRead(
+    c.env,
+    ao,
+    sitePid,
+    tags,
+    data,
     timeoutMs,
-    'ao_read_message',
+    'ao_read',
   )
-  let result: any = null
-  try {
-    result = await withTimeout(
-      ao.result({
-        process: sitePid,
-        message: String(slotOrMessage),
-      }),
-      timeoutMs,
-      'ao_read_result',
-    )
-  } catch {
-    result = await fetchComputeFallback(c.env, sitePid, String(slotOrMessage), timeoutMs)
-  }
   return normalizeReadEnvelope(result, action)
 }
 
@@ -2183,30 +2205,16 @@ async function executeSiteByHostLookup(c: any, input: SiteByHostLookupInput) {
   const tags = buildSiteByHostTags(requestId, registryPid, input.host, traceId)
   const data = buildSiteByHostData(requestId, input.host)
   const timeoutMs = positiveIntEnv(c.env.GATEWAY_READ_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS)
-  const ao = await writeAoClient(c.env)
-  const slotOrMessage = await withTimeout(
-    ao.message({
-      process: registryPid,
-      tags,
-      data,
-    }),
+  const ao = await readAoClient(c.env)
+  const result = await executeAoRead(
+    c.env,
+    ao,
+    registryPid,
+    tags,
+    data,
     timeoutMs,
-    'ao_registry_message',
+    'ao_registry',
   )
-
-  let result: any = null
-  try {
-    result = await withTimeout(
-      ao.result({
-        process: registryPid,
-        message: String(slotOrMessage),
-      }),
-      timeoutMs,
-      'ao_registry_result',
-    )
-  } catch {
-    result = await fetchComputeFallback(c.env, registryPid, String(slotOrMessage), timeoutMs)
-  }
 
   return normalizeSiteByHostEnvelope(result)
 }
