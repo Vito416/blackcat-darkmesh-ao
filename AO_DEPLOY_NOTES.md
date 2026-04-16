@@ -1370,3 +1370,31 @@ Follow-up (same day, deployed + re-verified):
     - notify: `200`, bad token `401`
     - sign: `200`, bad token `401`
   - P1-01 live scoped token separation confirmed.
+
+---
+
+## 4.25) 2026-04-17 — live gateway interop stabilization (worker read fallback + signer path)
+
+Context:
+- Live gateway (`https://gateway.blgateway.fun`) reported intermittent read/write failures while AO + write runtime remained healthy.
+- Main blocker root cause was in worker AO-read fallback behavior under dryrun/send transport edge failures.
+
+Fixes applied in worker:
+- `worker/src/index.ts`:
+  - `executeAoRead` now tries:
+    1. `dryrun`
+    2. fallback `message` + `result`
+    3. if fallback fails with `Error sending message`, retry using signer-enabled client (`writeAoClient`)
+- `worker/test/public-site-by-host.test.ts`:
+  - added regression test for "dryrun fails -> message/result fallback succeeds".
+- `worker/wrangler.toml`:
+  - production var pinned for registry read path:
+    - `AO_REGISTRY_PROCESS_ID = "tIItgtKIdmozH0pk_-N6IWr-1cFHYObijGAp0J4ZDtU"`
+
+Live verification outcome:
+- worker `/api/public/resolve-route` no longer returns `500 internal_error`; now returns deterministic domain-state response (`404 NOT_FOUND` for missing route state).
+- worker checkout/sign path accepted with scoped role policy and returns valid signed flow (`202 ACCEPTED_ASYNC` in gateway/write path).
+- gateway public write call recovered after edge transport tuning (cloudflared `protocol: http2` on VPS side).
+
+Residual note:
+- first-hit public read path may still show intermittent `504` during edge warmup windows; strict suite remains passing overall with retry policy.
