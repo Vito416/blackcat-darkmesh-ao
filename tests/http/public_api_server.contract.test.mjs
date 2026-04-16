@@ -253,6 +253,32 @@ test('public API health + route/method/auth/invalid-body contract', async (t) =>
       assert.equal(pageRes.status, 400)
       assert.equal(pageBody.error, 'page_id_or_slug_required')
     })
+
+    await t.test('scheduler fallback path returns ao_read_failed when signer material is unavailable', async () => {
+      const fallbackServer = await startServer({
+        AO_PUBLIC_API_TOKEN: token,
+        AO_DISABLE_DRYRUN: '1',
+        AO_READ_FALLBACK_TO_SCHEDULER: '1',
+      })
+      try {
+        const res = await postJson(
+          fallbackServer.baseUrl,
+          '/api/public/resolve-route',
+          { siteId: 'site-contract', payload: { path: '/' } },
+          authHeaders,
+        )
+        const body = await readJson(res)
+        assert.equal(res.status, 502)
+        assert.equal(body.ok, false)
+        assert.equal(body.error, 'ao_read_failed')
+        assert.match(
+          String(body.message || ''),
+          /(fallback_wallet_missing|arbundles_unavailable|scheduler_send_failed)/,
+        )
+      } finally {
+        await stopServer(fallbackServer)
+      }
+    })
   } finally {
     await stopServer(server)
   }
