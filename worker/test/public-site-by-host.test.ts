@@ -55,6 +55,7 @@ async function callSiteByHost(
 describe('/api/public/site-by-host', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete (aoClient as any).dryrun
     aoClient.message.mockReset()
     aoClient.result.mockReset()
   })
@@ -265,6 +266,56 @@ describe('/api/public/site-by-host', () => {
     const readLookup = aoClient.message.mock.calls[1][0]
     expect(readLookup.process).toBe('SITE_PID_DYNAMIC')
     expect(readLookup.tags).toEqual(expect.arrayContaining([{ name: 'Action', value: 'ResolveRoute' }]))
+  })
+
+  it('falls back to message/result when dryrun is available but fails', async () => {
+    ;(aoClient as any).dryrun = vi.fn().mockRejectedValue(new Error('Error running dryrun'))
+    aoClient.message.mockResolvedValueOnce('msg-site-runtime').mockResolvedValueOnce('msg-read')
+    aoClient.result
+      .mockResolvedValueOnce({
+        raw: {
+          Output: JSON.stringify({
+            status: 'OK',
+            data: {
+              siteId: 'site-alpha',
+              runtime: {
+                siteProcessId: 'SITE_PID_DYNAMIC',
+              },
+            },
+          }),
+        },
+      })
+      .mockResolvedValueOnce({
+        raw: {
+          Output: JSON.stringify({
+            status: 'OK',
+            data: { route: { pageId: 'home' } },
+          }),
+        },
+      })
+
+    const res = await callPath(
+      '/api/public/resolve-route',
+      {
+        siteId: 'site-alpha',
+        payload: { siteId: 'site-alpha', path: '/' },
+      },
+      {
+        GATEWAY_TEMPLATE_TOKEN_MAP: JSON.stringify({ 'site-alpha': 'tok-alpha' }),
+      },
+      {
+        authorization: 'Bearer tok-alpha',
+      },
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({
+      status: 'OK',
+      data: { route: { pageId: 'home' } },
+    })
+    expect((aoClient as any).dryrun).toHaveBeenCalledTimes(2)
+    expect(aoClient.message).toHaveBeenCalledTimes(2)
+    expect(aoClient.result).toHaveBeenCalledTimes(2)
   })
 
   it('rejects conflicting runtime process aliases in registry runtime payload', async () => {

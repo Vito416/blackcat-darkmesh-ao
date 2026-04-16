@@ -1683,43 +1683,83 @@ async function executeAoRead(
   timeoutMs: number,
   labelPrefix: string,
 ) {
-  if (typeof ao?.dryrun === 'function') {
-    return withTimeout(
-      ao.dryrun({
+  async function executeWithMessageResult(client: any, stepPrefix: string) {
+    if (typeof client?.message !== 'function' || typeof client?.result !== 'function') {
+      throw new Error('ao_read_methods_unavailable')
+    }
+    const slotOrMessage = await withTimeout(
+      client.message({
         process,
         tags,
         data,
       }),
       timeoutMs,
-      `${labelPrefix}_dryrun`,
+      `${stepPrefix}_message`,
     )
+
+    try {
+      return await withTimeout(
+        client.result({
+          process,
+          message: String(slotOrMessage),
+        }),
+        timeoutMs,
+        `${stepPrefix}_result`,
+      )
+    } catch {
+      return fetchComputeFallback(env, process, String(slotOrMessage), timeoutMs)
+    }
   }
 
-  if (typeof ao?.message !== 'function' || typeof ao?.result !== 'function') {
-    throw new Error('ao_read_methods_unavailable')
+  let dryrunError: Error | null = null
+  if (typeof ao?.dryrun === 'function') {
+    try {
+      return await withTimeout(
+        ao.dryrun({
+          process,
+          tags,
+          data,
+        }),
+        timeoutMs,
+        `${labelPrefix}_dryrun`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      dryrunError = error instanceof Error ? error : new Error(message)
+      logEvent(
+        `${labelPrefix}_dryrun_failed`,
+        {
+          process,
+          message,
+        },
+        'debug',
+      )
+    }
   }
-
-  const slotOrMessage = await withTimeout(
-    ao.message({
-      process,
-      tags,
-      data,
-    }),
-    timeoutMs,
-    `${labelPrefix}_message`,
-  )
 
   try {
-    return await withTimeout(
-      ao.result({
+    return await executeWithMessageResult(ao, labelPrefix)
+  } catch (messageReadError) {
+    const message = messageReadError instanceof Error ? messageReadError.message : String(messageReadError)
+    const messageLikelyNeedsSigner = /Error sending message/i.test(message)
+    if (!messageLikelyNeedsSigner) {
+      if (dryrunError) throw dryrunError
+      throw messageReadError
+    }
+    const signedClient = await writeAoClient(env)
+    if (!signedClient || signedClient === ao) {
+      if (dryrunError) throw dryrunError
+      throw messageReadError
+    }
+    logEvent(
+      `${labelPrefix}_message_retry_with_signer`,
+      {
         process,
-        message: String(slotOrMessage),
-      }),
-      timeoutMs,
-      `${labelPrefix}_result`,
+        message,
+      },
+      'debug',
     )
-  } catch {
-    return fetchComputeFallback(env, process, String(slotOrMessage), timeoutMs)
+    return executeWithMessageResult(signedClient, `${labelPrefix}_signed`)
   }
 }
 
