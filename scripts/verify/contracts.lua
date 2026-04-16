@@ -1379,12 +1379,16 @@ if not os.getenv "SKIP_CATALOG" then
     Action = "UpsertProduct",
     ["Site-Id"] = "site-1",
     Sku = "sku-idem",
-    Payload = { name = "Idem" },
+    -- Keep payload immutable across idempotent retries so signature verification
+    -- stays stable when AUTH_SIGNATURE_SECRET is enabled in CI.
+    Payload = { sku = "sku-idem", name = "Idem" },
     ["Actor-Role"] = "catalog-admin",
     ["Request-Id"] = "rid-upsert",
   }
   local first = catalog.route(idem_req)
   local second = catalog.route(idem_req)
+  assert_status(first, "OK", "idempotent upsert first status")
+  assert_status(second, "OK", "idempotent upsert second status")
   assert_eq(first.payload.sku, second.payload.sku, "idempotent upsert sku")
 
   -- Conflicting payload same Request-Id keeps original
