@@ -9,6 +9,9 @@ HB_NETWORK="${HB_NETWORK:-hyperbeam-docker_default}"
 HB_PORT="${HB_PORT:-8734}"
 HB_CONFIG_PATH="${HB_CONFIG_PATH:-/tmp/hb-run/config.release.flat}"
 WALLET_PATH="${WALLET_PATH:-../blackcat-darkmesh-write/wallet.json}"
+CU_UNIT_MODE="${CU_UNIT_MODE:-hbu}"
+CU_HB_URL="${CU_HB_URL:-http://localhost:8734}"
+CU_ENABLE_POST_RESULT_PATCH="${CU_ENABLE_POST_RESULT_PATCH:-1}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker not found" >&2
@@ -45,8 +48,17 @@ docker run -d \
   --name "$CU_CONTAINER" \
   --network "container:$HB_CONTAINER" \
   -e NODE_CONFIG_ENV=development \
+  -e UNIT_MODE="$CU_UNIT_MODE" \
+  -e HB_URL="$CU_HB_URL" \
   -e WALLET_FILE=/wallet.json \
   -v "$WALLET_PATH":/wallet.json:ro \
   "$CU_IMAGE" >/dev/null
+
+# local-cu image currently binds /result as GET-only; HB delegated compute calls POST.
+if [[ "$CU_ENABLE_POST_RESULT_PATCH" == "1" ]]; then
+  docker exec "$CU_CONTAINER" sh -lc \
+    "sed -i 's/app.get(/app.all(/' /usr/app/src/effects/ao-http/routes/result.js"
+  docker restart "$CU_CONTAINER" >/dev/null
+fi
 
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -E "${HB_CONTAINER}|${CU_CONTAINER}" || true

@@ -57,3 +57,25 @@ Script location
 - `worker/ops/loadtest/k6-worker.js`
   - Uses a fixed `x-forwarded-for` to make rate-limit math deterministic.
   - Generates hex HMAC (`X-Signature`) over the exact JSON body for both `/inbox` and `/notify`.
+
+## Replay contention drill (P1-02)
+
+Use the dedicated replay drill to validate same-nonce collision handling:
+
+```bash
+cd worker
+WORKER_BASE_URL=https://<worker-host> \
+REPLAY_DRILL_ATTEMPTS=4 \
+REPLAY_DRILL_SUBJECT="drill-replay-$(date +%s)" \
+REPLAY_DRILL_NONCE="collision-1" \
+node ops/loadtest/replay-contention-drill.mjs --json
+```
+
+Expected pass condition:
+- exactly one `201`
+- remaining requests `409` replay
+- no `5xx`
+
+Runbook reference:
+- `worker/ops/runbooks/replay-contention-drill.md`
+- `worker/ops/runbooks/token-scope-rotation.md`

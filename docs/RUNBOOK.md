@@ -69,6 +69,54 @@ WantedBy=multi-user.target
 - Trust manifest failure: keep last-good manifest for grace window, then fail
   closed if signatures/expiry are invalid.
 
+## v1.4.0 Integrity Rollout
+
+### Prechecks
+- Confirm the registry module and PID are both finalized before deep tests.
+- Verify the registry exposes the integrity actions expected by the gateway:
+  `GetTrustedRoot`, `GetIntegrityPolicy`, `GetIntegrityAuthority`,
+  `GetIntegrityAuditState`, `GetIntegritySnapshot`.
+- Run the local contract suite with the current integrity actions:
+  `AUTH_REQUIRE_SIGNATURE=0 AUTH_REQUIRE_NONCE=0 lua5.4 scripts/verify/contracts.lua`
+  (use strict signature-on verification in CI or on hosts with Lua crypto deps).
+
+### Spawn / Finalization checkpoints
+- Publish the registry module.
+- Wait for the module tx to finalize before spawning the PID.
+- Spawn the PID and wait for finalization again before running any deep tests.
+- After finalization, confirm the PID returns a valid trusted-root snapshot and
+  the integrity policy is not paused unless that pause is intentional.
+
+### Deep test gates
+- Run the integrity deep profile:
+  `node scripts/cli/deep_test_scheduler_direct.js --profile integrity ...`
+- Require the following to pass before rollout continues:
+  - trusted release publish/query
+  - authority rotation query/update
+  - audit commitment append/query
+  - policy pause/resume
+  - revoked-root rejection
+  - snapshot availability after republish
+- Only move to gateway rollout after both push nodes show the same integrity
+  snapshot shape and deep-profile assertions pass.
+
+### Rollback trigger points
+- Stop the rollout if `GetIntegritySnapshot` returns `NOT_FOUND` after finalization.
+- Stop the rollout if the active root is revoked unexpectedly or policy remains
+  paused after the expected maintenance window.
+- Stop the rollout if the integrity deep profile fails on either push node in a
+  reproducible way (one-off propagation flukes can be retried once).
+- Use `SetIntegrityPolicyPause` to fail closed while investigating, then
+  republish the last known good release/root once the issue is resolved.
+
+### Troubleshooting
+- `policy paused`: check `GetIntegrityPolicy`; if the pause is intentional, wait
+  for the maintenance window. If not, resume with `SetIntegrityPolicyPause`.
+- `snapshot not found`: confirm the PID finalized, then verify the active root
+  exists via `GetTrustedRoot` and `GetTrustedReleaseByRoot`.
+- `revoked root transition`: expect `GetIntegritySnapshot` to fail closed after a
+  revoke; republish a new trusted release/root before re-enabling traffic.
+
 ## Secret Scanning
 - Run `gitleaks detect --no-git -v` locally before releases; keep CI secrets at
   org level; do not print secrets in workflows.

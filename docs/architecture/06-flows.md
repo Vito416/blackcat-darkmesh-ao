@@ -2,6 +2,14 @@
 
 Goal: cover 99%+ web/eshop use-cases with PII kept offline/TTL.
 
+Implementation status note (2026-04-14):
+- Implemented adapter routes today: `POST /api/public/resolve-route`,
+  `POST /api/public/page`, `POST /api/checkout/order`,
+  `POST /api/checkout/payment-intent`.
+- The worker endpoints `/inbox`, `/forget`, and `/notify` are implemented.
+- Flows below marked as "planned" describe target-state orchestration not yet
+  exposed as full adapter route coverage.
+
 ## Legend
 - **Browser** – user client
 - **Gateway** – edge/API gateway
@@ -10,7 +18,7 @@ Goal: cover 99%+ web/eshop use-cases with PII kept offline/TTL.
 - **AO** – public/read AO (ingests outbox, public state)
 - **Admin** – offline operator with private keys/offline DB
 
-## Checkout & Payment
+## Checkout & Payment (partially implemented)
 ```mermaid
 sequenceDiagram
   participant B as Browser
@@ -20,17 +28,17 @@ sequenceDiagram
   participant AO as AO (catalog)
   participant PSP as PSP/Webhook
   B->>G: Add to cart / Start checkout
-  G->>WR: CreateOrder / PaymentIntent
+  G->>WR: CreateOrder / CreatePaymentIntent (implemented)
   WR-->>AO: outbox events (OrderCreated, PaymentIntentCreated)
   AO-->>G: public state (order status pending)
   PSP-->>G: payment webhook
-  G->>WR: ProviderWebhook
+  G->>WR: HandlePaymentProviderWebhook (planned adapter route)
   WR-->>AO: outbox (PaymentStatusChanged, OrderStatusUpdated)
   AO-->>G: order status paid
   G-->>B: confirmation
 ```
 
-## Passwordless / OTP Login
+## Passwordless / OTP Login (planned)
 ```mermaid
 sequenceDiagram
   participant B as Browser
@@ -61,7 +69,7 @@ sequenceDiagram
   note over AO,WR: Only subject hashes/pseudonyms kept in AO/Write
 ```
 
-## Forget / GDPR
+## Forget / GDPR (planned orchestration, worker endpoint exists)
 ```mermaid
 sequenceDiagram
   participant B as Browser
@@ -69,8 +77,8 @@ sequenceDiagram
   participant AO as AO
   participant W as Worker
   B->>G: Forget me
-  G->>AO: ForgetSubject(subject hash)
-  AO-->>W: POST /forget (Bearer token)
+  G->>AO: ForgetSubject(subject hash) (direct AO call)
+  AO-->>W: POST /forget (deployment hook, Bearer token)
   W-->>W: Delete subject:* + replay keys
   note over Admin: Admin offline DB must also delete PII
 ```
@@ -91,14 +99,14 @@ sequenceDiagram
 - **Persistence path**: AO/Write emit PII-scrubbed state snapshots and WAL/outbox/idempotency into the WeaveDB export log; operators bundle this into WeaveDB for durable, immutable public state. Local snapshots (`AO_STATE_DIR` / `WRITE_STATE_DIR`) are only restart aids.
 - **TTL/Cache**: Gateway keeps encrypted envelopes only within a bounded TTL window; cache hit/miss metrics + wipe-on-expire are required for deployment readiness. Expired entries must be wiped proactively; cache TTL is configurable per merchant and must never exceed worker inbox TTL.
 - **Worker guarantees**: HMAC-verified inbox, rate limit + replay window, delete-on-download + scheduled janitor, auth-protected forget/notify endpoints.
-- **PSP/webhooks**: Write AO maintains retry/backoff queue, signature verification, cert cache, breaker metrics, and emits status changes to AO ingest.
+- **PSP/webhooks**: Write AO can emit payment status events; adapter routes for webhook/status forwarding are still planned.
 - **GDPR split**: No PII is stored on AO/Write/WeaveDB; sensitive blobs live only in Worker TTL cache and the administrator’s offline DB (delete-on-download + ForgetSubject hook).
 
 ## Gateway Cache Policy (encrypted envelopes)
 - TTL window = min(worker inbox TTL, merchant-configured max); default 15–60 minutes.
 - On expiry: wipe cache entry and emit cache_expired metric.
 - Metrics: cache_hit, cache_miss, cache_expired, cache_wipe_error.
-- ForgetSubject signal (AO) must trigger immediate wipe of matching subject hashes in gateway cache.
+- ForgetSubject-triggered cache wipe is target-state and should be wired during deployment.
 
 ## PSP/Webhook Reliability
 - Retry/backoff with jitter (e.g., 3–5 attempts, 1s→32s).

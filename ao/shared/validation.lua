@@ -94,6 +94,23 @@ function Validation.require_no_extras(tbl, allowed_fields)
     auth = true,
     JWT = true,
     jwt = true,
+    -- AO envelope fields that can be present on incoming messages.
+    From = true,
+    from = true,
+    Id = true,
+    id = true,
+    Owner = true,
+    owner = true,
+    Target = true,
+    target = true,
+    Anchor = true,
+    anchor = true,
+    Data = true,
+    data = true,
+    Body = true,
+    body = true,
+    Tags = true,
+    tags = true,
   }
   for _, f in ipairs(allowed_fields) do
     allowed[f] = true

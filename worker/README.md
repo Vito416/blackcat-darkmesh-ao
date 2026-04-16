@@ -28,9 +28,15 @@ Data model
 API (baseline)
 - `POST /inbox` body `{ subject, nonce, payload, ttlSeconds? }` → 201; stores + sets TTL.
 - `GET /inbox/:subject/:nonce` → 200 `{ payload, exp }`; deletes after read.
-- `POST /forget` body `{ subject }` → 202; auth via `Authorization: Bearer <WORKER_AUTH_TOKEN>` (`FORGET_TOKEN` still accepted for legacy configs).
-- `POST /notify` (optional) body `{ to, kind, data }` → 202; uses e.g. SENDGRID_KEY / webhook; never persists data.
+- `POST /forget` body `{ subject }` → 200; auth via `Authorization: Bearer <WORKER_FORGET_TOKEN>` (legacy fallback still supported outside strict mode).
+- `POST /notify` (optional) body `{ to?, webhookUrl?, subject?, text?, html?, data? }` → 200; uses SendGrid/webhook and never persists plaintext payload.
 - `GET /health` — liveness check, returns `{ status: "ok" }`.
+- `GET /api/health` — AO bridge readiness (site/write pid + wallet presence).
+- `POST /api/public/site-by-host` — AO registry lookup (`GetSiteByHost`) for host → site metadata.
+- `POST /api/public/resolve-route` — AO read adapter for gateway template calls.
+- `POST /api/public/page` — AO read adapter for gateway template calls.
+- `POST /api/checkout/order` — write adapter (`CreateOrder`) with optional worker auto-sign.
+- `POST /api/checkout/payment-intent` — write adapter (`CreatePaymentIntent`) with optional worker auto-sign.
 - `GET /metrics` — Prometheus text; protect via `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN`.
 - `scheduled` (cron) – deletes expired items, cleans malformed entries.
 
@@ -43,14 +49,22 @@ Secrets to keep here (examples)
 Env/config
 - `INBOX_TTL_DEFAULT`, `INBOX_TTL_MAX`
 - `INBOX_KV` (KV binding)
-- `WORKER_AUTH_TOKEN` (Bearer guard for /forget and /notify; `FORGET_TOKEN` still accepted for backward compatibility)
+- `REPLAY_LOCKS` (Durable Object binding, required for strong replay lock)
+- Scoped route tokens (recommended):
+  - `WORKER_READ_TOKEN` for `GET /inbox/:subject/:nonce`
+  - `WORKER_FORGET_TOKEN` for `POST /forget`
+  - `WORKER_NOTIFY_TOKEN` for `POST /notify`
+  - `WORKER_SIGN_TOKEN` for `POST /sign`
+- Legacy fallback token: `WORKER_AUTH_TOKEN` (`FORGET_TOKEN` also accepted in non-strict mode)
+- `WORKER_STRICT_TOKEN_SCOPES=1` to fail closed when scoped token vars are missing (default in prod-like mode)
 - `METRICS_BASIC_USER`/`METRICS_BASIC_PASS` or `METRICS_BEARER_TOKEN` (protect /metrics)
 - `SENDGRID_KEY` / `NOTIFY_WEBHOOK` (optional)
-- `NOTIFY_WEBHOOK_ALLOWLIST` (comma-separated hostnames allowed for webhook URLs; empty = allow all; **set in prod**)
+- `NOTIFY_WEBHOOK_ALLOWLIST` (comma-separated hostnames allowed for webhook URLs; empty = deny all/fail-closed)
 - `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` (per-IP for inbox/notify)
 - `SUBJECT_MAX_ENVELOPES` (max live envelopes per subject)
 - `PAYLOAD_MAX_BYTES` (reject oversized payloads)
 - `REPLAY_TTL` (seconds; reject resubmission of same subject+nonce)
+- `REPLAY_STRONG_MODE` (`1` recommended in production; fail closed if `REPLAY_LOCKS` is missing)
 - `NOTIFY_RATE_MAX`, `NOTIFY_RATE_WINDOW` (per-IP for /notify)
 - `INBOX_HMAC_SECRET` (optional HMAC check for /inbox; header `X-Signature`)
 - `NOTIFY_HMAC_SECRET` (HMAC check for /notify; set `NOTIFY_HMAC_OPTIONAL=1` only if unsigned allowed)
@@ -59,9 +73,22 @@ Env/config
 - `REQUIRE_METRICS_AUTH` (prod: 500 /metrics if auth secrets not configured)
 - `LITE_MODE` (optional): when `1`, notify dedup is disabled (saves KV writes for CF free tier).
 - `LOG_LEVEL` (debug|info|error): default `info`; `error` suppresses info logs.
+- Gateway AO/write bridge vars:
+  - `AO_MODE`, `AO_HB_URL`, `AO_HB_SCHEDULER`
+  - `AO_REGISTRY_PROCESS_ID` (optional; falls back to `AO_SITE_PROCESS_ID` when unset)
+  - `AO_SITE_PROCESS_ID`, `WRITE_PROCESS_ID`
+  - `AO_WALLET_JSON` (Arweave JWK JSON used for write transport)
+  - optional `AO_WALLET_PKCS8_B64` (base64 PKCS#8 private key; preferred when JWK import is restricted)
+  - `GATEWAY_TEMPLATE_TOKEN` or `GATEWAY_TEMPLATE_TOKEN_MAP` (site->token map)
+  - `GATEWAY_TEMPLATE_TOKEN_OPTIONAL` (default `0`, fail-closed)
+  - `GATEWAY_READ_TIMEOUT_MS`, `GATEWAY_WRITE_TIMEOUT_MS`, `GATEWAY_WRITE_RETRIES`
+  - `GATEWAY_WRITE_ACCEPT_EMPTY_RESULT` (default `1`)
+  - `GATEWAY_WRITE_AUTO_SIGN` (default `1`; when `0`, signatures must be provided by caller)
+  - `SIGN_POLICY_JSON` (optional fail-closed allowlist for `/sign`; JSON shape: `{ "sites": { "<siteId>": { "<Action>": ["role", ...] } }, "signatureRefs": { "<signatureRef>": { "<Action>": ["role", ...] } } }`; siteId is read from `siteId` or `payload.siteId`, signatureRef from the request or `WORKER_SIGNATURE_REF`)
 
 Build/Deploy
 - Fill `worker/wrangler.toml` (copy from `wrangler.toml.example`; set KV id). Fill `ops/env.prod.example` → `/etc/blackcat/worker.env` with real secrets (fail-closed baseline).
+- Keep Durable Object migration/binding from `wrangler.toml.example` (`ReplayLockDurableObject` + `REPLAY_LOCKS`) before enabling `REPLAY_STRONG_MODE=1`.
 - `npm install` in `worker/`
 - `wrangler dev` for local/miniflare test
 - `wrangler publish --env production` (or use deploy script below). Cloudflare Workers need `compatibility_flags = ["nodejs_compat"]` (already in `wrangler.toml.example`) to resolve `buffer`.
@@ -107,6 +134,8 @@ Env vars (extra)
 
 Runbook snippets
 - Secrets rotation: `wrangler secret put <NAME> --env production` for WORKER_AUTH_TOKEN / INBOX_HMAC_SECRET / NOTIFY_HMAC_SECRET / METRICS_BEARER_TOKEN; then `wrangler deploy --env production`.
+- Scoped-token rotation (P1-01): see `ops/runbooks/token-scope-rotation.md`.
+- Replay contention drill (P1-02): `npm run ops:drill:replay` or see `ops/runbooks/replay-contention-drill.md`.
 - Cron/janitor verification: `wrangler tail --env production` and watch scheduled runs (*/5). Optionally `wrangler deployments` to confirm latest version live.
 - Backup stance: KV is a short-lived cache of encrypted envelopes; data loss is acceptable by design. If you need retention, mirror writes to R2/D1 outside the worker path.
 - Monitoring hook (Prom/Grafana): scrape `/metrics` with bearer auth. Example Prom job:

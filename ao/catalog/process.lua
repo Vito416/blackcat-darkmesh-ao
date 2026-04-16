@@ -35,6 +35,9 @@ local S3_RETRIES = tonumber(os.getenv "CATALOG_S3_RETRIES" or "") or 2
 local EVENT_LOG_LIMIT = tonumber(os.getenv "CATALOG_EVENT_LOG_LIMIT" or "") or 5000
 local RATE_LIMIT_WINDOW = tonumber(os.getenv "CATALOG_RATE_LIMIT_WINDOW" or "") or 60
 local RATE_LIMIT_MAX = tonumber(os.getenv "CATALOG_RATE_LIMIT_MAX" or "") or 120
+local RATE_LIMIT_MAX_BUCKETS = tonumber(os.getenv "CATALOG_RATE_LIMIT_MAX_BUCKETS" or "") or 4096
+local RATE_LIMIT_BUCKET_TTL = tonumber(os.getenv "CATALOG_RATE_LIMIT_BUCKET_TTL" or "")
+  or (RATE_LIMIT_WINDOW * 4)
 local GA4_ENDPOINT = os.getenv "CATALOG_GA4_ENDPOINT"
 local GA4_API_SECRET = os.getenv "CATALOG_GA4_API_SECRET"
 local GA4_MEASUREMENT_ID = os.getenv "CATALOG_GA4_MEASUREMENT_ID"
@@ -324,6 +327,46 @@ local role_policy = {
   ImportCatalogCSV = { "catalog-admin", "admin" },
   BulkPriceUpdate = { "catalog-admin", "admin" },
   Complete3DSChallenge = { "catalog-admin", "support", "admin" },
+}
+
+local hmac_skip_actions = {
+  GetProduct = true,
+  ListCategoryProducts = true,
+  SearchCatalog = true,
+  FacetSearch = true,
+  GetRecommendations = true,
+  GetOrder = true,
+  ListOrders = true,
+  GetShippingRates = true,
+  GetTaxRates = true,
+  GetShipment = true,
+  GetInventory = true,
+  RelatedProducts = true,
+  RecentlyViewed = true,
+  ListAddresses = true,
+  GetInvoice = true,
+  ListInvoices = true,
+  Bestsellers = true,
+  TrendingProducts = true,
+  ExportEventLog = true,
+  StreamTelemetry = true,
+  GetWebhook = true,
+  ListWebhooks = true,
+  ExportCatalogFeed = true,
+  ExportSearchFeed = true,
+  ExportCategoryFeed = true,
+  QuotePrice = true,
+  QuoteOrder = true,
+  CalculateTax = true,
+  RateShopCarriers = true,
+  VerifySignature = true,
+  ExportMerchantFeed = true,
+  ListLowStock = true,
+  GetCategory = true,
+  ListCategories = true,
+  ListBackorders = true,
+  ListNotificationFailures = true,
+  ExportRecommendations = true,
 }
 
 local state = persist.load("catalog_state", {
@@ -880,6 +923,29 @@ end
 
 local function check_rate_limit(key)
   local now = os.time()
+  for bucket_key, bucket in pairs(state.rate_limits) do
+    local start = type(bucket) == "table" and tonumber(bucket.window_start) or nil
+    if not start or (now - start) > RATE_LIMIT_BUCKET_TTL then
+      state.rate_limits[bucket_key] = nil
+    end
+  end
+  local bucket_count = 0
+  for _ in pairs(state.rate_limits) do
+    bucket_count = bucket_count + 1
+  end
+  if bucket_count > RATE_LIMIT_MAX_BUCKETS then
+    local oldest_key, oldest_start = nil, nil
+    for bucket_key, bucket in pairs(state.rate_limits) do
+      local start = type(bucket) == "table" and tonumber(bucket.window_start) or now
+      if not oldest_start or start < oldest_start then
+        oldest_start = start
+        oldest_key = bucket_key
+      end
+    end
+    if oldest_key then
+      state.rate_limits[oldest_key] = nil
+    end
+  end
   local bucket = state.rate_limits[key]
   if not bucket or now - bucket.window_start >= RATE_LIMIT_WINDOW then
     state.rate_limits[key] = { count = 1, window_start = now }
@@ -7229,7 +7295,8 @@ local function route(msg)
     return codec.error("MISSING_ACTION", "Action is required")
   end
 
-  local ok_hmac, hmac_err = auth.verify_outbox_hmac(msg)
+  local ok_hmac, hmac_err =
+    auth.verify_outbox_hmac_for_action(msg, { skip_for = hmac_skip_actions })
   if not ok_hmac then
     return codec.error("FORBIDDEN", hmac_err)
   end

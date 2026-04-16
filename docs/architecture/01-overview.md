@@ -14,7 +14,9 @@ template renderer or gateway runtime. Those live in `-write`, `-gateway`, or
 - **Durability:** immutable payloads live on Arweave; AO stores hashes, tx IDs, and
 lightweight normalized JSON for fast lookup.
 - **Interoperability:** any gateway can read AO over HTTP; the Wedos-style gateway
-remains a thin cache/decoder, not a source of truth.
+  remains a thin cache/decoder, not a source of truth. Current adapter routes in
+  this repo are intentionally minimal: `ResolveRoute`, `GetPage`, `CreateOrder`,
+  and `CreatePaymentIntent` only.
 
 See the companion briefs `blackcat-darkmesh-write-architecture-v2.docx`,
 `blackcat-darkmesh-gateway-architecture-v2.docx`, and

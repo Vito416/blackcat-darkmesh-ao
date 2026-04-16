@@ -7,7 +7,7 @@ import { check, sleep } from 'k6'
 const BASE = __ENV.WORKER_BASE_URL || 'http://localhost:8787'
 const INBOX_HMAC_SECRET = __ENV.INBOX_HMAC_SECRET || ''
 const NOTIFY_HMAC_SECRET = __ENV.NOTIFY_HMAC_SECRET || ''
-const WORKER_AUTH_TOKEN = __ENV.WORKER_AUTH_TOKEN || ''
+const WORKER_NOTIFY_TOKEN = __ENV.WORKER_NOTIFY_TOKEN || __ENV.WORKER_AUTH_TOKEN || ''
 const LITE = __ENV.LITE_MODE || '1' // default to lite
 
 export const options = {
@@ -92,7 +92,7 @@ export function notify() {
   const res = http.post(`${BASE}/notify`, body, {
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${WORKER_AUTH_TOKEN}`,
+      authorization: `Bearer ${WORKER_NOTIFY_TOKEN}`,
       'x-signature': sig,
       'x-lite-mode': LITE,
     },

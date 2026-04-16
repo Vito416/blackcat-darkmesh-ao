@@ -3,10 +3,16 @@ export interface Env {
   INBOX_TTL_DEFAULT?: string
   INBOX_TTL_MAX?: string
   WORKER_AUTH_TOKEN?: string
+  WORKER_READ_TOKEN?: string
+  WORKER_FORGET_TOKEN?: string
+  WORKER_NOTIFY_TOKEN?: string
+  WORKER_SIGN_TOKEN?: string
+  WORKER_STRICT_TOKEN_SCOPES?: string
   FORGET_TOKEN?: string
   RATE_LIMIT_MAX?: string
   RATE_LIMIT_WINDOW?: string
   REPLAY_TTL?: string
+  REPLAY_STRONG_MODE?: string
   SUBJECT_MAX_ENVELOPES?: string
   PAYLOAD_MAX_BYTES?: string
   NOTIFY_RATE_MAX?: string
@@ -31,4 +37,23 @@ export interface Env {
   REQUIRE_METRICS_AUTH?: string
   WORKER_ED25519_PRIV_HEX?: string
   WORKER_SIGNATURE_REF?: string
+  AO_MODE?: string
+  AO_HB_URL?: string
+  AO_HB_SCHEDULER?: string
+  AO_REGISTRY_PROCESS_ID?: string
+  AO_SITE_PROCESS_ID?: string
+  WRITE_PROCESS_ID?: string
+  AO_WALLET_JSON?: string
+  AO_WALLET_PKCS8_B64?: string
+  GATEWAY_TEMPLATE_TOKEN?: string
+  GATEWAY_TEMPLATE_TOKEN_MAP?: string
+  GATEWAY_TEMPLATE_TOKEN_OPTIONAL?: string
+  GATEWAY_READ_TIMEOUT_MS?: string
+  GATEWAY_WRITE_TIMEOUT_MS?: string
+  GATEWAY_WRITE_RETRIES?: string
+  GATEWAY_WRITE_ACCEPT_EMPTY_RESULT?: string
+  GATEWAY_WRITE_AUTO_SIGN?: string
+  SIGN_POLICY_JSON?: string
+  SIGN_ALLOWLIST_JSON?: string
+  REPLAY_LOCKS?: DurableObjectNamespace
 }

@@ -10,6 +10,7 @@
     "bundle:ao:catalog": "node scripts/build-ao-bundles.mjs --target catalog",
     "bundle:ao:access": "node scripts/build-ao-bundles.mjs --target access",
     "bundle:ao:ingest": "node scripts/build-ao-bundles.mjs --target ingest",
+    "api:public": "node scripts/http/public_api_server.mjs",
     "build:ao-wasm": "hyperengine build",
     "smoke:wasm": "hyperengine smoke",
     "ao:publish": "node scripts/deploy/publish_lua_module.mjs",

@@ -2,7 +2,7 @@
 -- Uses in-memory handler state; ensures deterministic behavior matches contracts.
 -- Set SKIP_CONTRACTS=1 to skip the entire suite (useful for CI quick passes).
 
-if os.getenv "SKIP_CONTRACTS" then
+if os.getenv "SKIP_CONTRACTS" == "1" then
   return
 end
 
@@ -180,12 +180,40 @@ end
 -- Registry tests
 do
   local registry = require "ao.registry.process"
-  registry.route(with_req {
+  local register_site_1 = registry.route(with_req {
     Action = "RegisterSite",
     ["Site-Id"] = "site-1",
     Config = { version = "v1" },
+    Runtime = {
+      processId = "proc-site-1",
+      siteProcessId = "proc-site-1-read",
+      catalogProcessId = "proc-catalog-1",
+      accessProcessId = "proc-access-1",
+      writeProcessId = "proc-write-1",
+      workerId = "worker-site-1",
+      workerUrl = "https://worker.example.net/site-1",
+      moduleId = "module-site-1",
+      scheduler = "scheduler-site-1",
+    },
     ["Actor-Role"] = "admin",
   })
+  assert_status(register_site_1, "OK", "register site with runtime status")
+  assert_eq(register_site_1.payload.runtime.processId, "proc-site-1", "register runtime process")
+  assert_eq(
+    register_site_1.payload.runtime.siteProcessId,
+    "proc-site-1-read",
+    "register runtime site pid"
+  )
+  assert_eq(
+    register_site_1.payload.runtime.writeProcessId,
+    "proc-write-1",
+    "register runtime write pid"
+  )
+  assert_eq(
+    register_site_1.payload.runtime.workerUrl,
+    "https://worker.example.net/site-1",
+    "register runtime worker url"
+  )
   local bind = registry.route(with_req {
     Action = "BindDomain",
     ["Site-Id"] = "site-1",
@@ -196,6 +224,13 @@ do
   local lookup = registry.route(with_req { Action = "GetSiteByHost", Host = "example.com" })
   assert_eq(lookup.status, "OK", "get site by host status")
   assert_eq(lookup.payload.siteId, "site-1", "domain->siteId")
+  assert_eq(lookup.payload.runtime.processId, "proc-site-1", "domain lookup runtime process")
+  assert_eq(
+    lookup.payload.runtime.siteProcessId,
+    "proc-site-1-read",
+    "domain lookup runtime site pid"
+  )
+  assert_eq(lookup.payload.runtime.workerId, "worker-site-1", "domain lookup runtime worker id")
 
   -- conflict: binding another site to same host should overwrite in stub (and keep deterministic)
   registry.route(
@@ -210,6 +245,265 @@ do
   assert_status(rebind, "OK", "rebind status")
   local lookup2 = registry.route(with_req { Action = "GetSiteByHost", Host = "example.com" })
   assert_eq(lookup2.payload.siteId, "site-2", "rebinding took effect")
+  assert_falsy(lookup2.payload.runtime, "rebind runtime absent before set")
+
+  local set_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = {
+      sitePid = "proc-site-2-read",
+      catalog_process_id = "proc-catalog-2",
+      accessPid = "proc-access-2",
+      write_process_id = "proc-write-2",
+      ingestPid = "proc-ingest-2",
+      registryPid = "proc-registry-2",
+      worker_id = "worker-site-2",
+      worker_url = "https://worker.example.net/site-2",
+      moduleId = "module-site-2",
+      scheduler = "scheduler-site-2",
+    },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(set_runtime, "OK", "set site runtime status")
+  assert_eq(
+    set_runtime.payload.runtime.siteProcessId,
+    "proc-site-2-read",
+    "set site runtime site pid"
+  )
+  assert_eq(
+    set_runtime.payload.runtime.writeProcessId,
+    "proc-write-2",
+    "set site runtime write pid"
+  )
+
+  local get_runtime = registry.route(with_req {
+    Action = "GetSiteRuntime",
+    ["Site-Id"] = "site-2",
+  })
+  assert_status(get_runtime, "OK", "get site runtime status")
+  assert_eq(get_runtime.payload.runtime.moduleId, "module-site-2", "get site runtime module")
+  assert_eq(get_runtime.payload.runtime.workerId, "worker-site-2", "get site runtime worker id")
+  assert_eq(
+    get_runtime.payload.runtime.workerUrl,
+    "https://worker.example.net/site-2",
+    "get site runtime worker url"
+  )
+
+  local get_cfg_runtime = registry.route(with_req {
+    Action = "GetSiteConfig",
+    ["Site-Id"] = "site-2",
+  })
+  assert_status(get_cfg_runtime, "OK", "get site config runtime status")
+  assert_eq(
+    get_cfg_runtime.payload.runtime.scheduler,
+    "scheduler-site-2",
+    "site config runtime scheduler"
+  )
+
+  local upsert_runtime = registry.route(with_req {
+    Action = "UpsertSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = {
+      processId = "proc-site-2b-router",
+      siteProcessId = "proc-site-2b-read",
+      writeProcessId = "proc-write-2b",
+      workerUrl = "https://worker.example.net/site-2b",
+      moduleId = "module-site-2b",
+    },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(upsert_runtime, "OK", "upsert site runtime status")
+  assert_eq(
+    upsert_runtime.payload.runtime.processId,
+    "proc-site-2b-router",
+    "upsert site runtime process"
+  )
+  assert_eq(
+    upsert_runtime.payload.runtime.siteProcessId,
+    "proc-site-2b-read",
+    "upsert site runtime site pid"
+  )
+  assert_eq(
+    upsert_runtime.payload.runtime.writeProcessId,
+    "proc-write-2b",
+    "upsert site runtime write pid"
+  )
+
+  local bad_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = { processId = "bad runtime id" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_runtime, "ERROR", "set site runtime invalid status")
+  assert_code(bad_runtime, "INVALID_INPUT", "set site runtime invalid code")
+
+  local bad_runtime_url = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = { siteProcessId = "proc-site-2-read", workerUrl = "not-a-url" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_runtime_url, "ERROR", "set site runtime invalid worker url status")
+  assert_code(bad_runtime_url, "INVALID_INPUT", "set site runtime invalid worker url code")
+
+  local denied_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = { processId = "proc-denied" },
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(denied_runtime, "ERROR", "set site runtime forbidden status")
+  assert_code(denied_runtime, "FORBIDDEN", "set site runtime forbidden code")
+
+  -- Gateway directory contract (multi-gateway routing)
+  local gw1 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-1",
+    Url = "https://gw1.example.net",
+    Region = "eu-central",
+    Country = "cz",
+    ["Capacity-Weight"] = 70,
+    Score = 90,
+    Status = "online",
+    ["Last-Seen"] = "2026-04-14T00:00:00Z",
+    Domains = { "example.com", "*.example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw1, "OK", "register gateway 1 status")
+  assert_eq(gw1.payload.gateway.id, "gw-1", "register gateway 1 id")
+
+  local gw2 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-2",
+    Url = "https://gw2.example.net",
+    Region = "eu-west",
+    Country = "de",
+    ["Capacity-Weight"] = 60,
+    Score = 95,
+    Status = "online",
+    ["Last-Seen"] = "2026-04-14T00:00:01Z",
+    Domains = { "example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw2, "OK", "register gateway 2 status")
+
+  local gw3 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-3",
+    Url = "https://gw3.example.net",
+    Region = "us-east",
+    Country = "us",
+    ["Capacity-Weight"] = 999,
+    Score = 999,
+    Status = "offline",
+    ["Last-Seen"] = "2026-04-14T00:00:02Z",
+    Domains = { "example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw3, "OK", "register gateway 3 status")
+
+  local gw_resolve = registry.route(with_req {
+    Action = "ResolveGatewayForHost",
+    Host = "example.com",
+  })
+  assert_status(gw_resolve, "OK", "resolve gateway by host status")
+  assert_eq(gw_resolve.payload.gateway.id, "gw-2", "resolve gateway picks highest score")
+
+  local gw_update = registry.route(with_req {
+    Action = "UpdateGatewayStatus",
+    ["Gateway-Id"] = "gw-2",
+    Status = "offline",
+    Score = 95,
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw_update, "OK", "update gateway status")
+  assert_eq(gw_update.payload.gateway.status, "offline", "update gateway status value")
+
+  local gw_resolve_after_update = registry.route(with_req {
+    Action = "ResolveGatewayForHost",
+    Host = "blog.example.com",
+  })
+  assert_status(gw_resolve_after_update, "OK", "resolve gateway wildcard host status")
+  assert_eq(
+    gw_resolve_after_update.payload.gateway.id,
+    "gw-1",
+    "resolve gateway skips offline and uses wildcard"
+  )
+
+  local gw4 = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-4",
+    Url = "https://gw4.example.net",
+    Region = "eu-north",
+    Country = "se",
+    ["Capacity-Weight"] = 70,
+    Score = 90,
+    Status = "online",
+    ["Last-Seen"] = "2026-04-14T00:00:03Z",
+    Domains = { "blog.example.com" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw4, "OK", "register gateway 4 status")
+
+  local tie_break = registry.route(with_req {
+    Action = "ResolveGatewayForHost",
+    Host = "blog.example.com",
+  })
+  assert_status(tie_break, "OK", "resolve gateway tie status")
+  assert_eq(tie_break.payload.gateway.id, "gw-1", "resolve gateway stable tie-break by id")
+
+  local gw_list_online = registry.route(with_req {
+    Action = "ListGateways",
+    Status = "online",
+  })
+  assert_status(gw_list_online, "OK", "list gateways online status")
+  assert_truthy(gw_list_online.payload.count >= 2, "list gateways online count")
+
+  local gw_list_for_host = registry.route(with_req {
+    Action = "ListGateways",
+    Host = "blog.example.com",
+  })
+  assert_status(gw_list_for_host, "OK", "list gateways by host status")
+  assert_truthy(gw_list_for_host.payload.count >= 2, "list gateways by host count")
+
+  local gw_register_denied = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-denied",
+    Url = "https://denied.example.net",
+    Region = "eu",
+    Country = "cz",
+    ["Capacity-Weight"] = 1,
+    Score = 1,
+    Status = "online",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(gw_register_denied, "ERROR", "register gateway forbidden status")
+  assert_code(gw_register_denied, "FORBIDDEN", "register gateway forbidden code")
+
+  local gw_update_denied = registry.route(with_req {
+    Action = "UpdateGatewayStatus",
+    ["Gateway-Id"] = "gw-1",
+    Status = "offline",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(gw_update_denied, "ERROR", "update gateway forbidden status")
+  assert_code(gw_update_denied, "FORBIDDEN", "update gateway forbidden code")
+
+  local gw_extra = registry.route(with_req {
+    Action = "RegisterGateway",
+    ["Gateway-Id"] = "gw-extra",
+    Url = "https://gw-extra.example.net",
+    Region = "eu-central",
+    Country = "cz",
+    ["Capacity-Weight"] = 1,
+    Score = 1,
+    Status = "online",
+    Foo = "bar",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(gw_extra, "ERROR", "register gateway extra status")
+  assert_code(gw_extra, "UNSUPPORTED_FIELD", "register gateway extra code")
 
   -- forbidden bind
   local denied = registry.route(with_req {
@@ -279,6 +573,25 @@ do
   })
   assert_status(extra, "ERROR", "register extra status")
   assert_code(extra, "UNSUPPORTED_FIELD", "register extra code")
+
+  local bad_site_type = registry.route(with_req {
+    Action = "BindDomain",
+    ["Site-Id"] = { "site-bad-type" },
+    Host = "bad-type.example",
+    ["Actor-Role"] = "admin",
+  })
+  assert_status(bad_site_type, "ERROR", "site id type guard status")
+  assert_code(bad_site_type, "INVALID_INPUT", "site id type guard code")
+
+  local conflicting_site_ids = registry.route(with_req {
+    Action = "BindDomain",
+    ["Site-Id"] = "site-1",
+    siteId = "site-2",
+    Host = "conflict-site-id.example",
+    ["Actor-Role"] = "admin",
+  })
+  assert_status(conflicting_site_ids, "ERROR", "site id conflict status")
+  assert_code(conflicting_site_ids, "INVALID_INPUT", "site id conflict code")
 
   -- Invalid flags/policies schema
   local bad_cfg = registry.route(with_req {
@@ -393,6 +706,287 @@ do
   })
   assert_status(bad_flag, "ERROR", "bad flag status")
   assert_code(bad_flag, "INVALID_INPUT", "bad flag code")
+
+  -- Integrity release lifecycle (P0.1)
+  local publish_rel = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.0",
+    Root = "root-abc",
+    ["Uri-Hash"] = "uri-123",
+    ["Meta-Hash"] = "meta-456",
+    ["Policy-Hash"] = "policy-789",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(publish_rel, "OK", "publish trusted release status")
+  assert_eq(publish_rel.payload.release.root, "root-abc", "publish trusted release root")
+  assert_eq(publish_rel.payload.activeRoot, "root-abc", "publish trusted release active root")
+
+  local get_root = registry.route(with_req {
+    Action = "GetTrustedRoot",
+    ["Component-Id"] = "gateway",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_root, "OK", "get trusted root status")
+  assert_eq(get_root.payload.root, "root-abc", "get trusted root value")
+
+  local by_version = registry.route(with_req {
+    Action = "GetTrustedReleaseByVersion",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.0",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(by_version, "OK", "get trusted release by version status")
+  assert_eq(by_version.payload.release.metaHash, "meta-456", "trusted release by version payload")
+
+  local by_root = registry.route(with_req {
+    Action = "GetTrustedReleaseByRoot",
+    Root = "root-abc",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(by_root, "OK", "get trusted release by root status")
+  assert_eq(by_root.payload.release.version, "1.2.0", "trusted release by root payload")
+
+  local set_authority = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-1",
+    Upgrade = "auth-upgrade-1",
+    Emergency = "auth-emergency-1",
+    Reporter = "auth-reporter-1",
+    ["Signature-Refs"] = { "sig-root-1", "sig-upgrade-1" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(set_authority, "OK", "set integrity authority status")
+  assert_eq(set_authority.payload.reporter, "auth-reporter-1", "set integrity authority reporter")
+
+  local get_authority = registry.route(with_req {
+    Action = "GetIntegrityAuthority",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_authority, "OK", "get integrity authority status")
+  assert_eq(get_authority.payload.root, "auth-root-1", "get integrity authority root")
+  assert_eq(
+    get_authority.payload.signatureRefs[2],
+    "sig-upgrade-1",
+    "get integrity authority signatures"
+  )
+
+  local append_audit = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 1,
+    ["Seq-To"] = 7,
+    ["Merkle-Root"] = "merkle-1",
+    ["Meta-Hash"] = "audit-meta-1",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(append_audit, "OK", "append integrity audit commitment status")
+  assert_eq(append_audit.payload.seqTo, 7, "append integrity audit commitment seqTo")
+
+  local get_audit = registry.route(with_req {
+    Action = "GetIntegrityAuditState",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_audit, "OK", "get integrity audit status")
+  assert_eq(get_audit.payload.merkleRoot, "merkle-1", "get integrity audit merkle root")
+
+  local pause_on = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = true,
+    Reason = "maintenance",
+    ["Max-CheckIn-Age-Sec"] = 120,
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(pause_on, "OK", "set integrity pause status")
+  assert_eq(pause_on.payload.paused, true, "set integrity pause value")
+  assert_eq(pause_on.payload.maxCheckInAgeSec, 120, "set integrity pause max age")
+
+  local get_policy = registry.route(with_req {
+    Action = "GetIntegrityPolicy",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(get_policy, "OK", "get integrity policy status")
+  assert_eq(get_policy.payload.paused, true, "get integrity policy paused")
+
+  local snap_ok = registry.route(with_req {
+    Action = "GetIntegritySnapshot",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(snap_ok, "OK", "integrity snapshot status")
+  assert_eq(snap_ok.payload.release.root, "root-abc", "integrity snapshot root")
+  assert_eq(snap_ok.payload.policy.activePolicyHash, "policy-789", "integrity snapshot policy hash")
+  assert_eq(snap_ok.payload.authority.root, "auth-root-1", "integrity snapshot authority root")
+  assert_eq(snap_ok.payload.audit.seqTo, 7, "integrity snapshot audit seqTo")
+
+  local revoke = registry.route(with_req {
+    Action = "RevokeTrustedRelease",
+    Root = "root-abc",
+    Reason = "compromised",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(revoke, "OK", "revoke trusted release status")
+  assert_truthy(revoke.payload.release.revokedAt, "revoke trusted release timestamp")
+  assert_eq(revoke.payload.paused, true, "revoke trusted release pauses policy")
+
+  local snap_revoked = registry.route(with_req {
+    Action = "GetIntegritySnapshot",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(snap_revoked, "ERROR", "integrity snapshot revoked status")
+  assert_code(snap_revoked, "NOT_FOUND", "integrity snapshot revoked code")
+
+  local publish_next = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.1",
+    Root = "root-def",
+    ["Uri-Hash"] = "uri-124",
+    ["Meta-Hash"] = "meta-457",
+    ["Policy-Hash"] = "policy-790",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(publish_next, "OK", "publish next trusted release status")
+
+  local snap_next = registry.route(with_req {
+    Action = "GetIntegritySnapshot",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(snap_next, "OK", "integrity snapshot after republish status")
+  assert_eq(snap_next.payload.release.root, "root-def", "integrity snapshot after republish root")
+
+  local release_conflict = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.1",
+    Root = "root-mismatch",
+    ["Uri-Hash"] = "uri-999",
+    ["Meta-Hash"] = "meta-999",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(release_conflict, "ERROR", "publish trusted release conflict status")
+  assert_code(release_conflict, "VERSION_CONFLICT", "publish trusted release conflict code")
+
+  local bad_publish_format = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "bad version!",
+    Root = "root bad",
+    ["Uri-Hash"] = "uri bad",
+    ["Meta-Hash"] = "meta bad",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_publish_format, "ERROR", "publish trusted release invalid format status")
+  assert_code(bad_publish_format, "INVALID_INPUT", "publish trusted release invalid format code")
+
+  local bad_pause = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = "not-bool",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_pause, "ERROR", "set integrity pause invalid status")
+  assert_code(bad_pause, "INVALID_INPUT", "set integrity pause invalid code")
+
+  local bad_authority = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-bad",
+    Upgrade = "auth-upgrade-bad",
+    Emergency = "auth-emergency-bad",
+    Reporter = "auth-reporter-bad",
+    ["Signature-Refs"] = {},
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_authority, "ERROR", "set integrity authority invalid status")
+  assert_code(bad_authority, "INVALID_INPUT", "set integrity authority invalid code")
+
+  local bad_authority_format = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-1",
+    Upgrade = "auth-upgrade-1",
+    Emergency = "auth/emergency",
+    Reporter = "auth-reporter-1",
+    ["Signature-Refs"] = { "sig-root-1" },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(bad_authority_format, "ERROR", "set integrity authority invalid format status")
+  assert_code(bad_authority_format, "INVALID_INPUT", "set integrity authority invalid format code")
+
+  local deny_authority = registry.route(with_req {
+    Action = "SetIntegrityAuthority",
+    Root = "auth-root-deny",
+    Upgrade = "auth-upgrade-deny",
+    Emergency = "auth-emergency-deny",
+    Reporter = "auth-reporter-deny",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(deny_authority, "ERROR", "set integrity authority forbidden status")
+  assert_code(deny_authority, "FORBIDDEN", "set integrity authority forbidden code")
+
+  local audit_conflict = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 7,
+    ["Seq-To"] = 8,
+    ["Merkle-Root"] = "merkle-overlap",
+    ["Meta-Hash"] = "audit-meta-overlap",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_conflict, "ERROR", "append integrity audit conflict status")
+  assert_code(audit_conflict, "VERSION_CONFLICT", "append integrity audit conflict code")
+
+  local audit_format = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 8.5,
+    ["Seq-To"] = 9,
+    ["Merkle-Root"] = "merkle-2",
+    ["Meta-Hash"] = "audit-meta-2",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_format, "ERROR", "append integrity audit invalid format status")
+  assert_code(audit_format, "INVALID_INPUT", "append integrity audit invalid format code")
+
+  local audit_time_format = registry.route(with_req {
+    Action = "AppendIntegrityAuditCommitment",
+    ["Seq-From"] = 9,
+    ["Seq-To"] = 10,
+    ["Merkle-Root"] = "merkle-3",
+    ["Meta-Hash"] = "audit-meta-3",
+    ["Reporter-Ref"] = "auth-reporter-1",
+    ["Accepted-At"] = "not-a-time",
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(audit_time_format, "ERROR", "append integrity audit invalid timestamp status")
+  assert_code(audit_time_format, "INVALID_INPUT", "append integrity audit invalid timestamp code")
+
+  local deny_publish = registry.route(with_req {
+    Action = "PublishTrustedRelease",
+    ["Component-Id"] = "gateway",
+    Version = "1.2.2",
+    Root = "root-deny",
+    ["Uri-Hash"] = "uri-deny",
+    ["Meta-Hash"] = "meta-deny",
+    ["Actor-Role"] = "viewer",
+  })
+  assert_status(deny_publish, "ERROR", "publish trusted release forbidden status")
+  assert_code(deny_publish, "FORBIDDEN", "publish trusted release forbidden code")
+
+  local idem_first = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = false,
+    ["Actor-Role"] = "registry-admin",
+    ["Request-Id"] = "rid-integrity-pause",
+  })
+  local idem_second = registry.route(with_req {
+    Action = "SetIntegrityPolicyPause",
+    Paused = true,
+    ["Actor-Role"] = "registry-admin",
+    ["Request-Id"] = "rid-integrity-pause",
+  })
+  assert_eq(
+    idem_second.payload.paused,
+    idem_first.payload.paused,
+    "set integrity pause idempotent keeps first response"
+  )
 end
 
 -- Site tests
@@ -785,12 +1379,16 @@ if not os.getenv "SKIP_CATALOG" then
     Action = "UpsertProduct",
     ["Site-Id"] = "site-1",
     Sku = "sku-idem",
-    Payload = { name = "Idem" },
+    -- Keep payload immutable across idempotent retries so signature verification
+    -- stays stable when AUTH_SIGNATURE_SECRET is enabled in CI.
+    Payload = { sku = "sku-idem", name = "Idem" },
     ["Actor-Role"] = "catalog-admin",
     ["Request-Id"] = "rid-upsert",
   }
   local first = catalog.route(idem_req)
   local second = catalog.route(idem_req)
+  assert_status(first, "OK", "idempotent upsert first status")
+  assert_status(second, "OK", "idempotent upsert second status")
   assert_eq(first.payload.sku, second.payload.sku, "idempotent upsert sku")
 
   -- Conflicting payload same Request-Id keeps original

@@ -120,3 +120,99 @@ scripts/deploy/wait_finalized.sh <PID_TX_ID>
 - Keep module/PID tracking in `AO_DEPLOY_NOTES.md`.
 - Use progressive spawn order from the deploy runbook.
 - Respect finalization windows to avoid false diagnostics.
+
+## Deep test profiles (scheduler direct)
+
+Use `scripts/cli/deep_test_scheduler_direct.js` for post-spawn sanity checks against push nodes.
+
+```bash
+node scripts/cli/deep_test_scheduler_direct.js \
+  --profile integrity \
+  --pid <REGISTRY_PID> \
+  --wallet wallet.json \
+  --urls https://push.forward.computer,https://push-1.forward.computer \
+  --auth-signature-secret "$AUTH_SIGNATURE_SECRET" \
+  --execution-mode strict
+```
+
+Available profiles:
+- `registry`
+- `site`
+- `catalog`
+- `access`
+- `integrity` (trusted release + authority + audit commitment + policy pause + snapshot lifecycle)
+- `write` (worker-signed write command probes)
+
+Quick semantic smoke check (detects shell-only output that previously looked like a pass):
+
+```bash
+WALLET=wallet.json node scripts/deploy/smoke_push_scheduler.mjs \
+  --pid <REGISTRY_PID> \
+  --url https://push.forward.computer \
+  --action GetSiteByHost \
+  --strict-response true
+```
+
+`--strict-response true` fails when compute returns only AOS shell/prompt output
+instead of a JSON envelope (`{status, code?, data?}`).
+
+## Integrity registry operator CLI
+
+Use `scripts/cli/integrity_registry_cli.js` when you want to send a single
+integrity registry action with the same AO request conventions as the rest of
+this repo.
+
+Examples:
+
+```bash
+node scripts/cli/integrity_registry_cli.js \
+  --action publish \
+  --pid <REGISTRY_PID> \
+  --wallet wallet.json \
+  --component-id gateway \
+  --version 1.4.0 \
+  --root <root> \
+  --uri-hash <uri-hash> \
+  --meta-hash <meta-hash> \
+  --policy-hash <policy-hash>
+```
+
+```bash
+node scripts/cli/integrity_registry_cli.js \
+  --action authority \
+  --pid <REGISTRY_PID> \
+  --wallet wallet.json \
+  --root <authority-root> \
+  --upgrade <authority-upgrade> \
+  --emergency <authority-emergency> \
+  --reporter <authority-reporter> \
+  --signature-refs sig-root-1,sig-upgrade-1
+```
+
+```bash
+node scripts/cli/integrity_registry_cli.js \
+  --action audit \
+  --pid <REGISTRY_PID> \
+  --wallet wallet.json \
+  --seq-from 1 \
+  --seq-to 9 \
+  --merkle-root <merkle-root> \
+  --meta-hash <meta-hash> \
+  --reporter-ref <reporter-ref>
+```
+
+Supported actions:
+- `publish`
+- `revoke`
+- `get-root`
+- `policy`
+- `authority`
+- `audit`
+- `snapshot`
+- `pause`
+- `set-authority`
+- `append-audit`
+
+The CLI prints JSON for both successful responses and failures, and supports
+`--dry-run` when you only want to inspect the prepared AO request. Use `--out`
+to write the same JSON to disk for later comparison.

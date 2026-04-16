@@ -1,8 +1,25 @@
+local require_luv = os.getenv "DEPS_REQUIRE_LUV" == "1"
+
 local deps = {
-  { name = "luv", mods = { "luv" } },
-  { name = "lsqlite3", mods = { "lsqlite3" } },
+  {
+    name = "luv",
+    mods = { "luv" },
+    optional = not require_luv,
+    note = "optional for preflight (required only for timer/event-loop integrations)",
+  },
+  {
+    name = "lsqlite3",
+    mods = { "lsqlite3" },
+    optional = true,
+    note = "optional for preflight (auth falls back to in-memory/file state when sqlite is unavailable)",
+  },
   { name = "cjson", mods = { "cjson.safe", "cjson" } },
-  { name = "luaossl", mods = { "openssl" } },
+  {
+    name = "luaossl",
+    mods = { "openssl" },
+    optional = true,
+    note = "optional for preflight (openssl/sodium fallback paths are available)",
+  },
   { name = "sodium", mods = { "sodium", "luasodium" } },
 }
 
@@ -20,7 +37,12 @@ end
 
 -- core deps
 for _, d in ipairs(deps) do
-  if not require_any(d.name, d.mods) then
+  local ok = require_any(d.name, d.mods)
+  if not ok and d.optional then
+    if d.note then
+      io.stdout:write(string.format("%-10s: %s\n", d.name, d.note))
+    end
+  elseif not ok then
     os.exit(1)
   end
 end
