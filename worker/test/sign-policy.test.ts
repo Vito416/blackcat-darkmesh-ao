@@ -301,4 +301,40 @@ describe('Worker sign policy', () => {
     const text = await res.text()
     expect(text).toContain('signature_ref_mismatch')
   })
+
+  it('rejects replayed nonce on /sign', async () => {
+    const nonce = nextNonce()
+    const timestamp = Math.floor(Date.now() / 1000)
+    const body = signBody({ nonce, timestamp })
+
+    const first = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { SIGN_POLICY_JSON: policy },
+    )
+    expect(first.status).toBe(200)
+
+    const second = await call(
+      '/sign',
+      {
+        method: 'POST',
+        body,
+        headers: {
+          'content-type': 'application/json',
+          Authorization: 'Bearer t',
+        },
+      },
+      { SIGN_POLICY_JSON: policy },
+    )
+    expect(second.status).toBe(409)
+    const text = await second.text()
+    expect(text).toContain('replay')
+  })
 })

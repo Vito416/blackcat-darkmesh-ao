@@ -39,6 +39,17 @@ describe('/notify dedupe and breaker', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
+  it('does not dedupe distinct webhook destinations', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch' as any).mockResolvedValue(new Response('', { status: 200 }))
+    const payloadA = { webhookUrl: 'https://example.com/hook-a', data: { x: 1 } }
+    const payloadB = { webhookUrl: 'https://example.com/hook-b', data: { x: 1 } }
+    const res1 = await req(payloadA)
+    expect(res1.status).toBe(200)
+    const res2 = await req(payloadB)
+    expect(res2.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
   it('opens breaker after failure and blocks subsequent calls', async () => {
     const fetchSpy = vi
       .spyOn(global, 'fetch' as any)
@@ -58,5 +69,46 @@ describe('/notify dedupe and breaker', () => {
     const res3 = await req(payload, { ...commonEnv, NOTIFY_BREAKER_COOLDOWN: '600' }, breakerHeaders)
     expect(res3.status).toBe(429)
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries failed webhook delivery up to NOTIFY_RETRY_MAX before opening breaker', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch' as any).mockResolvedValue(new Response('', { status: 500 }))
+    const payload = { webhookUrl: 'https://example.com/retry', data: { y: 3 } }
+    const breakerHeaders = { 'x-breaker-key': 'stripe' }
+    const env = {
+      NOTIFY_BREAKER_THRESHOLD: '1',
+      NOTIFY_RETRY_MAX: '3',
+      NOTIFY_RETRY_BACKOFF_MS: '0',
+      NOTIFY_DEDUPE_TTL: '0',
+    }
+    const res1 = await req(payload, env, breakerHeaders)
+    expect(res1.status).toBe(502)
+    const res2 = await req(payload, env, breakerHeaders)
+    expect(res2.status).toBe(429)
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+  })
+
+  it('resets breaker count after successful delivery', async () => {
+    const fetchSpy = vi
+      .spyOn(global, 'fetch' as any)
+      .mockResolvedValueOnce(new Response('', { status: 500 }))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+      .mockResolvedValueOnce(new Response('', { status: 500 }))
+    const payload = { webhookUrl: 'https://example.com/flaky', data: { y: 4 } }
+    const breakerHeaders = { 'x-breaker-key': 'paypal' }
+    const env = {
+      NOTIFY_BREAKER_THRESHOLD: '2',
+      NOTIFY_RETRY_MAX: '1',
+      NOTIFY_RETRY_BACKOFF_MS: '0',
+      NOTIFY_DEDUPE_TTL: '0',
+    }
+
+    const first = await req(payload, env, breakerHeaders)
+    expect(first.status).toBe(502)
+    const second = await req(payload, env, breakerHeaders)
+    expect(second.status).toBe(200)
+    const third = await req(payload, env, breakerHeaders)
+    expect(third.status).toBe(502)
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
   })
 })

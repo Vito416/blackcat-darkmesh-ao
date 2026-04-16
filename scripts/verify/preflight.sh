@@ -74,8 +74,6 @@ if command -v lua5.4 >/dev/null 2>&1; then
   AUTH_REQUIRE_TIMESTAMP=0 \
   AUTH_RATE_LIMIT_MAX_REQUESTS=100000 \
   SKIP_CONTRACTS="${SKIP_CONTRACTS:-0}" \
-  SKIP_CATALOG=1 \
-  SKIP_ACCESS=1 \
   LUA_PATH="${LUA_PATH_EFFECTIVE}" \
   LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
     lua5.4 "$ROOT_DIR/scripts/verify/contracts.lua"

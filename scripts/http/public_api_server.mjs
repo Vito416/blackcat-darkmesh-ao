@@ -2,7 +2,6 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import { createData, ArweaveSigner } from 'arbundles'
 import { connect } from '@permaweb/aoconnect'
 
 const DEFAULT_HB_URL = 'https://push.forward.computer'
@@ -43,6 +42,7 @@ const ao = connect({
 
 let fallbackWallet = null
 let fallbackSigner = null
+let arbundlesApi = null
 
 function clean(value) {
   if (!value) return ''
@@ -335,20 +335,40 @@ async function tryDryrun(processPid, tags, data) {
   return { mode: 'dryrun', output }
 }
 
-function loadFallbackWallet() {
+async function loadArbundles() {
+  if (arbundlesApi) return arbundlesApi
+  try {
+    const mod = await import('arbundles')
+    if (typeof mod?.createData !== 'function' || typeof mod?.ArweaveSigner !== 'function') {
+      throw new Error('arbundles_exports_invalid')
+    }
+    arbundlesApi = {
+      createData: mod.createData,
+      ArweaveSigner: mod.ArweaveSigner,
+    }
+    return arbundlesApi
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    throw new Error(`arbundles_unavailable:${msg}`)
+  }
+}
+
+async function loadFallbackWallet() {
   if (fallbackWallet && fallbackSigner) {
     return { wallet: fallbackWallet, signer: fallbackSigner }
   }
   if (!env.walletPath || !fs.existsSync(env.walletPath)) {
     throw new Error(`fallback_wallet_missing:${env.walletPath}`)
   }
+  const { ArweaveSigner } = await loadArbundles()
   fallbackWallet = JSON.parse(fs.readFileSync(env.walletPath, 'utf8'))
   fallbackSigner = new ArweaveSigner(fallbackWallet)
   return { wallet: fallbackWallet, signer: fallbackSigner }
 }
 
 async function sendSchedulerMessage(processPid, tags, data) {
-  const { signer } = loadFallbackWallet()
+  const { createData } = await loadArbundles()
+  const { signer } = await loadFallbackWallet()
   const item = createData(data, signer, {
     target: processPid,
     tags,
