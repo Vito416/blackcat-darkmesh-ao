@@ -8,7 +8,7 @@ AO-first backend layer for Blackcat Darkmesh. This repository hosts AO processes
 ## Scope
 - In scope: AO processes for public state (site registry, routing, public read model, audit metadata, permission registry), schemas, Arweave manifests/snapshots, deploy/verify/export scripts, fixtures, CI workflows.
 - Out of scope: command validation/idempotency, builder/admin UI, template/rendering layer, SMTP/OTP/payments business logic, mailbox payload persistence, full resolver/gateway runtime, or any storage of sensitive plaintext. Mutations are owned by `blackcat-darkmesh-write`.
-- Exception: this repo includes thin HTTP compatibility adapters (`scripts/http/public_api_server.mjs` and `worker/src/index.ts`) with a limited route subset (see "Gateway Adapter Surface").
+- Exception: this repo keeps a thin Node HTTP compatibility adapter (`scripts/http/public_api_server.mjs`) with a limited route subset (see "Gateway Adapter Surface"). Cloudflare worker runtime ownership moved to `blackcat-darkmesh-gateway/workers/` (legacy mirror remains temporarily in `worker/` during migration).
 
 ## Architecture Snapshot
 - Process split: `router`/`registry` (domains, sites, keys), `public_state` (routes, pages, navigation, SEO/public config), `catalog` (public product + category payloads/refs), `permissions` (publish keys/roles), and `audit` (receipts + references only).
@@ -43,12 +43,12 @@ tests/             # integration, message-contracts, snapshots, security
 - Read routes:
   - `POST /api/public/resolve-route` -> `ResolveRoute`
   - `POST /api/public/page` -> `GetPage`
-- Write routes (worker adapter):
+- Write routes (worker adapter, now canonical in `blackcat-darkmesh-gateway/workers/site-inbox-worker`):
   - `POST /api/checkout/order` -> `CreateOrder`
   - `POST /api/checkout/payment-intent` -> `CreatePaymentIntent`
 - Health endpoints:
   - `GET /healthz` (node adapter in `scripts/http/public_api_server.mjs`)
-  - `GET /health` and `GET /api/health` (worker adapter in `worker/src/index.ts`)
+  - `GET /health` and `GET /api/health` (worker adapter in `blackcat-darkmesh-gateway/workers/site-inbox-worker/src/index.ts`; temporary mirror in `worker/src/index.ts`)
 - Not yet implemented as adapter routes: additional registry/catalog/access reads (for example `GetSiteConfig`, `GetCategory`, `ListCategories`, `SearchCatalog`, `FacetSearch`, `GetTrustedResolvers`, `GetResolverFlags`) and write routes for payment webhook/status updates, passwordless session actions, and gateway-flag submissions.
 
 ## Publish Model (apply-only)

@@ -259,6 +259,22 @@ local RUNTIME_POINTER_INPUT_KEYS = {
   ["Scheduler-Id"] = true,
   schedulerId = true,
   scheduler_id = true,
+  templateTxId = true,
+  TemplateTxId = true,
+  ["Template-Tx-Id"] = true,
+  template_tx_id = true,
+  manifestTxId = true,
+  ManifestTxId = true,
+  ["Manifest-Tx-Id"] = true,
+  manifest_tx_id = true,
+  templateSha256 = true,
+  TemplateSha256 = true,
+  ["Template-Sha256"] = true,
+  template_sha256 = true,
+  templateVariant = true,
+  TemplateVariant = true,
+  ["Template-Variant"] = true,
+  template_variant = true,
 }
 
 local RUNTIME_POINTER_STORED_KEYS = {
@@ -298,6 +314,22 @@ local RUNTIME_POINTER_STORED_KEYS = {
   ["Scheduler-Id"] = true,
   schedulerId = true,
   scheduler_id = true,
+  templateTxId = true,
+  TemplateTxId = true,
+  ["Template-Tx-Id"] = true,
+  template_tx_id = true,
+  manifestTxId = true,
+  ManifestTxId = true,
+  ["Manifest-Tx-Id"] = true,
+  manifest_tx_id = true,
+  templateSha256 = true,
+  TemplateSha256 = true,
+  ["Template-Sha256"] = true,
+  template_sha256 = true,
+  templateVariant = true,
+  TemplateVariant = true,
+  ["Template-Variant"] = true,
+  template_variant = true,
   updatedAt = true,
   UpdatedAt = true,
   ["Updated-At"] = true,
@@ -358,6 +390,48 @@ local function validate_runtime_pointer_timestamp(value, field)
   return true
 end
 
+local function normalize_sha256_hex(value)
+  local normalized = tostring(value):lower()
+  if normalized:sub(1, 7) == "sha256-" then
+    normalized = normalized:sub(8)
+  end
+  if normalized:sub(1, 2) == "0x" then
+    normalized = normalized:sub(3)
+  end
+  return normalized
+end
+
+local function validate_runtime_pointer_sha256(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 80, field)
+  if not ok_len then
+    return false, err_len
+  end
+  local normalized = normalize_sha256_hex(value)
+  if #normalized ~= 64 or not normalized:match "^[a-f0-9]+$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return normalized
+end
+
+local function validate_runtime_pointer_variant(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 64, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if value == "" or not tostring(value):match "^[A-Za-z0-9][A-Za-z0-9%._/%-]*$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
 local function normalize_runtime_pointer(raw, opts)
   opts = opts or {}
   local field_name = opts.field_name or "Runtime"
@@ -391,6 +465,14 @@ local function normalize_runtime_pointer(raw, opts)
   local module_id = first_present(raw, { "moduleId", "ModuleId", "Module-Id", "module_id" })
   local scheduler =
     first_present(raw, { "scheduler", "Scheduler", "Scheduler-Id", "schedulerId", "scheduler_id" })
+  local template_tx_id =
+    first_present(raw, { "templateTxId", "TemplateTxId", "Template-Tx-Id", "template_tx_id" })
+  local manifest_tx_id =
+    first_present(raw, { "manifestTxId", "ManifestTxId", "Manifest-Tx-Id", "manifest_tx_id" })
+  local template_sha256 =
+    first_present(raw, { "templateSha256", "TemplateSha256", "Template-Sha256", "template_sha256" })
+  local template_variant =
+    first_present(raw, { "templateVariant", "TemplateVariant", "Template-Variant", "template_variant" })
   local updated_at = first_present(raw, { "updatedAt", "UpdatedAt", "Updated-At", "updated_at" })
 
   local has_any_process = process_id ~= nil
@@ -400,8 +482,12 @@ local function normalize_runtime_pointer(raw, opts)
     or write_process_id ~= nil
     or ingest_process_id ~= nil
     or registry_process_id ~= nil
+  local has_any_template = template_tx_id ~= nil
+    or manifest_tx_id ~= nil
+    or template_sha256 ~= nil
+    or template_variant ~= nil
 
-  if not has_any_process and require_process then
+  if not has_any_process and not has_any_template and require_process then
     return nil, ("missing_field:%s.processId"):format(field_name), field_name .. ".processId"
   end
 
@@ -493,6 +579,40 @@ local function normalize_runtime_pointer(raw, opts)
     end
     runtime.scheduler = tostring(scheduler)
   end
+  if template_tx_id ~= nil then
+    local ok_template_tx, err_template_tx =
+      validate_runtime_pointer_token(template_tx_id, field_name .. ".templateTxId")
+    if not ok_template_tx then
+      return nil, err_template_tx, field_name .. ".templateTxId"
+    end
+    runtime.templateTxId = tostring(template_tx_id)
+  end
+  if manifest_tx_id ~= nil then
+    local ok_manifest_tx, err_manifest_tx =
+      validate_runtime_pointer_token(manifest_tx_id, field_name .. ".manifestTxId")
+    if not ok_manifest_tx then
+      return nil, err_manifest_tx, field_name .. ".manifestTxId"
+    end
+    runtime.manifestTxId = tostring(manifest_tx_id)
+  end
+  if template_sha256 ~= nil then
+    local normalized_sha, err_sha = validate_runtime_pointer_sha256(
+      template_sha256,
+      field_name .. ".templateSha256"
+    )
+    if not normalized_sha then
+      return nil, err_sha, field_name .. ".templateSha256"
+    end
+    runtime.templateSha256 = normalized_sha
+  end
+  if template_variant ~= nil then
+    local ok_variant, err_variant =
+      validate_runtime_pointer_variant(template_variant, field_name .. ".templateVariant")
+    if not ok_variant then
+      return nil, err_variant, field_name .. ".templateVariant"
+    end
+    runtime.templateVariant = tostring(template_variant)
+  end
   if allow_stored_shape and updated_at ~= nil then
     local ok_updated, err_updated =
       validate_runtime_pointer_timestamp(updated_at, field_name .. ".updatedAt")
@@ -508,7 +628,7 @@ local function snapshot_runtime_pointer(runtime)
   if type(runtime) ~= "table" then
     return nil
   end
-  local has_process = false
+  local has_pointer = false
   for _, key in ipairs {
     "processId",
     "siteProcessId",
@@ -517,13 +637,21 @@ local function snapshot_runtime_pointer(runtime)
     "writeProcessId",
     "ingestProcessId",
     "registryProcessId",
+    "workerId",
+    "workerUrl",
+    "moduleId",
+    "scheduler",
+    "templateTxId",
+    "manifestTxId",
+    "templateSha256",
+    "templateVariant",
   } do
     if type(runtime[key]) == "string" and runtime[key] ~= "" then
-      has_process = true
+      has_pointer = true
       break
     end
   end
-  if not has_process then
+  if not has_pointer then
     return nil
   end
   local out = {}
@@ -560,6 +688,18 @@ local function snapshot_runtime_pointer(runtime)
   if type(runtime.scheduler) == "string" and runtime.scheduler ~= "" then
     out.scheduler = runtime.scheduler
   end
+  if type(runtime.templateTxId) == "string" and runtime.templateTxId ~= "" then
+    out.templateTxId = runtime.templateTxId
+  end
+  if type(runtime.manifestTxId) == "string" and runtime.manifestTxId ~= "" then
+    out.manifestTxId = runtime.manifestTxId
+  end
+  if type(runtime.templateSha256) == "string" and runtime.templateSha256 ~= "" then
+    out.templateSha256 = runtime.templateSha256
+  end
+  if type(runtime.templateVariant) == "string" and runtime.templateVariant ~= "" then
+    out.templateVariant = runtime.templateVariant
+  end
   if type(runtime.updatedAt) == "string" and runtime.updatedAt ~= "" then
     out.updatedAt = runtime.updatedAt
   end
@@ -579,6 +719,20 @@ local function upsert_site_runtime(site_id, runtime_pointer)
   })
   if not normalized then
     return nil, norm_err, norm_field
+  end
+  local existing = nil
+  if type(state.site_runtimes) == "table" then
+    existing = state.site_runtimes[site_id]
+  end
+  if type(existing) == "table" then
+    local merged = {}
+    for key, value in pairs(existing) do
+      merged[key] = value
+    end
+    for key, value in pairs(normalized) do
+      merged[key] = value
+    end
+    normalized = merged
   end
   normalized.updatedAt = now_iso()
   state.site_runtimes = state.site_runtimes or {}

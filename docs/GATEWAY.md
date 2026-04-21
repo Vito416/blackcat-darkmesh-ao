@@ -16,12 +16,12 @@ Current HTTP routes exposed by adapters in this repo:
 Health/check endpoints:
 
 - `GET /healthz` in `scripts/http/public_api_server.mjs`
-- `GET /health` and `GET /api/health` in `worker/src/index.ts`
+- `GET /health` and `GET /api/health` in `blackcat-darkmesh-gateway/workers/site-inbox-worker/src/index.ts` (legacy mirror in `worker/src/index.ts` during migration)
 
 Adapter implementations:
 
 - `scripts/http/public_api_server.mjs`: read-only adapter (`resolve-route`, `page`)
-- `worker/src/index.ts`: read adapter + checkout write adapter
+- `blackcat-darkmesh-gateway/workers/site-inbox-worker/src/index.ts`: read adapter + checkout write adapter
 
 ## Currently supported request semantics
 

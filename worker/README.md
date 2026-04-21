@@ -1,5 +1,9 @@
 # Cloudflare Worker (Inbox + Thin Trusted Layer)
 
+> Migration note (2026-04): canonical worker runtime ownership moved to
+> `blackcat-darkmesh-gateway/workers/site-inbox-worker`.
+> This folder is a temporary compatibility mirror to avoid breaking existing AO-side CI and runbooks during migration.
+
 Purpose
 - Thin, low-cost trusted layer (Cloudflare Free) for small/medium sites.
 - Short-lived storage of encrypted envelopes (PII) with TTL + delete-on-download.
