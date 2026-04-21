@@ -75,7 +75,7 @@ function deriveOutputSummary(computeParsed) {
 function parseArgs(argv) {
   const args = {
     pid: clean(process.env.AO_PID),
-    url: clean(process.env.AO_URL) || 'https://push.forward.computer',
+    url: clean(process.env.AO_URL) || 'http://127.0.0.1:8734',
     wallet: clean(process.env.WALLET) || clean(process.env.WALLET_PATH) || 'wallet.json',
     action: clean(process.env.AO_ACTION) || 'GetResolverFlags',
     computeTimeoutMs: Number(clean(process.env.AO_COMPUTE_TIMEOUT_MS) || '30000'),
@@ -89,7 +89,7 @@ function parseArgs(argv) {
     else if (arg === '--action') args.action = clean(argv[++i]) || args.action
     else if (arg === '--strict-response') args.strictResponse = parseBool(argv[++i], true)
     else if (arg === '--help' || arg === '-h') {
-      console.log('Usage: node scripts/deploy/smoke_push_scheduler.mjs --pid <PID> --url https://push.forward.computer --action GetResolverFlags [--strict-response true]')
+      console.log('Usage: node scripts/deploy/smoke_push_scheduler.mjs --pid <PID> --url http://127.0.0.1:8734 --action GetResolverFlags [--strict-response true]')
       process.exit(0)
     } else {
       throw new Error(`Unknown arg: ${arg}`)

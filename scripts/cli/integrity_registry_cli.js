@@ -104,7 +104,7 @@ function parseArgs(argv) {
       clean(process.env.HB_URL) ||
       clean(process.env.HYPERBEAM_URL) ||
       clean(process.env.AO_URL) ||
-      'https://push.forward.computer',
+      'http://127.0.0.1:8734',
     scheduler:
       clean(process.env.HB_SCHEDULER) ||
       clean(process.env.HYPERBEAM_SCHEDULER) ||
@@ -484,7 +484,7 @@ async function main() {
     console.log('Common options:')
     console.log('  --pid <PID>                 AO registry process id')
     console.log('  --wallet <path>             wallet.json path (default: wallet.json)')
-    console.log('  --url <url>                 AO push URL (default: https://push.forward.computer)')
+    console.log('  --url <url>                 AO push URL (default: http://127.0.0.1:8734)')
     console.log('  --scheduler <id>            scheduler id (default: mainnet scheduler)')
     console.log('  --actor-role <role>         Actor-Role tag (default: registry-admin)')
     console.log('  --dry-run                    print the prepared request without sending')

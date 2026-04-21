@@ -32,7 +32,7 @@ function parseArgs(argv) {
       clean(process.env.HB_URL) ||
       clean(process.env.HYPERBEAM_URL) ||
       clean(process.env.AO_URL) ||
-      'https://push.forward.computer',
+      'http://127.0.0.1:8734',
     scheduler:
       clean(process.env.HB_SCHEDULER) ||
       clean(process.env.HYPERBEAM_SCHEDULER) ||
@@ -123,7 +123,7 @@ function parseArgs(argv) {
       extraTags.push({ name: pair.slice(0, idx), value: pair.slice(idx + 1) })
     } else if (arg === '-h' || arg === '--help') {
       console.log(
-        'Usage: node scripts/deploy/spawn_process_wasm_tn.mjs --module <TX> --name blackcat-ao-registry --url https://push.forward.computer'
+        'Usage: node scripts/deploy/spawn_process_wasm_tn.mjs --module <TX> --name blackcat-ao-registry --url http://127.0.0.1:8734'
       )
       process.exit(0)
     } else {

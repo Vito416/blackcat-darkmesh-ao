@@ -44,7 +44,7 @@ const encoder = new TextEncoder()
 // noble/ed25519 requires a SHA-512 implementation to be wired explicitly.
 ed25519.etc.sha512Sync = (msg) => sha512(msg)
 
-const DEFAULT_AO_HB_URL = 'https://push.forward.computer'
+const DEFAULT_AO_HB_URL = 'https://push-1.forward.computer'
 const DEFAULT_AO_SCHEDULER = 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo'
 const DEFAULT_AO_MODE = 'mainnet'
 const DEFAULT_READ_TIMEOUT_MS = 30000
