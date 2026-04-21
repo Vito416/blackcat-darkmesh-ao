@@ -61,10 +61,11 @@ mailbox payloads. Ingests signed publish/apply events from
   ops/ (package-lock.json/pip-tools).
 
 ## Immutable data / WeaveDB exports
-- Arweave/WeaveDB je nemazatelný: do AO neukládej PII ani něco, co může být
-  předmětem výmazu. Používej pouze hash/pseudonymy.
-- Citlivá data patří do worker/inbox s TTL/delete-on-download; AO je nikdy
-  nevidí.
-- Pokud chceš publikovat veřejný stav do WeaveDB, zapni `AO_WEAVEDB_EXPORT_PATH`
-  (append-only NDJSON už PII-scrub) a převeď na bundle:
-  `lua5.4 scripts/export/bundle_export.lua > bundle.json` a ten nahraj.
+- Arweave/WeaveDB is immutable: do not store PII in AO, or anything that may
+  require deletion. Use only hashes/pseudonyms.
+- Sensitive data belongs in worker/inbox with TTL/delete-on-download; AO should
+  never see it.
+- If you want to publish public state to WeaveDB, enable
+  `AO_WEAVEDB_EXPORT_PATH` (append-only NDJSON already PII-scrubbed) and
+  convert it to a bundle:
+  `lua5.4 scripts/export/bundle_export.lua > bundle.json`, then upload it.
