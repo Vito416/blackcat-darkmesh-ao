@@ -42,8 +42,8 @@
 - If any integrity gate fails, hold the rollout and keep the policy paused until
   the root/policy/audit state is consistent again.
 
-## Next TODO (gateway/worker alignment)
+## Next TODO (external service alignment)
 - Verify HMAC on outbox/apply events from Write (OUTBOX_HMAC_SECRET) before mutating public state.
 - Expose Prom metrics matching gateway expectations (webhook retry queue, PSP breaker, outbox size) via METRICS_PROM_PATH.
-- CI: run `scripts/verify/ingest_smoke.lua` + `scripts/export/bundle_export.lua` on every change; publish bundle artifact.
+- CI: keep AO integration/resolver specs in the main workflow and publish bundle artefacts when exports are available.
 - Keep AO secretless: ensure export/persist scrub PII; add regression test for PII keys.

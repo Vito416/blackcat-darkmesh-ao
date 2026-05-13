@@ -17,6 +17,7 @@ Outputs:
 - `dist/catalog-bundle.lua`
 - `dist/access-bundle.lua`
 - `dist/ingest-bundle.lua`
+- `dist/resolver-bundle.lua`
 
 ## 2) Publish module
 
@@ -42,6 +43,29 @@ node scripts/deploy/publish_wasm_module.mjs \
   --wasm dist/registry/process.wasm \
   --name blackcat-ao-registry
 ```
+
+Resolver-specific WASM flow (same toolchain, no special bundle payloads on-chain):
+
+```bash
+npm run bundle:ao:resolver
+npm run build:ao-wasm
+node scripts/deploy/patch_seed_module.mjs
+scripts/deploy/rebuild_wasm_from_runtime.sh resolver
+
+node scripts/deploy/publish_wasm_module.mjs \
+  --wasm dist/resolver/process.wasm \
+  --name blackcat-ao-darkmesh-resolver-v1
+```
+
+Docker-only fast path for resolver build (works even when local `hyperengine` binary is missing):
+
+```bash
+scripts/deploy/build_resolver_wasm_docker.sh
+```
+
+Both Docker rebuild helpers are WSL-aware: when you run them from WSL against
+Docker Desktop, they translate bind-mount source paths automatically so
+`ao-build-module` still sees the generated `dist/...` contents.
 
 Optional:
 - `--wallet wallet.json`
@@ -82,19 +106,32 @@ node scripts/deploy/spawn_process_wasm_tn.mjs \
 (same strategy as `-write`) to avoid `aoconnect.spawn` tag/variant drift.
 Default mode is now `extended` (more stable for AO WASM startup), with optional
 `auto` fallback order (`extended -> minimal`) for compatibility.
+It now also auto-infers module profile from on-chain tags (GraphQL):
+`Execution-Device`/`Module-Format`/`Content-Type`, so Lua modules no longer
+accidentally spawn with `genesis-wasm@1.0` unless explicitly forced.
 
 Before spawn, it can also wait until `<module>~module@1.0` is readable on push
 to avoid creating PIDs that fail early during resolve.
+If URL contains a control-plane suffix like `.../~process@1.0/`, the script now
+auto-normalizes module probe to host root (`.../<module>~module@1.0`) to avoid
+false `module_not_admissable` checks.
 
 Optional:
 - `--scheduler <SCHEDULER_ID>`
+- `--scheduler-location <PUBLIC_URL>` (recommended for production PIDs)
 - `--wallet wallet.json`
 - `--variant ao.TN.1`
+- `--spawn-path /push` (override push route used by `ao.request`)
+- `--production-scheduler 1|0` (default `0`; when `1`, enforces non-local `Scheduler-Location`; if not set, uses URL-derived location, then fallback `https://push.forward.computer`)
+- `--enforce-scheduler-parity 1|0` (default `1`; checks `Scheduler` matches `<scheduler-location>/~meta@1.0/info/address` when reachable)
 - `--mode extended|minimal|auto` (default `extended`)
 - `--wait-module 1|0` (default `1`)
 - `--wait-module-timeout-ms 300000`
 - `--wait-module-interval-ms 5000`
 - `--module-format wasm64-unknown-emscripten-draft_2024_02_15`
+- `--execution-device genesis-wasm@1.0|lua@5.3a` (override inferred value)
+- `--content-type application/wasm|text/lua` (override inferred value)
+- `--infer-module-profile 1|0` (default `1`)
 - `--memory-limit 1-gb`
 - `--compute-limit 9000000000000`
 - `--aos-version 2.0.6`
@@ -109,6 +146,20 @@ Optional:
 - `--tag key=value` (repeatable)
 
 The script prints JSON with `pid`, `module`, and endpoint info.
+It now resolves PID strictly from process-specific fields/headers (`process`,
+`pid`, `process-id`) and no longer falls back to generic `id` values.
+
+Darkmesh note:
+- if spawn via canonical `/push` does not return PID, script retries on
+  `~process@1.0/push` automatically (generic fallback for ingress profiles).
+
+Production scheduler note:
+- For production PIDs that must be resolvable from other nodes, keep scheduler
+  and scheduler URL in parity:
+  - scheduler id = `<scheduler-location>/~meta@1.0/info/address`
+  - scheduler location must be public (not `127.0.0.1`, `localhost`, private RFC1918 IPs).
+- Example:
+  - `node scripts/deploy/spawn_process_wasm_tn.mjs --module <TX> --name darkmesh-resolver --url https://write.darkmesh.fun --scheduler _wCF37G9t-xfJuYZqc6JXI9VrG4dzM5WUFgDfOn9LdM --scheduler-location https://write.darkmesh.fun --production-scheduler 1 --enforce-scheduler-parity 1`
 
 After spawn, verify PID finalization as well:
 

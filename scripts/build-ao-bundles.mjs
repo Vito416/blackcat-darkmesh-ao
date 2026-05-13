@@ -26,6 +26,11 @@ const TARGETS = {
     module: 'ao.ingest.apply',
     file: 'ao/ingest/apply.lua',
     out: 'dist/ingest-bundle.lua'
+  },
+  resolver: {
+    module: 'ao.resolver.process',
+    file: 'ao/resolver/process.lua',
+    out: 'dist/resolver-bundle.lua'
   }
 }
 
@@ -65,7 +70,7 @@ function printHelp() {
   console.log('Usage:')
   console.log('  node scripts/build-ao-bundles.mjs --all')
   console.log('  node scripts/build-ao-bundles.mjs --target registry')
-  console.log('  node scripts/build-ao-bundles.mjs --target registry,site,catalog,access,ingest')
+  console.log('  node scripts/build-ao-bundles.mjs --target registry,site,catalog,access,ingest,resolver')
 }
 
 function listLuaFiles(dir) {

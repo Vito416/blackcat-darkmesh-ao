@@ -1,4 +1,4 @@
-# SEO / Analytics / Risk stubs
+# SEO / Analytics / Risk Notes
 
 - SEO: structured-data helper exists via `ao.shared.analytics` (page/product/risk events with metrics + log).
 - Locale fallback: handled at resolver layer by passing locale list; add tenants' fallback chain in config (see resolver docs).

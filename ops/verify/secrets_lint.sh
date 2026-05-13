@@ -27,15 +27,16 @@ check_kv_if_exists() {
 
 echo "Linting env templates..."
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+WORKER_ENV_FILE="$ROOT/../blackcat-darkmesh-gateway/workers/secrets-worker/ops/env.prod.example"
 
 check_kv "$ROOT/ops/env.prod.example" AUTH_REQUIRE_SIGNATURE 1
 check_kv "$ROOT/ops/env.prod.example" AUTH_REQUIRE_NONCE 1
 check_kv "$ROOT/ops/env.prod.example" AUTH_REQUIRE_JWT 1
 
-check_kv_if_exists "$ROOT/worker/ops/env.prod.example" REQUIRE_SECRETS 1
-check_kv_if_exists "$ROOT/worker/ops/env.prod.example" REQUIRE_METRICS_AUTH 1
-check_kv_if_exists "$ROOT/worker/ops/env.prod.example" INBOX_HMAC_OPTIONAL 0
-check_kv_if_exists "$ROOT/worker/ops/env.prod.example" NOTIFY_HMAC_OPTIONAL 0
+check_kv_if_exists "$WORKER_ENV_FILE" REQUIRE_SECRETS 1
+check_kv_if_exists "$WORKER_ENV_FILE" REQUIRE_METRICS_AUTH 1
+check_kv_if_exists "$WORKER_ENV_FILE" INBOX_HMAC_OPTIONAL 0
+check_kv_if_exists "$WORKER_ENV_FILE" NOTIFY_HMAC_OPTIONAL 0
 
 if [[ $fail -ne 0 ]]; then
   exit 1

@@ -94,6 +94,19 @@ if command -v lua5.4 >/dev/null 2>&1; then
     LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
       lua5.4 "$ROOT_DIR/scripts/verify/integrity_registry_spec.lua"
   fi
+  echo "[verify] registry policy contract spec"
+  METRICS_ENABLED=0 \
+  METRICS_DISABLED=1 \
+  LUA_PATH="${LUA_PATH_EFFECTIVE}" \
+  LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
+    lua5.4 "$ROOT_DIR/tests/integration/registry_policy_contract_spec.lua"
+  echo "[verify] resolver process spec"
+  RESOLVER_ALLOW_CENTRALIZED_BUNDLE_WRITES=1 \
+  METRICS_ENABLED=0 \
+  METRICS_DISABLED=1 \
+  LUA_PATH="${LUA_PATH_EFFECTIVE}" \
+  LUA_CPATH="${LUA_CPATH_EFFECTIVE}" \
+    lua5.4 "$ROOT_DIR/tests/integration/resolver_process_spec.lua"
   if [ "${RUN_FUZZ:-0}" -eq 1 ]; then
     echo "[verify] fuzz/property tests"
     LUA_PATH="${LUA_PATH_EFFECTIVE}" \

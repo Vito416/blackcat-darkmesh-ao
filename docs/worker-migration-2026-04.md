@@ -3,15 +3,14 @@
 Date: 2026-04-19
 
 Cloudflare worker runtime ownership moved to:
-- `blackcat-darkmesh-gateway/workers/site-inbox-worker`
+- `blackcat-darkmesh-gateway/workers/secrets-worker`
 
 AO repository remains authoritative only for AO processes/contracts/read model.
 
-## Compatibility window
+## Migration status
 
-To avoid immediate CI/runbook breakage, `worker/` remains in this repo as a temporary mirror.
-
-## Planned cleanup
-
-- Move worker CI to gateway repo.
-- Retire AO-local `worker/` folder after one stable release cycle.
+- AO-local `worker/` folder has been retired.
+- Worker CI/load tests now belong to the gateway repository worker folders.
+- Worker-only workflows were removed from this repository.
+- Cross-repo E2E uses `docs/docker-compose-e2e.yml` and sibling repo mounts instead of an AO-local worker mirror.
+- Do not reintroduce Worker runtime code here; make Cloudflare Worker changes in `blackcat-darkmesh-gateway/workers/secrets-worker`.

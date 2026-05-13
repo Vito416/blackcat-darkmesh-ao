@@ -21,6 +21,10 @@ export default defineConfig({
     ingest: {
       entry: 'dist/ingest-bundle.lua',
       type: 'process'
+    },
+    resolver: {
+      entry: 'dist/resolver-bundle.lua',
+      type: 'process'
     }
   },
   aos: {

@@ -45,6 +45,35 @@ local allowed_actions = {
   "FlagResolver",
   "UnflagResolver",
   "GetResolverFlags",
+  "GetPolicySnapshot",
+  "GetSiteServingPolicy",
+  "GetHBNodeProfile",
+  "GetDecisionForHostNode",
+  "GetDnsProofState",
+  "ResolveHostPolicyBundle",
+  "GetTemplateActionContract",
+  "GetSiteRuntimeBundle",
+  "GetSiteAuthMetadata",
+  "GetDomainLifecycleState",
+  "CreateSessionLifecycle",
+  "ReadSessionLifecycle",
+  "GetSessionLifecycle",
+  "RotateSessionLifecycle",
+  "RevokeSessionLifecycle",
+  "ListSessionsBySubject",
+  "CheckPaymentWebhookIdempotency",
+  "GetPaymentWebhookIdempotencyState",
+  "ResetPaymentWebhookIdempotencyState",
+  "RegisterHBNode",
+  "UpdateHBNodeStatus",
+  "SetSiteServingPolicy",
+  "SetSiteFundingState",
+  "SetDnsProofState",
+  "SetSiteAuthMetadata",
+  "SetDomainLifecycleState",
+  "SetPolicyMode",
+  "PublishPolicySnapshot",
+  "RevokePolicySnapshot",
 }
 
 local role_policy = {
@@ -66,6 +95,25 @@ local role_policy = {
   FlagResolver = { "admin", "registry-admin" },
   UnflagResolver = { "admin", "registry-admin" },
   GetResolverFlags = { "admin", "registry-admin" },
+  RegisterHBNode = { "admin", "registry-admin" },
+  UpdateHBNodeStatus = { "admin", "registry-admin" },
+  SetSiteServingPolicy = { "admin", "registry-admin" },
+  SetSiteFundingState = { "admin", "registry-admin" },
+  SetDnsProofState = { "admin", "registry-admin" },
+  SetSiteAuthMetadata = { "admin", "registry-admin" },
+  SetDomainLifecycleState = { "admin", "registry-admin" },
+  CreateSessionLifecycle = { "admin", "registry-admin" },
+  ReadSessionLifecycle = { "admin", "registry-admin" },
+  GetSessionLifecycle = { "admin", "registry-admin" },
+  RotateSessionLifecycle = { "admin", "registry-admin" },
+  RevokeSessionLifecycle = { "admin", "registry-admin" },
+  ListSessionsBySubject = { "admin", "registry-admin" },
+  CheckPaymentWebhookIdempotency = { "admin", "registry-admin" },
+  GetPaymentWebhookIdempotencyState = { "admin", "registry-admin" },
+  ResetPaymentWebhookIdempotencyState = { "admin", "registry-admin" },
+  SetPolicyMode = { "admin", "registry-admin" },
+  PublishPolicySnapshot = { "admin", "registry-admin" },
+  RevokePolicySnapshot = { "admin", "registry-admin" },
 }
 
 local hmac_skip_actions = {
@@ -83,6 +131,16 @@ local hmac_skip_actions = {
   GetIntegrityAuditState = true,
   GetIntegritySnapshot = true,
   GetResolverFlags = true,
+  GetPolicySnapshot = true,
+  GetSiteServingPolicy = true,
+  GetHBNodeProfile = true,
+  GetDecisionForHostNode = true,
+  GetDnsProofState = true,
+  ResolveHostPolicyBundle = true,
+  GetTemplateActionContract = true,
+  GetSiteRuntimeBundle = true,
+  GetSiteAuthMetadata = true,
+  GetDomainLifecycleState = true,
 }
 
 local public_read_actions = {
@@ -91,6 +149,16 @@ local public_read_actions = {
   ResolveGatewayForHost = true,
   ListGateways = true,
   GetSiteRuntime = true,
+  GetPolicySnapshot = true,
+  GetSiteServingPolicy = true,
+  GetHBNodeProfile = true,
+  GetDecisionForHostNode = true,
+  GetDnsProofState = true,
+  ResolveHostPolicyBundle = true,
+  GetTemplateActionContract = true,
+  GetSiteRuntimeBundle = true,
+  GetSiteAuthMetadata = true,
+  GetDomainLifecycleState = true,
 }
 local site_id_guard_actions = {
   RegisterSite = true,
@@ -99,6 +167,18 @@ local site_id_guard_actions = {
   BindDomain = true,
   SetActiveVersion = true,
   GrantRole = true,
+  SetSiteServingPolicy = true,
+  SetSiteFundingState = true,
+  SetSiteAuthMetadata = true,
+  CreateSessionLifecycle = true,
+  ReadSessionLifecycle = true,
+  GetSessionLifecycle = true,
+  RotateSessionLifecycle = true,
+  RevokeSessionLifecycle = true,
+  ListSessionsBySubject = true,
+  CheckPaymentWebhookIdempotency = true,
+  GetPaymentWebhookIdempotencyState = true,
+  ResetPaymentWebhookIdempotencyState = true,
 }
 local site_id_guard_fields = { "Site-Id", "siteId", "SiteId", "site_id" }
 local PUBLIC_READ_REQUIRE_AUTH = (os.getenv "REGISTRY_PUBLIC_READ_REQUIRE_AUTH" or "0") == "1"
@@ -144,6 +224,21 @@ local state = persist.load("registry_state", {
     },
   },
   resolver_flags = {}, -- resolverId => { flag = "suspicious"|"blocked"|"ok", reason, raisedAt, raisedBy }
+  policy = {
+    mode = "off", -- off | observe | soft | enforce
+    modeUpdatedAt = nil,
+    modeUpdatedBy = nil,
+    hb_nodes = {}, -- nodeId => { nodeId, url?, region?, country?, status, labels?, metadata?, registeredAt, updatedAt }
+    site_serving = {}, -- siteId => serving policy document
+    site_funding = {}, -- siteId => funding state document
+    dns_proofs = {}, -- host => dns proof state document
+    site_auth = {}, -- siteId => auth/session metadata document
+    sessions = {}, -- siteId => sessionId => session lifecycle document
+    payment_webhooks = {}, -- siteId => provider => { ttlSec, maxKeys, keyMaxBytes, entries = { eventId => entry } }
+    domain_lifecycle = {}, -- host => { host, siteId, state = pending|active|suspended, ... }
+    snapshots = {}, -- snapshotId => snapshot document
+    activeSnapshotId = nil,
+  },
 })
 
 local MAX_CONFIG_BYTES = tonumber(os.getenv "REGISTRY_MAX_CONFIG_BYTES" or "") or (16 * 1024)
@@ -153,6 +248,10 @@ local WAL_PATH = os.getenv "AO_WAL_PATH"
 local function now_iso()
   -- coarse timestamp for audit/debug; determinism is sufficient here.
   return os.date "!%Y-%m-%dT%H:%M:%SZ"
+end
+
+local function now_unix()
+  return tonumber(os.time()) or 0
 end
 
 local function ensure_integrity_state()
@@ -221,6 +320,61 @@ local function ensure_gateway_state()
 end
 
 ensure_gateway_state()
+
+local POLICY_MODE_ALLOW = {
+  off = true,
+  observe = true,
+  soft = true,
+  enforce = true,
+}
+
+local function ensure_policy_state()
+  state.policy = state.policy or {}
+  local policy = state.policy
+
+  if type(policy.mode) ~= "string" or not POLICY_MODE_ALLOW[policy.mode] then
+    policy.mode = "off"
+  end
+  if type(policy.modeUpdatedAt) ~= "string" or policy.modeUpdatedAt == "" then
+    policy.modeUpdatedAt = "1970-01-01T00:00:00Z"
+  end
+  if type(policy.modeUpdatedBy) ~= "string" then
+    policy.modeUpdatedBy = ""
+  end
+
+  if type(policy.hb_nodes) ~= "table" then
+    policy.hb_nodes = {}
+  end
+  if type(policy.site_serving) ~= "table" then
+    policy.site_serving = {}
+  end
+  if type(policy.site_funding) ~= "table" then
+    policy.site_funding = {}
+  end
+  if type(policy.dns_proofs) ~= "table" then
+    policy.dns_proofs = {}
+  end
+  if type(policy.site_auth) ~= "table" then
+    policy.site_auth = {}
+  end
+  if type(policy.sessions) ~= "table" then
+    policy.sessions = {}
+  end
+  if type(policy.payment_webhooks) ~= "table" then
+    policy.payment_webhooks = {}
+  end
+  if type(policy.domain_lifecycle) ~= "table" then
+    policy.domain_lifecycle = {}
+  end
+  if type(policy.snapshots) ~= "table" then
+    policy.snapshots = {}
+  end
+  if policy.activeSnapshotId ~= nil and type(policy.activeSnapshotId) ~= "string" then
+    policy.activeSnapshotId = nil
+  end
+end
+
+ensure_policy_state()
 
 local RUNTIME_POINTER_INPUT_KEYS = {
   processId = true,
@@ -923,6 +1077,3112 @@ function handlers.GetSiteRuntime(msg)
   return codec.ok {
     siteId = site_id,
     runtime = runtime,
+  }
+end
+
+local hb_node_status_allow = {
+  online = true,
+  offline = true,
+  degraded = true,
+  draining = true,
+  maintenance = true,
+}
+
+local serving_state_allow = {
+  allow = true,
+  deny = true,
+  observe = true,
+  shadow = true,
+}
+
+local funding_state_allow = {
+  active = true,
+  grace = true,
+  paused = true,
+  blocked = true,
+  unknown = true,
+}
+
+local dns_proof_status_allow = {
+  unknown = true,
+  pending = true,
+  valid = true,
+  invalid = true,
+  expired = true,
+  error = true,
+}
+
+local domain_lifecycle_state_allow = {
+  pending = true,
+  active = true,
+  suspended = true,
+}
+
+local domain_lifecycle_transition_allow = {
+  pending = { pending = true, active = true, suspended = true },
+  active = { active = true, suspended = true },
+  suspended = { suspended = true, active = true },
+}
+
+local session_lifecycle_status_allow = {
+  active = true,
+  revoked = true,
+  rotated = true,
+}
+
+local webhook_idempotency_policy_allow = {
+  dedupe = true,
+  reject = true,
+}
+
+local DEFAULT_WEBHOOK_IDEMP_TTL_SEC = 600
+local DEFAULT_WEBHOOK_IDEMP_MAX_KEYS = 10000
+local DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES = 512
+
+local function shallow_copy_table(input)
+  if type(input) ~= "table" then
+    return nil
+  end
+  local out = {}
+  for key, value in pairs(input) do
+    out[key] = value
+  end
+  return out
+end
+
+local function validate_policy_token(value, field, max_len, pattern)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, max_len or 128, field)
+  if not ok_len then
+    return false, err_len
+  end
+  local text = tostring(value)
+  if text == "" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  if pattern and not text:match(pattern) then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function validate_policy_url(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 512, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if value:find "%s" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  if not value:match "^https?://[%w]" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function normalize_bool(value, field)
+  if type(value) == "boolean" then
+    return true, value
+  end
+  if type(value) == "number" then
+    if value == 1 then
+      return true, true
+    end
+    if value == 0 then
+      return true, false
+    end
+  end
+  if type(value) == "string" then
+    local normalized = value:lower()
+    if normalized == "1" or normalized == "true" or normalized == "yes" then
+      return true, true
+    end
+    if normalized == "0" or normalized == "false" or normalized == "no" then
+      return true, false
+    end
+  end
+  return false, ("invalid_boolean:%s"):format(field)
+end
+
+local function normalize_positive_int(value, field, min_value, max_value)
+  local num = tonumber(value)
+  if not num or num ~= math.floor(num) then
+    return nil, ("invalid_number:%s"):format(field)
+  end
+  if min_value ~= nil and num < min_value then
+    return nil, ("invalid_number:%s"):format(field)
+  end
+  if max_value ~= nil and num > max_value then
+    return nil, ("invalid_number:%s"):format(field)
+  end
+  return num
+end
+
+local function validate_policy_iso8601_utc(value, field)
+  local ok_type, err_type = validation.assert_type(value, "string", field)
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 64, field)
+  if not ok_len then
+    return false, err_len
+  end
+  if not value:match "^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$" then
+    return false, ("invalid_format:%s"):format(field)
+  end
+  return true
+end
+
+local function normalize_string_list(raw, field, validator)
+  if raw == nil then
+    return {}
+  end
+  if type(raw) == "string" then
+    raw = { raw }
+  end
+  if type(raw) ~= "table" then
+    return nil, ("invalid_type:%s"):format(field), field
+  end
+  local seen = {}
+  local out = {}
+  for idx, value in ipairs(raw) do
+    local entry_field = ("%s[%d]"):format(field, idx)
+    local ok_entry, err_entry = validator(value, entry_field)
+    if not ok_entry then
+      return nil, err_entry, entry_field
+    end
+    local normalized = tostring(value)
+    if not seen[normalized] then
+      seen[normalized] = true
+      out[#out + 1] = normalized
+    end
+  end
+  table.sort(out)
+  return out
+end
+
+local function policy_mode_or_default()
+  ensure_policy_state()
+  return state.policy.mode or "off"
+end
+
+local function snapshot_site_serving_policy(site_id)
+  ensure_policy_state()
+  local existing = state.policy.site_serving[site_id]
+  if type(existing) ~= "table" then
+    return {
+      siteId = site_id,
+      servingState = "allow",
+      dnsProofRequired = false,
+      cacheTtlSec = 300,
+      hbAllowList = {},
+      hbDenyList = {},
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+      policyRef = nil,
+    }
+  end
+  local out = {
+    siteId = site_id,
+    servingState = existing.servingState or "allow",
+    dnsProofRequired = existing.dnsProofRequired == true,
+    cacheTtlSec = tonumber(existing.cacheTtlSec) or 300,
+    hbAllowList = {},
+    hbDenyList = {},
+    updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = existing.updatedBy or "",
+    policyRef = existing.policyRef,
+    note = existing.note,
+  }
+  if type(existing.hbAllowList) == "table" then
+    for idx, node_id in ipairs(existing.hbAllowList) do
+      out.hbAllowList[idx] = node_id
+    end
+  end
+  if type(existing.hbDenyList) == "table" then
+    for idx, node_id in ipairs(existing.hbDenyList) do
+      out.hbDenyList[idx] = node_id
+    end
+  end
+  return out
+end
+
+local function snapshot_site_funding_state(site_id)
+  ensure_policy_state()
+  local existing = state.policy.site_funding[site_id]
+  if type(existing) ~= "table" then
+    return {
+      siteId = site_id,
+      fundingState = "active",
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+      plan = nil,
+      tier = nil,
+      payerRef = nil,
+      reason = nil,
+    }
+  end
+  return {
+    siteId = site_id,
+    fundingState = existing.fundingState or "active",
+    updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = existing.updatedBy or "",
+    plan = existing.plan,
+    tier = existing.tier,
+    payerRef = existing.payerRef,
+    reason = existing.reason,
+  }
+end
+
+local function snapshot_dns_proof_state(host, site_id)
+  ensure_policy_state()
+  local existing = state.policy.dns_proofs[host]
+  if type(existing) ~= "table" then
+    return {
+      host = host,
+      siteId = site_id,
+      status = "unknown",
+      verified = false,
+      checkedAt = "1970-01-01T00:00:00Z",
+      expiresAt = nil,
+      source = "stub",
+      challenge = nil,
+      txtValue = nil,
+      proofRef = nil,
+      reason = nil,
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+    }
+  end
+  return {
+    host = host,
+    siteId = existing.siteId or site_id,
+    status = existing.status or "unknown",
+    verified = existing.verified == true,
+    checkedAt = existing.checkedAt or "1970-01-01T00:00:00Z",
+    expiresAt = existing.expiresAt,
+    source = existing.source or "stub",
+    challenge = existing.challenge,
+    txtValue = existing.txtValue,
+    proofRef = existing.proofRef,
+    reason = existing.reason,
+    updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = existing.updatedBy or "",
+  }
+end
+
+local function snapshot_site_auth_metadata(site_id)
+  ensure_policy_state()
+  local existing = state.policy.site_auth[site_id]
+  if type(existing) ~= "table" then
+    return {
+      siteId = site_id,
+      sessionRequired = false,
+      provider = "none",
+      tokenTtlSec = 0,
+      cookieName = nil,
+      sessionMode = "stateless",
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+      note = nil,
+    }
+  end
+  return {
+    siteId = site_id,
+    sessionRequired = existing.sessionRequired == true,
+    provider = existing.provider or "none",
+    tokenTtlSec = tonumber(existing.tokenTtlSec) or 0,
+    cookieName = existing.cookieName,
+    sessionMode = existing.sessionMode or "stateless",
+    updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = existing.updatedBy or "",
+    note = existing.note,
+  }
+end
+
+local function ensure_site_sessions(site_id)
+  ensure_policy_state()
+  if type(state.policy.sessions[site_id]) ~= "table" then
+    state.policy.sessions[site_id] = {}
+  end
+  return state.policy.sessions[site_id]
+end
+
+local function session_is_expired(session_doc, now_sec)
+  local expires = tonumber(session_doc and session_doc.expiresAtUnix) or 0
+  return expires > 0 and expires <= now_sec
+end
+
+local function normalize_session_id(value, field)
+  return validate_policy_token(value, field, 160, "^[%w%-%._:@/+=]+$")
+end
+
+local function normalize_session_subject(value, field)
+  return validate_policy_token(value, field, 320, "^[%w%-%._:@/+=]+$")
+end
+
+local function default_session_ttl_sec(site_id)
+  local auth_doc = snapshot_site_auth_metadata(site_id)
+  local configured = tonumber(auth_doc.tokenTtlSec) or 0
+  if configured > 0 then
+    return configured
+  end
+  return 14 * 24 * 60 * 60
+end
+
+local function make_session_id(msg, site_id, subject)
+  local req = tostring(msg["Request-Id"] or ""):gsub("[^%w%-%._:@/+=]", "")
+  if req ~= "" then
+    return "sess:" .. site_id .. ":" .. req
+  end
+  local normalized_subject = tostring(subject or ""):gsub("[^%w%-%._:@/+=]", ""):sub(1, 24)
+  if normalized_subject == "" then
+    normalized_subject = "anonymous"
+  end
+  return ("sess:%s:%d:%s"):format(site_id, now_unix(), normalized_subject)
+end
+
+local function snapshot_session_lifecycle(site_id, session_id)
+  local site_sessions = ensure_site_sessions(site_id)
+  local existing = site_sessions[session_id]
+  if type(existing) ~= "table" then
+    return nil
+  end
+
+  local claims = shallow_copy_table(existing.claims) or {}
+  local context = shallow_copy_table(existing.context) or {}
+  local now_sec = now_unix()
+  local status = existing.status or "active"
+  if not session_lifecycle_status_allow[status] then
+    status = "active"
+  end
+
+  local out = {
+    siteId = existing.siteId or site_id,
+    sessionId = existing.sessionId or session_id,
+    subject = existing.subject or "",
+    status = status,
+    ttlSec = tonumber(existing.ttlSec) or 0,
+    createdAt = existing.createdAt or "1970-01-01T00:00:00Z",
+    createdAtUnix = tonumber(existing.createdAtUnix) or 0,
+    expiresAt = existing.expiresAt or "1970-01-01T00:00:00Z",
+    expiresAtUnix = tonumber(existing.expiresAtUnix) or 0,
+    rotatedFrom = existing.rotatedFrom,
+    rotatedTo = existing.rotatedTo,
+    rotatedAt = existing.rotatedAt,
+    revokedAt = existing.revokedAt,
+    updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = existing.updatedBy or "",
+    claims = claims,
+    context = context,
+    expired = session_is_expired(existing, now_sec),
+  }
+  return out
+end
+
+local function normalize_webhook_provider(value)
+  if value == nil then
+    return true, "default"
+  end
+  local ok_provider, err_provider = validate_policy_token(value, "Provider", 128, "^[%w%-%._:@/+=]+$")
+  if not ok_provider then
+    return false, err_provider
+  end
+  return true, tostring(value)
+end
+
+local function normalize_webhook_idempotency_policy(value)
+  local raw = value
+  if raw == nil then
+    return true, "dedupe"
+  end
+  local ok_type, err_type = validation.assert_type(raw, "string", "Policy")
+  if not ok_type then
+    return false, err_type
+  end
+  local normalized = tostring(raw):lower()
+  if not webhook_idempotency_policy_allow[normalized] then
+    return false, "invalid_value:Policy"
+  end
+  return true, normalized
+end
+
+local function normalize_webhook_event_id(value, key_max_bytes)
+  if value == nil then
+    return true, ""
+  end
+  local ok_type, err_type = validation.assert_type(value, "string", "Event-Id")
+  if not ok_type then
+    return false, err_type
+  end
+  local event_id = tostring(value)
+  if event_id == "" then
+    return true, ""
+  end
+  if #event_id > key_max_bytes then
+    return true, ""
+  end
+  return true, event_id
+end
+
+local function normalize_webhook_fingerprint(value)
+  local ok_type, err_type = validation.assert_type(value, "string", "Fingerprint")
+  if not ok_type then
+    return false, err_type
+  end
+  local ok_len, err_len = validation.check_length(value, 512, "Fingerprint")
+  if not ok_len then
+    return false, err_len
+  end
+  local fingerprint = tostring(value)
+  if fingerprint == "" then
+    return false, "invalid_format:Fingerprint"
+  end
+  return true, fingerprint
+end
+
+local function ensure_site_payment_webhooks(site_id)
+  ensure_policy_state()
+  if type(state.policy.payment_webhooks[site_id]) ~= "table" then
+    state.policy.payment_webhooks[site_id] = {}
+  end
+  return state.policy.payment_webhooks[site_id]
+end
+
+local function ensure_provider_payment_ledger(site_id, provider)
+  local site_map = ensure_site_payment_webhooks(site_id)
+  local existing = site_map[provider]
+  if type(existing) ~= "table" then
+    existing = {
+      ttlSec = DEFAULT_WEBHOOK_IDEMP_TTL_SEC,
+      maxKeys = DEFAULT_WEBHOOK_IDEMP_MAX_KEYS,
+      keyMaxBytes = DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES,
+      entries = {},
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+    }
+    site_map[provider] = existing
+  end
+  if type(existing.entries) ~= "table" then
+    existing.entries = {}
+  end
+  existing.ttlSec = tonumber(existing.ttlSec) or DEFAULT_WEBHOOK_IDEMP_TTL_SEC
+  existing.maxKeys = tonumber(existing.maxKeys) or DEFAULT_WEBHOOK_IDEMP_MAX_KEYS
+  existing.keyMaxBytes = tonumber(existing.keyMaxBytes) or DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES
+  existing.updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z"
+  existing.updatedBy = existing.updatedBy or ""
+  return existing
+end
+
+local function prune_expired_webhook_entries(ledger, now_unix, ttl_sec)
+  if type(ledger.entries) ~= "table" then
+    ledger.entries = {}
+    return 0
+  end
+  local removed = 0
+  for event_id, entry in pairs(ledger.entries) do
+    local seen_at_unix = tonumber(entry and entry.seenAtUnix) or 0
+    if seen_at_unix <= 0 or (now_unix - seen_at_unix) > ttl_sec then
+      ledger.entries[event_id] = nil
+      removed = removed + 1
+    end
+  end
+  return removed
+end
+
+local function count_webhook_entries(ledger)
+  local count = 0
+  for _ in pairs(ledger.entries or {}) do
+    count = count + 1
+  end
+  return count
+end
+
+local function prune_oldest_webhook_entry(ledger)
+  local oldest_key = nil
+  local oldest_unix = nil
+  for event_id, entry in pairs(ledger.entries or {}) do
+    local seen_at_unix = tonumber(entry and entry.seenAtUnix) or 0
+    if oldest_unix == nil or seen_at_unix < oldest_unix then
+      oldest_key = event_id
+      oldest_unix = seen_at_unix
+    end
+  end
+  if oldest_key ~= nil then
+    ledger.entries[oldest_key] = nil
+    return 1
+  end
+  return 0
+end
+
+local function snapshot_payment_webhook_entry(event_id, entry, ttl_sec, now_unix)
+  local seen_at_unix = tonumber(entry and entry.seenAtUnix) or 0
+  local seen_at = entry and entry.seenAt or "1970-01-01T00:00:00Z"
+  local expires_at_unix = seen_at_unix + ttl_sec
+  local expires_at = os.date("!%Y-%m-%dT%H:%M:%SZ", expires_at_unix)
+  return {
+    eventId = event_id,
+    fingerprint = entry and entry.fingerprint or "",
+    seenAt = seen_at,
+    seenAtUnix = seen_at_unix,
+    expiresAt = expires_at,
+    expiresAtUnix = expires_at_unix,
+    expired = seen_at_unix <= 0 or expires_at_unix <= now_unix,
+  }
+end
+
+local function snapshot_payment_webhook_ledger(site_id, provider, ledger, limit)
+  local ttl_sec = tonumber(ledger.ttlSec) or DEFAULT_WEBHOOK_IDEMP_TTL_SEC
+  local now_unix_value = now_unix()
+  local entries = {}
+  for event_id, entry in pairs(ledger.entries or {}) do
+    entries[#entries + 1] = snapshot_payment_webhook_entry(event_id, entry, ttl_sec, now_unix_value)
+  end
+  table.sort(entries, function(a, b)
+    return (tonumber(a.seenAtUnix) or 0) > (tonumber(b.seenAtUnix) or 0)
+  end)
+  while #entries > limit do
+    table.remove(entries)
+  end
+  return {
+    siteId = site_id,
+    provider = provider,
+    ttlSec = ttl_sec,
+    maxKeys = tonumber(ledger.maxKeys) or DEFAULT_WEBHOOK_IDEMP_MAX_KEYS,
+    keyMaxBytes = tonumber(ledger.keyMaxBytes) or DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES,
+    count = count_webhook_entries(ledger),
+    updatedAt = ledger.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = ledger.updatedBy or "",
+    entries = entries,
+  }
+end
+
+local function snapshot_domain_lifecycle_state(host, site_id)
+  ensure_policy_state()
+  local existing = state.policy.domain_lifecycle[host]
+  if type(existing) ~= "table" then
+    return {
+      host = host,
+      siteId = site_id,
+      state = "active",
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+      reason = nil,
+      source = "default",
+    }
+  end
+  return {
+    host = host,
+    siteId = existing.siteId or site_id,
+    state = existing.state or "active",
+    updatedAt = existing.updatedAt or "1970-01-01T00:00:00Z",
+    updatedBy = existing.updatedBy or "",
+    reason = existing.reason,
+    source = existing.source or "manual",
+  }
+end
+
+local function snapshot_hb_node_profile(node_id)
+  ensure_policy_state()
+  local existing = state.policy.hb_nodes[node_id]
+  if type(existing) ~= "table" then
+    return {
+      nodeId = node_id,
+      registered = false,
+      status = "unknown",
+      labels = {},
+      metadata = {},
+      registeredAt = nil,
+      updatedAt = nil,
+    }
+  end
+  local labels = {}
+  if type(existing.labels) == "table" then
+    for idx, label in ipairs(existing.labels) do
+      labels[idx] = label
+    end
+  end
+  local metadata = shallow_copy_table(existing.metadata) or {}
+  return {
+    nodeId = node_id,
+    registered = true,
+    status = existing.status or "unknown",
+    url = existing.url,
+    region = existing.region,
+    country = existing.country,
+    capabilityTier = existing.capabilityTier,
+    scoreWeight = existing.scoreWeight,
+    labels = labels,
+    metadata = metadata,
+    registeredAt = existing.registeredAt,
+    updatedAt = existing.updatedAt,
+  }
+end
+
+function handlers.GetPolicySnapshot(msg)
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Snapshot-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  ensure_policy_state()
+  local policy_mode = policy_mode_or_default()
+  local requested_snapshot = msg["Snapshot-Id"]
+  local snapshot_id = requested_snapshot or state.policy.activeSnapshotId
+  local snapshot = nil
+
+  if snapshot_id ~= nil then
+    local ok_snapshot_id, err_snapshot_id = validate_policy_token(
+      snapshot_id,
+      "Snapshot-Id",
+      128,
+      "^[%w%-%._:@/]+$"
+    )
+    if not ok_snapshot_id then
+      return codec.error("INVALID_INPUT", err_snapshot_id, { field = "Snapshot-Id" })
+    end
+    snapshot = state.policy.snapshots[snapshot_id]
+    if snapshot == nil and requested_snapshot ~= nil then
+      return codec.error("NOT_FOUND", "Policy snapshot not found", { snapshotId = snapshot_id })
+    end
+  end
+
+  if snapshot == nil then
+    return codec.ok {
+      snapshot = nil,
+      activeSnapshotId = state.policy.activeSnapshotId,
+      policyMode = policy_mode,
+      note = "snapshot_unpublished",
+    }
+  end
+
+  return codec.ok {
+    snapshot = shallow_copy_table(snapshot),
+    activeSnapshotId = state.policy.activeSnapshotId,
+    policyMode = policy_mode,
+  }
+end
+
+function handlers.GetSiteServingPolicy(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Site-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    servingPolicy = snapshot_site_serving_policy(site_id),
+    fundingState = snapshot_site_funding_state(site_id),
+  }
+end
+
+function handlers.GetHBNodeProfile(msg)
+  local ok, missing = validation.require_fields(msg, { "Node-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Node-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Node-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_node_id, err_node_id = validate_policy_token(
+    msg["Node-Id"],
+    "Node-Id",
+    128,
+    "^[%w%-%._:@]+$"
+  )
+  if not ok_node_id then
+    return codec.error("INVALID_INPUT", err_node_id, { field = "Node-Id" })
+  end
+  local node_id = tostring(msg["Node-Id"])
+
+  return codec.ok {
+    nodeId = node_id,
+    policyMode = policy_mode_or_default(),
+    profile = snapshot_hb_node_profile(node_id),
+  }
+end
+
+function handlers.GetDnsProofState(msg)
+  local ok, missing = validation.require_fields(msg, { "Host" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Host is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+  end
+  local host = normalized_host_or_err
+  local site_id = state.domains[host]
+  local dns_state = snapshot_dns_proof_state(host, site_id)
+
+  return codec.ok {
+    host = host,
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    dnsProofState = dns_state,
+  }
+end
+
+local function resolve_host_policy_bundle(host, node_id)
+  local site_id = state.domains[host]
+  local serving_policy = site_id and snapshot_site_serving_policy(site_id) or nil
+  local funding_state = site_id and snapshot_site_funding_state(site_id) or nil
+  local auth_metadata = site_id and snapshot_site_auth_metadata(site_id) or nil
+  local dns_proof_state = snapshot_dns_proof_state(host, site_id)
+  local domain_lifecycle = snapshot_domain_lifecycle_state(host, site_id)
+  local node_profile = node_id and snapshot_hb_node_profile(node_id) or nil
+  local policy_mode = policy_mode_or_default()
+  local allow = true
+  local reason = "policy_stub_allow"
+  if policy_mode == "off" then
+    reason = "policy_mode_off"
+  end
+
+  local cache_ttl = 300
+  if serving_policy and tonumber(serving_policy.cacheTtlSec) then
+    cache_ttl = tonumber(serving_policy.cacheTtlSec)
+  end
+
+  return {
+    host = host,
+    nodeId = node_id,
+    siteId = site_id,
+    allow = allow,
+    decision = allow and "allow" or "deny",
+    reason = reason,
+    policyMode = policy_mode,
+    cacheTtlSec = cache_ttl,
+    servingPolicy = serving_policy,
+    fundingState = funding_state,
+    authMetadata = auth_metadata,
+    dnsProofState = dns_proof_state,
+    domainLifecycle = domain_lifecycle,
+    nodeProfile = node_profile,
+  }
+end
+
+local TEMPLATE_ACTION_CONTRACT = {
+  contractVersion = "1.0.0",
+  updatedAt = "2026-04-22T00:00:00Z",
+  checksum = "sha256:c93530e2f7d31d1f270af4ab8e11f9654c6cb6c397d17c0adf652f64806419f3",
+  authority = "registry",
+  defaultMode = "off",
+  defaultDecision = "allow",
+  actions = {
+    read = {
+      ["resolve-route"] = {
+        registryAction = "ResolveHostPolicyBundle",
+        required = { "Host" },
+        optional = { "Node-Id", "Request-Id", "Nonce", "Timestamp" },
+      },
+      ["site-by-host"] = {
+        registryAction = "GetSiteByHost",
+        required = { "Host" },
+        optional = { "Request-Id", "Nonce", "Timestamp" },
+      },
+      ["get-page"] = {
+        registryAction = "GetSiteRuntimeBundle",
+        required = { "Site-Id" },
+        optional = { "Host", "Request-Id", "Nonce", "Timestamp" },
+      },
+    },
+    write = {
+      checkout = {
+        metadata = {
+          requiresAuth = true,
+          idempotent = true,
+          requestIdField = "Request-Id",
+          actorRoleField = "Actor-Role",
+          tags = { "Action", "Site-Id", "Request-Id", "Schema-Version" },
+          note = "Checkout write handlers stay outside registry scope; this contract is authority metadata.",
+        },
+      },
+    },
+  },
+}
+
+local function parse_action_filters(msg)
+  local selected = {}
+  local out = {}
+
+  local csv = msg["Action-Names"]
+  if csv ~= nil then
+    local ok_csv, err_csv = validation.assert_type(csv, "string", "Action-Names")
+    if not ok_csv then
+      return nil, err_csv, "Action-Names"
+    end
+    for raw in tostring(csv):gmatch "([^,]+)" do
+      local name = raw:gsub("^%s+", ""):gsub("%s+$", "")
+      if name ~= "" and not selected[name] then
+        selected[name] = true
+        out[#out + 1] = name
+      end
+    end
+  end
+
+  local arr = msg.ActionNames
+  if arr ~= nil then
+    if type(arr) ~= "table" then
+      return nil, "invalid_type:ActionNames", "ActionNames"
+    end
+    for idx, value in ipairs(arr) do
+      local field = ("ActionNames[%d]"):format(idx)
+      local ok_name, err_name = validate_policy_token(value, field, 128, "^[%w%-%._:@/]+$")
+      if not ok_name then
+        return nil, err_name, field
+      end
+      local name = tostring(value)
+      if not selected[name] then
+        selected[name] = true
+        out[#out + 1] = name
+      end
+    end
+  end
+
+  if #out == 0 then
+    return {}
+  end
+  table.sort(out)
+  return out
+end
+
+local function copy_template_contract_actions()
+  local actions = { read = {}, write = {} }
+  for name, def in pairs(TEMPLATE_ACTION_CONTRACT.actions.read or {}) do
+    actions.read[name] = def
+  end
+  for name, def in pairs(TEMPLATE_ACTION_CONTRACT.actions.write or {}) do
+    actions.write[name] = def
+  end
+  return actions
+end
+
+local function filter_template_contract_actions(filters)
+  local known = {}
+  local filtered = { read = {}, write = {} }
+
+  for name, def in pairs(TEMPLATE_ACTION_CONTRACT.actions.read or {}) do
+    known[name] = true
+    if filters[name] then
+      filtered.read[name] = def
+    end
+  end
+  for name, def in pairs(TEMPLATE_ACTION_CONTRACT.actions.write or {}) do
+    known[name] = true
+    if filters[name] then
+      filtered.write[name] = def
+    end
+  end
+
+  local unknown = {}
+  for name in pairs(filters) do
+    if not known[name] then
+      unknown[#unknown + 1] = name
+    end
+  end
+  if #unknown > 0 then
+    table.sort(unknown)
+    return nil, unknown
+  end
+  return filtered
+end
+
+function handlers.GetTemplateActionContract(msg)
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Action-Names",
+    "ActionNames",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local payload = shallow_copy_table(TEMPLATE_ACTION_CONTRACT) or {}
+  local parsed_filters, filter_err, filter_field = parse_action_filters(msg)
+  if parsed_filters == nil then
+    return codec.error("INVALID_INPUT", filter_err, { field = filter_field or "ActionNames" })
+  end
+
+  if #parsed_filters == 0 then
+    payload.actions = copy_template_contract_actions()
+  else
+    local selected = {}
+    for _, name in ipairs(parsed_filters) do
+      selected[name] = true
+    end
+    local filtered_actions, unknown = filter_template_contract_actions(selected)
+    if filtered_actions == nil then
+      return codec.error("INVALID_INPUT", "unknown_action_filters", {
+        unknown = unknown,
+        known = {
+          "checkout",
+          "get-page",
+          "resolve-route",
+          "site-by-host",
+        },
+      })
+    end
+    payload.actions = filtered_actions
+    payload.appliedFilter = parsed_filters
+  end
+
+  payload.policyMode = policy_mode_or_default()
+  payload.generatedAt = now_iso()
+  return codec.ok(payload)
+end
+
+local function list_hosts_for_site(site_id)
+  local hosts = {}
+  for host, mapped_site in pairs(state.domains or {}) do
+    if mapped_site == site_id then
+      hosts[#hosts + 1] = host
+    end
+  end
+  table.sort(hosts)
+  return hosts
+end
+
+function handlers.GetSiteRuntimeBundle(msg)
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id = nil
+  local host = nil
+  if msg["Site-Id"] ~= nil then
+    local normalized_site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+    if not normalized_site_id then
+      return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+    end
+    site_id = normalized_site_id
+  end
+  if msg.Host ~= nil then
+    local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+    if not ok_host then
+      return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+    end
+    host = normalized_host_or_err
+  end
+
+  if site_id == nil and host == nil then
+    return codec.error("INVALID_INPUT", "Site-Id or Host is required", {
+      missing = { "Site-Id|Host" },
+    })
+  end
+
+  if site_id == nil and host ~= nil then
+    site_id = state.domains[host]
+  end
+  if site_id ~= nil and host ~= nil then
+    local mapped_site_id = state.domains[host]
+    if mapped_site_id ~= nil and mapped_site_id ~= site_id then
+      return codec.error("INVALID_INPUT", "conflicting_site_host", {
+        siteId = site_id,
+        host = host,
+        mappedSiteId = mapped_site_id,
+      })
+    end
+  end
+
+  if site_id == nil or not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id, host = host })
+  end
+
+  local hosts = list_hosts_for_site(site_id)
+  local selected_host = host or hosts[1]
+  local runtime = runtime_for_site(site_id)
+  local serving_policy = snapshot_site_serving_policy(site_id)
+  local funding_state = snapshot_site_funding_state(site_id)
+  local dns_state = selected_host and snapshot_dns_proof_state(selected_host, site_id) or {
+    host = nil,
+    siteId = site_id,
+    status = "unknown",
+    verified = false,
+    checkedAt = "1970-01-01T00:00:00Z",
+    expiresAt = nil,
+    source = "stub",
+    challenge = nil,
+    txtValue = nil,
+    proofRef = nil,
+    reason = nil,
+    updatedAt = "1970-01-01T00:00:00Z",
+    updatedBy = "",
+  }
+
+  return codec.ok {
+    siteId = site_id,
+    host = selected_host,
+    hosts = hosts,
+    policyMode = policy_mode_or_default(),
+    runtime = runtime,
+    servingPolicy = serving_policy,
+    fundingState = funding_state,
+    authMetadata = snapshot_site_auth_metadata(site_id),
+    dnsProofSummary = {
+      host = dns_state.host,
+      status = dns_state.status,
+      verified = dns_state.verified == true,
+      checkedAt = dns_state.checkedAt,
+      expiresAt = dns_state.expiresAt,
+      source = dns_state.source,
+      proofRef = dns_state.proofRef,
+      reason = dns_state.reason,
+    },
+    domainLifecycle = selected_host and snapshot_domain_lifecycle_state(selected_host, site_id) or nil,
+  }
+end
+
+function handlers.GetSiteAuthMetadata(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Site-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    authMetadata = snapshot_site_auth_metadata(site_id),
+  }
+end
+
+function handlers.GetDomainLifecycleState(msg)
+  local ok, missing = validation.require_fields(msg, { "Host" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Host is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+  end
+  local host = normalized_host_or_err
+  local site_id = state.domains[host]
+
+  return codec.ok {
+    host = host,
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    lifecycle = snapshot_domain_lifecycle_state(host, site_id),
+  }
+end
+
+function handlers.CreateSessionLifecycle(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Subject" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Subject",
+    "Session-Id",
+    "Token-Ttl-Sec",
+    "Claims",
+    "Context",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local ok_subject, err_subject = normalize_session_subject(msg.Subject, "Subject")
+  if not ok_subject then
+    return codec.error("INVALID_INPUT", err_subject, { field = "Subject" })
+  end
+  local subject = tostring(msg.Subject)
+
+  local session_id = msg["Session-Id"]
+  if session_id ~= nil then
+    local ok_session_id, err_session_id = normalize_session_id(session_id, "Session-Id")
+    if not ok_session_id then
+      return codec.error("INVALID_INPUT", err_session_id, { field = "Session-Id" })
+    end
+    session_id = tostring(session_id)
+  else
+    session_id = make_session_id(msg, site_id, subject)
+  end
+
+  local ttl_default = default_session_ttl_sec(site_id)
+  local ttl_input = msg["Token-Ttl-Sec"] ~= nil and msg["Token-Ttl-Sec"] or ttl_default
+  local ttl_sec, ttl_err = normalize_positive_int(ttl_input, "Token-Ttl-Sec", 1, 31536000)
+  if ttl_sec == nil then
+    return codec.error("INVALID_INPUT", ttl_err, { field = "Token-Ttl-Sec" })
+  end
+
+  if msg.Claims ~= nil and type(msg.Claims) ~= "table" then
+    return codec.error("INVALID_INPUT", "invalid_type:Claims", { field = "Claims" })
+  end
+  if msg.Context ~= nil and type(msg.Context) ~= "table" then
+    return codec.error("INVALID_INPUT", "invalid_type:Context", { field = "Context" })
+  end
+
+  local site_sessions = ensure_site_sessions(site_id)
+  local existing = site_sessions[session_id]
+  if type(existing) == "table" then
+    if tostring(existing.subject or "") ~= subject then
+      return codec.error("CONFLICT", "session_id_already_used", {
+        siteId = site_id,
+        sessionId = session_id,
+      })
+    end
+    return codec.ok {
+      siteId = site_id,
+      session = snapshot_session_lifecycle(site_id, session_id),
+      policyMode = policy_mode_or_default(),
+      idempotent = true,
+    }
+  end
+
+  local created_unix = now_unix()
+  local expires_unix = created_unix + ttl_sec
+  local created_at = now_iso()
+  local expires_at = os.date("!%Y-%m-%dT%H:%M:%SZ", expires_unix)
+  local actor = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  local claims = shallow_copy_table(msg.Claims) or {}
+  local context = shallow_copy_table(msg.Context) or {}
+
+  site_sessions[session_id] = {
+    siteId = site_id,
+    sessionId = session_id,
+    subject = subject,
+    status = "active",
+    ttlSec = ttl_sec,
+    createdAt = created_at,
+    createdAtUnix = created_unix,
+    expiresAt = expires_at,
+    expiresAtUnix = expires_unix,
+    claims = claims,
+    context = context,
+    updatedAt = created_at,
+    updatedBy = actor,
+  }
+
+  audit.record("registry", "CreateSessionLifecycle", msg, nil, {
+    siteId = site_id,
+    sessionId = session_id,
+    subject = subject,
+    ttlSec = ttl_sec,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    session = snapshot_session_lifecycle(site_id, session_id),
+    policyMode = policy_mode_or_default(),
+  }
+end
+
+function handlers.GetSessionLifecycle(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Session-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Session-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local ok_session_id, err_session_id = normalize_session_id(msg["Session-Id"], "Session-Id")
+  if not ok_session_id then
+    return codec.error("INVALID_INPUT", err_session_id, { field = "Session-Id" })
+  end
+  local session_id = tostring(msg["Session-Id"])
+
+  local snapshot = snapshot_session_lifecycle(site_id, session_id)
+  if not snapshot then
+    return codec.error("NOT_FOUND", "session_not_found", { siteId = site_id, sessionId = session_id })
+  end
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    session = snapshot,
+  }
+end
+
+function handlers.ReadSessionLifecycle(msg)
+  local raw = handlers.GetSessionLifecycle(msg)
+  if raw.status ~= "OK" then
+    return raw
+  end
+  local session = raw.payload and raw.payload.session or nil
+  if type(session) ~= "table" then
+    return codec.error("NOT_FOUND", "session_not_found")
+  end
+
+  local status = tostring(session.status or "active")
+  if status == "revoked" then
+    return codec.error("FORBIDDEN", "session_revoked", {
+      siteId = session.siteId,
+      sessionId = session.sessionId,
+    })
+  end
+  if status == "rotated" then
+    return codec.error("FORBIDDEN", "session_rotated", {
+      siteId = session.siteId,
+      sessionId = session.sessionId,
+      rotatedTo = session.rotatedTo,
+    })
+  end
+  if session.expired == true then
+    return codec.error("EXPIRED", "session_expired", {
+      siteId = session.siteId,
+      sessionId = session.sessionId,
+      expiresAt = session.expiresAt,
+    })
+  end
+
+  return raw
+end
+
+function handlers.RotateSessionLifecycle(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Session-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Session-Id",
+    "New-Session-Id",
+    "Token-Ttl-Sec",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local ok_session_id, err_session_id = normalize_session_id(msg["Session-Id"], "Session-Id")
+  if not ok_session_id then
+    return codec.error("INVALID_INPUT", err_session_id, { field = "Session-Id" })
+  end
+  local session_id = tostring(msg["Session-Id"])
+  local existing = snapshot_session_lifecycle(site_id, session_id)
+  if not existing then
+    return codec.error("NOT_FOUND", "session_not_found", { siteId = site_id, sessionId = session_id })
+  end
+  if existing.status == "revoked" then
+    return codec.error("FORBIDDEN", "session_revoked", { siteId = site_id, sessionId = session_id })
+  end
+  if existing.status == "rotated" then
+    return codec.error("FORBIDDEN", "session_rotated", {
+      siteId = site_id,
+      sessionId = session_id,
+      rotatedTo = existing.rotatedTo,
+    })
+  end
+  if existing.expired == true then
+    return codec.error("EXPIRED", "session_expired", { siteId = site_id, sessionId = session_id })
+  end
+
+  local next_session_id = msg["New-Session-Id"]
+  if next_session_id ~= nil then
+    local ok_next, err_next = normalize_session_id(next_session_id, "New-Session-Id")
+    if not ok_next then
+      return codec.error("INVALID_INPUT", err_next, { field = "New-Session-Id" })
+    end
+    next_session_id = tostring(next_session_id)
+  else
+    next_session_id = make_session_id(msg, site_id, existing.subject)
+  end
+  if next_session_id == session_id then
+    return codec.error("INVALID_INPUT", "invalid_value:New-Session-Id", {
+      field = "New-Session-Id",
+      reason = "must_not_match_current",
+    })
+  end
+
+  local ttl_input = msg["Token-Ttl-Sec"] ~= nil and msg["Token-Ttl-Sec"] or existing.ttlSec
+  local ttl_sec, ttl_err = normalize_positive_int(ttl_input, "Token-Ttl-Sec", 1, 31536000)
+  if ttl_sec == nil then
+    return codec.error("INVALID_INPUT", ttl_err, { field = "Token-Ttl-Sec" })
+  end
+
+  local site_sessions = ensure_site_sessions(site_id)
+  local existing_next = site_sessions[next_session_id]
+  if type(existing_next) == "table" then
+    local next_snapshot = snapshot_session_lifecycle(site_id, next_session_id)
+    if next_snapshot and next_snapshot.rotatedFrom == session_id then
+      return codec.ok {
+        siteId = site_id,
+        policyMode = policy_mode_or_default(),
+        session = next_snapshot,
+        previousSessionId = session_id,
+        idempotent = true,
+      }
+    end
+    return codec.error("CONFLICT", "session_id_already_used", {
+      siteId = site_id,
+      sessionId = next_session_id,
+    })
+  end
+
+  local now_iso_value = now_iso()
+  local now_unix_value = now_unix()
+  local actor = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  local expires_unix = now_unix_value + ttl_sec
+
+  local current_doc = site_sessions[session_id]
+  current_doc.status = "rotated"
+  current_doc.rotatedAt = now_iso_value
+  current_doc.rotatedTo = next_session_id
+  current_doc.updatedAt = now_iso_value
+  current_doc.updatedBy = actor
+
+  site_sessions[next_session_id] = {
+    siteId = site_id,
+    sessionId = next_session_id,
+    subject = existing.subject,
+    status = "active",
+    ttlSec = ttl_sec,
+    createdAt = now_iso_value,
+    createdAtUnix = now_unix_value,
+    expiresAt = os.date("!%Y-%m-%dT%H:%M:%SZ", expires_unix),
+    expiresAtUnix = expires_unix,
+    rotatedFrom = session_id,
+    claims = shallow_copy_table(existing.claims) or {},
+    context = shallow_copy_table(existing.context) or {},
+    updatedAt = now_iso_value,
+    updatedBy = actor,
+  }
+
+  audit.record("registry", "RotateSessionLifecycle", msg, nil, {
+    siteId = site_id,
+    sessionId = session_id,
+    nextSessionId = next_session_id,
+    ttlSec = ttl_sec,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    previousSessionId = session_id,
+    session = snapshot_session_lifecycle(site_id, next_session_id),
+  }
+end
+
+function handlers.RevokeSessionLifecycle(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Session-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Session-Id",
+    "Reason",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+  local ok_session_id, err_session_id = normalize_session_id(msg["Session-Id"], "Session-Id")
+  if not ok_session_id then
+    return codec.error("INVALID_INPUT", err_session_id, { field = "Session-Id" })
+  end
+  local session_id = tostring(msg["Session-Id"])
+  local existing = snapshot_session_lifecycle(site_id, session_id)
+  if not existing then
+    return codec.error("NOT_FOUND", "session_not_found", { siteId = site_id, sessionId = session_id })
+  end
+  if existing.status == "revoked" then
+    return codec.error("FORBIDDEN", "session_revoked", { siteId = site_id, sessionId = session_id })
+  end
+  if existing.status == "rotated" then
+    return codec.error("FORBIDDEN", "session_rotated", { siteId = site_id, sessionId = session_id })
+  end
+  if existing.expired == true then
+    return codec.error("EXPIRED", "session_expired", { siteId = site_id, sessionId = session_id })
+  end
+
+  local site_sessions = ensure_site_sessions(site_id)
+  local now_iso_value = now_iso()
+  local actor = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  local previous_status = site_sessions[session_id].status or "active"
+  site_sessions[session_id].status = "revoked"
+  site_sessions[session_id].revokedAt = now_iso_value
+  site_sessions[session_id].reason = msg.Reason or site_sessions[session_id].reason
+  site_sessions[session_id].updatedAt = now_iso_value
+  site_sessions[session_id].updatedBy = actor
+
+  audit.record("registry", "RevokeSessionLifecycle", msg, nil, {
+    siteId = site_id,
+    sessionId = session_id,
+    previousStatus = previous_status,
+    reason = msg.Reason,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    previousStatus = previous_status,
+    session = snapshot_session_lifecycle(site_id, session_id),
+  }
+end
+
+function handlers.ListSessionsBySubject(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Subject" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Subject",
+    "Include-Inactive",
+    "Limit",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local ok_subject, err_subject = normalize_session_subject(msg.Subject, "Subject")
+  if not ok_subject then
+    return codec.error("INVALID_INPUT", err_subject, { field = "Subject" })
+  end
+  local subject = tostring(msg.Subject)
+
+  local include_inactive = false
+  if msg["Include-Inactive"] ~= nil then
+    local ok_bool, bool_or_err = normalize_bool(msg["Include-Inactive"], "Include-Inactive")
+    if not ok_bool then
+      return codec.error("INVALID_INPUT", bool_or_err, { field = "Include-Inactive" })
+    end
+    include_inactive = bool_or_err
+  end
+
+  local limit = 100
+  if msg.Limit ~= nil then
+    local parsed_limit, limit_err = normalize_positive_int(msg.Limit, "Limit", 1, 500)
+    if parsed_limit == nil then
+      return codec.error("INVALID_INPUT", limit_err, { field = "Limit" })
+    end
+    limit = parsed_limit
+  end
+
+  local out = {}
+  local site_sessions = ensure_site_sessions(site_id)
+  for session_id, doc in pairs(site_sessions) do
+    if tostring(doc.subject or "") == subject then
+      local snapshot = snapshot_session_lifecycle(site_id, session_id)
+      if snapshot then
+        local include = include_inactive
+        if not include then
+          include = snapshot.status == "active" and snapshot.expired ~= true
+        end
+        if include then
+          out[#out + 1] = snapshot
+        end
+      end
+    end
+  end
+
+  table.sort(out, function(a, b)
+    return (tonumber(a.createdAtUnix) or 0) > (tonumber(b.createdAtUnix) or 0)
+  end)
+  while #out > limit do
+    table.remove(out)
+  end
+
+  return codec.ok {
+    siteId = site_id,
+    subject = subject,
+    includeInactive = include_inactive,
+    count = #out,
+    policyMode = policy_mode_or_default(),
+    sessions = out,
+  }
+end
+
+function handlers.CheckPaymentWebhookIdempotency(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Fingerprint" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Provider",
+    "Event-Id",
+    "Fingerprint",
+    "Policy",
+    "Ttl-Sec",
+    "Max-Keys",
+    "Key-Max-Bytes",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local ok_provider, provider_or_err = normalize_webhook_provider(msg.Provider)
+  if not ok_provider then
+    return codec.error("INVALID_INPUT", provider_or_err, { field = "Provider" })
+  end
+  local provider = provider_or_err
+
+  local ok_fingerprint, fingerprint_or_err = normalize_webhook_fingerprint(msg.Fingerprint)
+  if not ok_fingerprint then
+    return codec.error("INVALID_INPUT", fingerprint_or_err, { field = "Fingerprint" })
+  end
+  local fingerprint = fingerprint_or_err
+
+  local ok_policy, policy_or_err = normalize_webhook_idempotency_policy(msg.Policy)
+  if not ok_policy then
+    return codec.error("INVALID_INPUT", policy_or_err, { field = "Policy" })
+  end
+  local policy = policy_or_err
+
+  local ledger = ensure_provider_payment_ledger(site_id, provider)
+  local ttl_sec_default = tonumber(ledger.ttlSec) or DEFAULT_WEBHOOK_IDEMP_TTL_SEC
+  local max_keys_default = tonumber(ledger.maxKeys) or DEFAULT_WEBHOOK_IDEMP_MAX_KEYS
+  local key_max_bytes_default = tonumber(ledger.keyMaxBytes) or DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES
+
+  local ttl_input = msg["Ttl-Sec"] ~= nil and msg["Ttl-Sec"] or ttl_sec_default
+  local ttl_sec, ttl_err = normalize_positive_int(ttl_input, "Ttl-Sec", 1, 31536000)
+  if ttl_sec == nil then
+    return codec.error("INVALID_INPUT", ttl_err, { field = "Ttl-Sec" })
+  end
+
+  local max_keys_input = msg["Max-Keys"] ~= nil and msg["Max-Keys"] or max_keys_default
+  local max_keys, max_keys_err = normalize_positive_int(max_keys_input, "Max-Keys", 1, 500000)
+  if max_keys == nil then
+    return codec.error("INVALID_INPUT", max_keys_err, { field = "Max-Keys" })
+  end
+
+  local key_max_bytes_input = msg["Key-Max-Bytes"] ~= nil and msg["Key-Max-Bytes"] or key_max_bytes_default
+  local key_max_bytes, key_max_bytes_err =
+    normalize_positive_int(key_max_bytes_input, "Key-Max-Bytes", 16, 4096)
+  if key_max_bytes == nil then
+    return codec.error("INVALID_INPUT", key_max_bytes_err, { field = "Key-Max-Bytes" })
+  end
+
+  ledger.ttlSec = ttl_sec
+  ledger.maxKeys = max_keys
+  ledger.keyMaxBytes = key_max_bytes
+
+  local now_unix_value = now_unix()
+  local now_iso_value = now_iso()
+  local actor = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  local pruned = prune_expired_webhook_entries(ledger, now_unix_value, ttl_sec)
+
+  local ok_event_id, event_id_or_err = normalize_webhook_event_id(msg["Event-Id"], key_max_bytes)
+  if not ok_event_id then
+    return codec.error("INVALID_INPUT", event_id_or_err, { field = "Event-Id" })
+  end
+  local event_id = event_id_or_err
+  if event_id == "" then
+    return codec.ok {
+      siteId = site_id,
+      provider = provider,
+      policy = policy,
+      decision = {
+        status = "missing-id",
+        httpStatus = 400,
+        body = "missing event id",
+        accepted = false,
+        replay = true,
+        rejected = true,
+        conflict = false,
+      },
+      ledger = {
+        count = count_webhook_entries(ledger),
+        ttlSec = ttl_sec,
+        maxKeys = max_keys,
+        keyMaxBytes = key_max_bytes,
+        pruned = pruned,
+      },
+      policyMode = policy_mode_or_default(),
+    }
+  end
+
+  local existing = ledger.entries[event_id]
+  if type(existing) == "table" then
+    if tostring(existing.fingerprint or "") == fingerprint then
+      local status = "duplicate"
+      local http_status = policy == "reject" and 409 or 200
+      local body = policy == "reject" and "duplicate event id" or "replay"
+      return codec.ok {
+        siteId = site_id,
+        provider = provider,
+        policy = policy,
+        eventId = event_id,
+        decision = {
+          status = status,
+          httpStatus = http_status,
+          body = body,
+          accepted = false,
+          replay = true,
+          rejected = policy == "reject",
+          conflict = false,
+        },
+        existing = snapshot_payment_webhook_entry(event_id, existing, ttl_sec, now_unix_value),
+        ledger = {
+          count = count_webhook_entries(ledger),
+          ttlSec = ttl_sec,
+          maxKeys = max_keys,
+          keyMaxBytes = key_max_bytes,
+          pruned = pruned,
+        },
+        policyMode = policy_mode_or_default(),
+      }
+    end
+    return codec.ok {
+      siteId = site_id,
+      provider = provider,
+      policy = policy,
+      eventId = event_id,
+      decision = {
+        status = "conflict",
+        httpStatus = 409,
+        body = "conflicting event payload for event id",
+        accepted = false,
+        replay = true,
+        rejected = true,
+        conflict = true,
+      },
+      existing = snapshot_payment_webhook_entry(event_id, existing, ttl_sec, now_unix_value),
+      ledger = {
+        count = count_webhook_entries(ledger),
+        ttlSec = ttl_sec,
+        maxKeys = max_keys,
+        keyMaxBytes = key_max_bytes,
+        pruned = pruned,
+      },
+      policyMode = policy_mode_or_default(),
+    }
+  end
+
+  while count_webhook_entries(ledger) >= max_keys do
+    pruned = pruned + prune_oldest_webhook_entry(ledger)
+  end
+
+  ledger.entries[event_id] = {
+    fingerprint = fingerprint,
+    seenAt = now_iso_value,
+    seenAtUnix = now_unix_value,
+  }
+  ledger.updatedAt = now_iso_value
+  ledger.updatedBy = actor
+
+  audit.record("registry", "CheckPaymentWebhookIdempotency", msg, nil, {
+    siteId = site_id,
+    provider = provider,
+    eventId = event_id,
+    accepted = true,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    provider = provider,
+    policy = policy,
+    eventId = event_id,
+    decision = {
+      status = "accepted",
+      httpStatus = 200,
+      body = "ok",
+      accepted = true,
+      replay = false,
+      rejected = false,
+      conflict = false,
+    },
+    entry = snapshot_payment_webhook_entry(event_id, ledger.entries[event_id], ttl_sec, now_unix_value),
+    ledger = {
+      count = count_webhook_entries(ledger),
+      ttlSec = ttl_sec,
+      maxKeys = max_keys,
+      keyMaxBytes = key_max_bytes,
+      pruned = pruned,
+    },
+    policyMode = policy_mode_or_default(),
+  }
+end
+
+function handlers.GetPaymentWebhookIdempotencyState(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Provider",
+    "Include-Entries",
+    "Limit",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local include_entries = false
+  if msg["Include-Entries"] ~= nil then
+    local ok_include, include_or_err = normalize_bool(msg["Include-Entries"], "Include-Entries")
+    if not ok_include then
+      return codec.error("INVALID_INPUT", include_or_err, { field = "Include-Entries" })
+    end
+    include_entries = include_or_err
+  end
+
+  local limit = 50
+  if msg.Limit ~= nil then
+    local parsed_limit, limit_err = normalize_positive_int(msg.Limit, "Limit", 1, 1000)
+    if parsed_limit == nil then
+      return codec.error("INVALID_INPUT", limit_err, { field = "Limit" })
+    end
+    limit = parsed_limit
+  end
+
+  local site_map = ensure_site_payment_webhooks(site_id)
+  local provider_raw = msg.Provider
+  if provider_raw ~= nil then
+    local ok_provider, provider_or_err = normalize_webhook_provider(provider_raw)
+    if not ok_provider then
+      return codec.error("INVALID_INPUT", provider_or_err, { field = "Provider" })
+    end
+    local provider = provider_or_err
+    local existing = site_map[provider]
+    local ledger = type(existing) == "table" and existing or {
+      ttlSec = DEFAULT_WEBHOOK_IDEMP_TTL_SEC,
+      maxKeys = DEFAULT_WEBHOOK_IDEMP_MAX_KEYS,
+      keyMaxBytes = DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES,
+      entries = {},
+      updatedAt = "1970-01-01T00:00:00Z",
+      updatedBy = "",
+    }
+    local snapshot = snapshot_payment_webhook_ledger(site_id, provider, ledger, include_entries and limit or 0)
+    if not include_entries then
+      snapshot.entries = {}
+    end
+    return codec.ok {
+      siteId = site_id,
+      provider = provider,
+      ledger = snapshot,
+      policyMode = policy_mode_or_default(),
+    }
+  end
+
+  local providers = {}
+  for provider, ledger in pairs(site_map) do
+    if type(ledger) == "table" then
+      local snapshot = snapshot_payment_webhook_ledger(site_id, provider, ledger, include_entries and limit or 0)
+      if not include_entries then
+        snapshot.entries = {}
+      end
+      providers[#providers + 1] = snapshot
+    end
+  end
+  table.sort(providers, function(a, b)
+    return tostring(a.provider or "") < tostring(b.provider or "")
+  end)
+
+  return codec.ok {
+    siteId = site_id,
+    count = #providers,
+    providers = providers,
+    includeEntries = include_entries,
+    policyMode = policy_mode_or_default(),
+  }
+end
+
+function handlers.ResetPaymentWebhookIdempotencyState(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Provider",
+    "Event-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local site_map = ensure_site_payment_webhooks(site_id)
+  local actor = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  local now_iso_value = now_iso()
+  local removed = 0
+  local scope = "site"
+  local provider = nil
+  local event_id = nil
+
+  if msg.Provider ~= nil then
+    local ok_provider, provider_or_err = normalize_webhook_provider(msg.Provider)
+    if not ok_provider then
+      return codec.error("INVALID_INPUT", provider_or_err, { field = "Provider" })
+    end
+    provider = provider_or_err
+  end
+
+  if msg["Event-Id"] ~= nil then
+    local key_max_bytes = DEFAULT_WEBHOOK_IDEMP_KEY_MAX_BYTES
+    if provider and type(site_map[provider]) == "table" then
+      key_max_bytes = tonumber(site_map[provider].keyMaxBytes) or key_max_bytes
+    end
+    local ok_event_id, event_id_or_err = normalize_webhook_event_id(msg["Event-Id"], key_max_bytes)
+    if not ok_event_id or event_id_or_err == "" then
+      return codec.error("INVALID_INPUT", "invalid_value:Event-Id", { field = "Event-Id" })
+    end
+    event_id = event_id_or_err
+    scope = "event"
+    if not provider then
+      provider = "default"
+    end
+  elseif provider then
+    scope = "provider"
+  end
+
+  if scope == "event" then
+    local ledger = site_map[provider]
+    if type(ledger) == "table" and type(ledger.entries) == "table" then
+      if ledger.entries[event_id] ~= nil then
+        ledger.entries[event_id] = nil
+        ledger.updatedAt = now_iso_value
+        ledger.updatedBy = actor
+        removed = 1
+      end
+    end
+  elseif scope == "provider" then
+    local ledger = site_map[provider]
+    if type(ledger) == "table" then
+      removed = count_webhook_entries(ledger)
+      ledger.entries = {}
+      ledger.updatedAt = now_iso_value
+      ledger.updatedBy = actor
+    end
+  else
+    for provider_key, ledger in pairs(site_map) do
+      if type(ledger) == "table" then
+        removed = removed + count_webhook_entries(ledger)
+        site_map[provider_key] = nil
+      end
+    end
+  end
+
+  audit.record("registry", "ResetPaymentWebhookIdempotencyState", msg, nil, {
+    siteId = site_id,
+    scope = scope,
+    provider = provider,
+    eventId = event_id,
+    removed = removed,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    scope = scope,
+    provider = provider,
+    eventId = event_id,
+    removed = removed,
+    policyMode = policy_mode_or_default(),
+  }
+end
+
+function handlers.ResolveHostPolicyBundle(msg)
+  local ok, missing = validation.require_fields(msg, { "Host" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Host is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Node-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+  end
+
+  local node_id = msg["Node-Id"]
+  if node_id ~= nil then
+    local ok_node_id, err_node_id =
+      validate_policy_token(node_id, "Node-Id", 128, "^[%w%-%._:@]+$")
+    if not ok_node_id then
+      return codec.error("INVALID_INPUT", err_node_id, { field = "Node-Id" })
+    end
+    node_id = tostring(node_id)
+  end
+
+  local bundle = resolve_host_policy_bundle(normalized_host_or_err, node_id)
+  return codec.ok(bundle)
+end
+
+function handlers.GetDecisionForHostNode(msg)
+  local ok, missing = validation.require_fields(msg, { "Host" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Host is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Node-Id",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+  end
+
+  local node_id = msg["Node-Id"]
+  if node_id ~= nil then
+    local ok_node_id, err_node_id =
+      validate_policy_token(node_id, "Node-Id", 128, "^[%w%-%._:@]+$")
+    if not ok_node_id then
+      return codec.error("INVALID_INPUT", err_node_id, { field = "Node-Id" })
+    end
+    node_id = tostring(node_id)
+  end
+
+  local bundle = resolve_host_policy_bundle(normalized_host_or_err, node_id)
+  return codec.ok(bundle)
+end
+
+function handlers.RegisterHBNode(msg)
+  local ok, missing = validation.require_fields(msg, { "Node-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Node-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Node-Id",
+    "Url",
+    "Region",
+    "Country",
+    "Status",
+    "Capability-Tier",
+    "Score-Weight",
+    "Labels",
+    "Metadata",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local ok_node_id, err_node_id = validate_policy_token(
+    msg["Node-Id"],
+    "Node-Id",
+    128,
+    "^[%w%-%._:@]+$"
+  )
+  if not ok_node_id then
+    return codec.error("INVALID_INPUT", err_node_id, { field = "Node-Id" })
+  end
+  local node_id = tostring(msg["Node-Id"])
+
+  if msg.Url ~= nil then
+    local ok_url, err_url = validate_policy_url(msg.Url, "Url")
+    if not ok_url then
+      return codec.error("INVALID_INPUT", err_url, { field = "Url" })
+    end
+  end
+  if msg.Region ~= nil then
+    local ok_region, err_region = validate_policy_token(msg.Region, "Region", 64, "^[%w%-%._]+$")
+    if not ok_region then
+      return codec.error("INVALID_INPUT", err_region, { field = "Region" })
+    end
+  end
+  if msg.Country ~= nil then
+    local ok_country, err_country =
+      validate_policy_token(msg.Country, "Country", 8, "^[A-Za-z][A-Za-z0-9%-_]*$")
+    if not ok_country then
+      return codec.error("INVALID_INPUT", err_country, { field = "Country" })
+    end
+  end
+
+  local status = msg.Status and tostring(msg.Status):lower() or "online"
+  if not hb_node_status_allow[status] then
+    return codec.error("INVALID_INPUT", "invalid_value:Status", { field = "Status" })
+  end
+
+  local labels, labels_err, labels_field = normalize_string_list(
+    msg.Labels,
+    "Labels",
+    function(value, field)
+      return validate_policy_token(value, field, 64, "^[%w%-%._:@/]+$")
+    end
+  )
+  if not labels then
+    return codec.error("INVALID_INPUT", labels_err, { field = labels_field or "Labels" })
+  end
+
+  local score_weight = nil
+  if msg["Score-Weight"] ~= nil then
+    score_weight = tonumber(msg["Score-Weight"])
+    if not score_weight or score_weight < 0 then
+      return codec.error("INVALID_INPUT", "invalid_number:Score-Weight", { field = "Score-Weight" })
+    end
+  end
+
+  if msg.Metadata ~= nil and type(msg.Metadata) ~= "table" then
+    return codec.error("INVALID_INPUT", "invalid_type:Metadata", { field = "Metadata" })
+  end
+  local metadata = shallow_copy_table(msg.Metadata) or {}
+
+  ensure_policy_state()
+  local existing = state.policy.hb_nodes[node_id]
+  local now = now_iso()
+  local entry = type(existing) == "table" and shallow_copy_table(existing) or { nodeId = node_id }
+  if not entry.registeredAt then
+    entry.registeredAt = now
+  end
+  entry.updatedAt = now
+  entry.status = status
+  entry.url = msg.Url or entry.url
+  entry.region = msg.Region or entry.region
+  entry.country = msg.Country or entry.country
+  entry.capabilityTier = msg["Capability-Tier"] or entry.capabilityTier
+  entry.scoreWeight = score_weight or entry.scoreWeight
+  entry.labels = labels
+  entry.metadata = metadata
+  state.policy.hb_nodes[node_id] = entry
+
+  audit.record("registry", "RegisterHBNode", msg, nil, {
+    nodeId = node_id,
+    status = status,
+  })
+
+  return codec.ok {
+    nodeId = node_id,
+    registered = true,
+    status = status,
+    profile = snapshot_hb_node_profile(node_id),
+  }
+end
+
+function handlers.UpdateHBNodeStatus(msg)
+  local ok, missing = validation.require_fields(msg, { "Node-Id", "Status" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Node-Id",
+    "Status",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_node_id, err_node_id = validate_policy_token(
+    msg["Node-Id"],
+    "Node-Id",
+    128,
+    "^[%w%-%._:@]+$"
+  )
+  if not ok_node_id then
+    return codec.error("INVALID_INPUT", err_node_id, { field = "Node-Id" })
+  end
+  local node_id = tostring(msg["Node-Id"])
+
+  local status = tostring(msg.Status):lower()
+  if not hb_node_status_allow[status] then
+    return codec.error("INVALID_INPUT", "invalid_value:Status", { field = "Status" })
+  end
+
+  ensure_policy_state()
+  local existing = state.policy.hb_nodes[node_id]
+  if type(existing) ~= "table" then
+    return codec.error("NOT_FOUND", "HB node not registered", { nodeId = node_id })
+  end
+  existing.status = status
+  existing.updatedAt = now_iso()
+  state.policy.hb_nodes[node_id] = existing
+
+  audit.record("registry", "UpdateHBNodeStatus", msg, nil, {
+    nodeId = node_id,
+    status = status,
+  })
+
+  return codec.ok {
+    nodeId = node_id,
+    status = status,
+    updatedAt = existing.updatedAt,
+    profile = snapshot_hb_node_profile(node_id),
+  }
+end
+
+function handlers.SetSiteServingPolicy(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Site-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Serving-State",
+    "Policy-Ref",
+    "Cache-Ttl-Sec",
+    "DNS-Proof-Required",
+    "HB-Allow-List",
+    "HB-Deny-List",
+    "Note",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local serving_state = msg["Serving-State"] and tostring(msg["Serving-State"]):lower()
+    or "allow"
+  if not serving_state_allow[serving_state] then
+    return codec.error("INVALID_INPUT", "invalid_value:Serving-State", { field = "Serving-State" })
+  end
+
+  if msg["Policy-Ref"] ~= nil then
+    local ok_ref, err_ref = validate_policy_token(
+      msg["Policy-Ref"],
+      "Policy-Ref",
+      128,
+      "^[%w%-%._:@/]+$"
+    )
+    if not ok_ref then
+      return codec.error("INVALID_INPUT", err_ref, { field = "Policy-Ref" })
+    end
+  end
+
+  local cache_ttl_sec = 300
+  if msg["Cache-Ttl-Sec"] ~= nil then
+    local parsed_ttl, ttl_err =
+      normalize_positive_int(msg["Cache-Ttl-Sec"], "Cache-Ttl-Sec", 1, 86400)
+    if parsed_ttl == nil then
+      return codec.error("INVALID_INPUT", ttl_err, { field = "Cache-Ttl-Sec" })
+    end
+    cache_ttl_sec = parsed_ttl
+  end
+
+  local dns_proof_required = false
+  if msg["DNS-Proof-Required"] ~= nil then
+    local ok_bool, parsed_bool = normalize_bool(msg["DNS-Proof-Required"], "DNS-Proof-Required")
+    if not ok_bool then
+      return codec.error("INVALID_INPUT", parsed_bool, { field = "DNS-Proof-Required" })
+    end
+    dns_proof_required = parsed_bool
+  end
+
+  local hb_allow_list, allow_err, allow_field = normalize_string_list(
+    msg["HB-Allow-List"],
+    "HB-Allow-List",
+    function(value, field)
+      return validate_policy_token(value, field, 128, "^[%w%-%._:@]+$")
+    end
+  )
+  if not hb_allow_list then
+    return codec.error("INVALID_INPUT", allow_err, { field = allow_field or "HB-Allow-List" })
+  end
+
+  local hb_deny_list, deny_err, deny_field = normalize_string_list(
+    msg["HB-Deny-List"],
+    "HB-Deny-List",
+    function(value, field)
+      return validate_policy_token(value, field, 128, "^[%w%-%._:@]+$")
+    end
+  )
+  if not hb_deny_list then
+    return codec.error("INVALID_INPUT", deny_err, { field = deny_field or "HB-Deny-List" })
+  end
+
+  ensure_policy_state()
+  local policy_doc = state.policy.site_serving[site_id] or {}
+  policy_doc.siteId = site_id
+  policy_doc.servingState = serving_state
+  policy_doc.policyRef = msg["Policy-Ref"] or policy_doc.policyRef
+  policy_doc.cacheTtlSec = cache_ttl_sec
+  policy_doc.dnsProofRequired = dns_proof_required
+  policy_doc.hbAllowList = hb_allow_list
+  policy_doc.hbDenyList = hb_deny_list
+  policy_doc.note = msg.Note or policy_doc.note
+  policy_doc.updatedAt = now_iso()
+  policy_doc.updatedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  state.policy.site_serving[site_id] = policy_doc
+
+  audit.record("registry", "SetSiteServingPolicy", msg, nil, {
+    siteId = site_id,
+    servingState = serving_state,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    servingPolicy = snapshot_site_serving_policy(site_id),
+  }
+end
+
+function handlers.SetSiteFundingState(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id", "Funding-State" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Funding-State",
+    "Plan",
+    "Tier",
+    "Payer-Ref",
+    "Reason",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local funding_state = tostring(msg["Funding-State"]):lower()
+  if not funding_state_allow[funding_state] then
+    return codec.error("INVALID_INPUT", "invalid_value:Funding-State", { field = "Funding-State" })
+  end
+
+  if msg.Plan ~= nil then
+    local ok_plan, err_plan = validate_policy_token(msg.Plan, "Plan", 64, "^[%w%-%._:@/]+$")
+    if not ok_plan then
+      return codec.error("INVALID_INPUT", err_plan, { field = "Plan" })
+    end
+  end
+  if msg.Tier ~= nil then
+    local ok_tier, err_tier = validate_policy_token(msg.Tier, "Tier", 64, "^[%w%-%._:@/]+$")
+    if not ok_tier then
+      return codec.error("INVALID_INPUT", err_tier, { field = "Tier" })
+    end
+  end
+  if msg["Payer-Ref"] ~= nil then
+    local ok_payer, err_payer =
+      validate_policy_token(msg["Payer-Ref"], "Payer-Ref", 128, "^[%w%-%._:@/]+$")
+    if not ok_payer then
+      return codec.error("INVALID_INPUT", err_payer, { field = "Payer-Ref" })
+    end
+  end
+
+  ensure_policy_state()
+  local funding_doc = state.policy.site_funding[site_id] or {}
+  funding_doc.siteId = site_id
+  funding_doc.fundingState = funding_state
+  funding_doc.plan = msg.Plan or funding_doc.plan
+  funding_doc.tier = msg.Tier or funding_doc.tier
+  funding_doc.payerRef = msg["Payer-Ref"] or funding_doc.payerRef
+  funding_doc.reason = msg.Reason or funding_doc.reason
+  funding_doc.updatedAt = now_iso()
+  funding_doc.updatedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  state.policy.site_funding[site_id] = funding_doc
+
+  audit.record("registry", "SetSiteFundingState", msg, nil, {
+    siteId = site_id,
+    fundingState = funding_state,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    fundingState = snapshot_site_funding_state(site_id),
+  }
+end
+
+function handlers.SetDnsProofState(msg)
+  local ok, missing = validation.require_fields(msg, { "Host", "Status" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Site-Id",
+    "Status",
+    "Verified",
+    "Checked-At",
+    "Expires-At",
+    "Challenge",
+    "TXT-Value",
+    "Proof-Ref",
+    "Source",
+    "Reason",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+  end
+  local host = normalized_host_or_err
+  local mapped_site_id = state.domains[host]
+
+  local site_id = msg["Site-Id"]
+  if site_id ~= nil then
+    local normalized_site_id, site_id_err = normalize_site_id(site_id, "Site-Id")
+    if not normalized_site_id then
+      return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+    end
+    if not state.sites[normalized_site_id] then
+      return codec.error("NOT_FOUND", "Site not registered", { siteId = normalized_site_id })
+    end
+    site_id = normalized_site_id
+  else
+    site_id = mapped_site_id
+  end
+
+  local status = tostring(msg.Status):lower()
+  if not dns_proof_status_allow[status] then
+    return codec.error("INVALID_INPUT", "invalid_value:Status", { field = "Status" })
+  end
+
+  local verified = status == "valid"
+  if msg.Verified ~= nil then
+    local ok_verified, parsed_verified = normalize_bool(msg.Verified, "Verified")
+    if not ok_verified then
+      return codec.error("INVALID_INPUT", parsed_verified, { field = "Verified" })
+    end
+    verified = parsed_verified
+  end
+
+  if msg["Checked-At"] ~= nil then
+    local ok_checked, err_checked =
+      validate_policy_iso8601_utc(msg["Checked-At"], "Checked-At")
+    if not ok_checked then
+      return codec.error("INVALID_INPUT", err_checked, { field = "Checked-At" })
+    end
+  end
+  if msg["Expires-At"] ~= nil then
+    local ok_expires, err_expires =
+      validate_policy_iso8601_utc(msg["Expires-At"], "Expires-At")
+    if not ok_expires then
+      return codec.error("INVALID_INPUT", err_expires, { field = "Expires-At" })
+    end
+  end
+  if msg.Challenge ~= nil then
+    local ok_challenge, err_challenge =
+      validate_policy_token(msg.Challenge, "Challenge", 256, "^[%w%-%._:@/+=]+$")
+    if not ok_challenge then
+      return codec.error("INVALID_INPUT", err_challenge, { field = "Challenge" })
+    end
+  end
+  if msg["TXT-Value"] ~= nil then
+    local ok_txt, err_txt = validation.assert_type(msg["TXT-Value"], "string", "TXT-Value")
+    if not ok_txt then
+      return codec.error("INVALID_INPUT", err_txt, { field = "TXT-Value" })
+    end
+    local ok_txt_len, err_txt_len = validation.check_length(msg["TXT-Value"], 2048, "TXT-Value")
+    if not ok_txt_len then
+      return codec.error("INVALID_INPUT", err_txt_len, { field = "TXT-Value" })
+    end
+  end
+  if msg["Proof-Ref"] ~= nil then
+    local ok_ref, err_ref =
+      validate_policy_token(msg["Proof-Ref"], "Proof-Ref", 128, "^[%w%-%._:@/]+$")
+    if not ok_ref then
+      return codec.error("INVALID_INPUT", err_ref, { field = "Proof-Ref" })
+    end
+  end
+  if msg.Source ~= nil then
+    local ok_source, err_source = validate_policy_token(msg.Source, "Source", 64, "^[%w%-%._:@/]+$")
+    if not ok_source then
+      return codec.error("INVALID_INPUT", err_source, { field = "Source" })
+    end
+  end
+
+  ensure_policy_state()
+  local now = now_iso()
+  local proof_doc = state.policy.dns_proofs[host] or {}
+  proof_doc.host = host
+  proof_doc.siteId = site_id
+  proof_doc.status = status
+  proof_doc.verified = verified
+  proof_doc.checkedAt = msg["Checked-At"] or now
+  proof_doc.expiresAt = msg["Expires-At"] or proof_doc.expiresAt
+  proof_doc.challenge = msg.Challenge or proof_doc.challenge
+  proof_doc.txtValue = msg["TXT-Value"] or proof_doc.txtValue
+  proof_doc.proofRef = msg["Proof-Ref"] or proof_doc.proofRef
+  proof_doc.source = msg.Source or proof_doc.source or "manual"
+  proof_doc.reason = msg.Reason or proof_doc.reason
+  proof_doc.updatedAt = now
+  proof_doc.updatedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  state.policy.dns_proofs[host] = proof_doc
+
+  audit.record("registry", "SetDnsProofState", msg, nil, {
+    host = host,
+    siteId = site_id,
+    status = status,
+    verified = verified,
+  })
+
+  return codec.ok {
+    host = host,
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    dnsProofState = snapshot_dns_proof_state(host, site_id),
+  }
+end
+
+function handlers.SetSiteAuthMetadata(msg)
+  local ok, missing = validation.require_fields(msg, { "Site-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Site-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Site-Id",
+    "Session-Required",
+    "Provider",
+    "Token-Ttl-Sec",
+    "Cookie-Name",
+    "Session-Mode",
+    "Note",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local site_id, site_id_err = normalize_site_id(msg["Site-Id"], "Site-Id")
+  if not site_id then
+    return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+  end
+  if not state.sites[site_id] then
+    return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
+  end
+
+  local session_required = false
+  if msg["Session-Required"] ~= nil then
+    local ok_bool, parsed_bool = normalize_bool(msg["Session-Required"], "Session-Required")
+    if not ok_bool then
+      return codec.error("INVALID_INPUT", parsed_bool, { field = "Session-Required" })
+    end
+    session_required = parsed_bool
+  end
+
+  local provider = "none"
+  if msg.Provider ~= nil then
+    local ok_provider, err_provider =
+      validate_policy_token(msg.Provider, "Provider", 64, "^[%w%-%._:@/]+$")
+    if not ok_provider then
+      return codec.error("INVALID_INPUT", err_provider, { field = "Provider" })
+    end
+    provider = tostring(msg.Provider)
+  end
+
+  local token_ttl_sec = 0
+  if msg["Token-Ttl-Sec"] ~= nil then
+    local parsed_ttl, ttl_err = normalize_positive_int(msg["Token-Ttl-Sec"], "Token-Ttl-Sec", 0, 604800)
+    if parsed_ttl == nil then
+      return codec.error("INVALID_INPUT", ttl_err, { field = "Token-Ttl-Sec" })
+    end
+    token_ttl_sec = parsed_ttl
+  end
+
+  local cookie_name = nil
+  if msg["Cookie-Name"] ~= nil then
+    local ok_cookie, err_cookie =
+      validate_policy_token(msg["Cookie-Name"], "Cookie-Name", 128, "^[%w%-%._:@]+$")
+    if not ok_cookie then
+      return codec.error("INVALID_INPUT", err_cookie, { field = "Cookie-Name" })
+    end
+    cookie_name = tostring(msg["Cookie-Name"])
+  end
+
+  local session_mode = "stateless"
+  if msg["Session-Mode"] ~= nil then
+    local ok_mode, err_mode =
+      validate_policy_token(msg["Session-Mode"], "Session-Mode", 64, "^[%w%-%._:@/]+$")
+    if not ok_mode then
+      return codec.error("INVALID_INPUT", err_mode, { field = "Session-Mode" })
+    end
+    session_mode = tostring(msg["Session-Mode"])
+  end
+
+  ensure_policy_state()
+  local auth_doc = state.policy.site_auth[site_id] or {}
+  auth_doc.siteId = site_id
+  auth_doc.sessionRequired = session_required
+  auth_doc.provider = provider
+  auth_doc.tokenTtlSec = token_ttl_sec
+  auth_doc.cookieName = cookie_name
+  auth_doc.sessionMode = session_mode
+  auth_doc.note = msg.Note or auth_doc.note
+  auth_doc.updatedAt = now_iso()
+  auth_doc.updatedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  state.policy.site_auth[site_id] = auth_doc
+
+  audit.record("registry", "SetSiteAuthMetadata", msg, nil, {
+    siteId = site_id,
+    provider = provider,
+    sessionRequired = session_required,
+  })
+
+  return codec.ok {
+    siteId = site_id,
+    policyMode = policy_mode_or_default(),
+    authMetadata = snapshot_site_auth_metadata(site_id),
+  }
+end
+
+function handlers.SetDomainLifecycleState(msg)
+  local ok, missing = validation.require_fields(msg, { "Host", "State" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Missing required field", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Host",
+    "Site-Id",
+    "State",
+    "Reason",
+    "Source",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+
+  local ok_host, normalized_host_or_err = validate_gateway_domain_label(msg.Host, "Host", false)
+  if not ok_host then
+    return codec.error("INVALID_INPUT", normalized_host_or_err, { field = "Host" })
+  end
+  local host = normalized_host_or_err
+
+  local lifecycle_state = tostring(msg.State):lower()
+  if not domain_lifecycle_state_allow[lifecycle_state] then
+    return codec.error("INVALID_INPUT", "invalid_value:State", { field = "State" })
+  end
+
+  local mapped_site_id = state.domains[host]
+  local site_id = msg["Site-Id"]
+  if site_id ~= nil then
+    local normalized_site_id, site_id_err = normalize_site_id(site_id, "Site-Id")
+    if not normalized_site_id then
+      return codec.error("INVALID_INPUT", site_id_err, { field = "Site-Id" })
+    end
+    if not state.sites[normalized_site_id] then
+      return codec.error("NOT_FOUND", "Site not registered", { siteId = normalized_site_id })
+    end
+    if mapped_site_id ~= nil and mapped_site_id ~= normalized_site_id then
+      return codec.error("INVALID_INPUT", "conflicting_site_host", {
+        host = host,
+        siteId = normalized_site_id,
+        mappedSiteId = mapped_site_id,
+      })
+    end
+    site_id = normalized_site_id
+  else
+    site_id = mapped_site_id
+  end
+
+  ensure_policy_state()
+  local existing = state.policy.domain_lifecycle[host] or {}
+  local prev_state = existing.state or "active"
+  local allow_map = domain_lifecycle_transition_allow[prev_state] or {}
+  if prev_state ~= lifecycle_state and not allow_map[lifecycle_state] then
+    return codec.error("INVALID_INPUT", "invalid_domain_lifecycle_transition", {
+      host = host,
+      from = prev_state,
+      to = lifecycle_state,
+    })
+  end
+
+  local lifecycle = existing
+  lifecycle.host = host
+  lifecycle.siteId = site_id
+  lifecycle.state = lifecycle_state
+  lifecycle.reason = msg.Reason or lifecycle.reason
+  lifecycle.source = msg.Source or lifecycle.source or "manual"
+  lifecycle.updatedAt = now_iso()
+  lifecycle.updatedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  state.policy.domain_lifecycle[host] = lifecycle
+
+  audit.record("registry", "SetDomainLifecycleState", msg, nil, {
+    host = host,
+    siteId = site_id,
+    from = prev_state,
+    to = lifecycle_state,
+  })
+
+  return codec.ok {
+    host = host,
+    siteId = site_id,
+    lifecycle = snapshot_domain_lifecycle_state(host, site_id),
+    policyMode = policy_mode_or_default(),
+  }
+end
+
+function handlers.SetPolicyMode(msg)
+  local ok, missing = validation.require_fields(msg, { "Mode" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Mode is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Mode",
+    "Reason",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local mode = tostring(msg.Mode):lower()
+  if not POLICY_MODE_ALLOW[mode] then
+    return codec.error("INVALID_INPUT", "invalid_value:Mode", { field = "Mode" })
+  end
+  ensure_policy_state()
+  state.policy.mode = mode
+  state.policy.modeUpdatedAt = now_iso()
+  state.policy.modeUpdatedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  audit.record("registry", "SetPolicyMode", msg, nil, { mode = mode, reason = msg.Reason })
+  return codec.ok {
+    mode = state.policy.mode,
+    updatedAt = state.policy.modeUpdatedAt,
+    updatedBy = state.policy.modeUpdatedBy,
+    reason = msg.Reason,
+  }
+end
+
+function handlers.PublishPolicySnapshot(msg)
+  local ok, missing = validation.require_fields(msg, { "Snapshot-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Snapshot-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Snapshot-Id",
+    "Snapshot",
+    "Note",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_snapshot_id, err_snapshot_id = validate_policy_token(
+    msg["Snapshot-Id"],
+    "Snapshot-Id",
+    128,
+    "^[%w%-%._:@/]+$"
+  )
+  if not ok_snapshot_id then
+    return codec.error("INVALID_INPUT", err_snapshot_id, { field = "Snapshot-Id" })
+  end
+  if msg.Snapshot ~= nil and type(msg.Snapshot) ~= "table" then
+    return codec.error("INVALID_INPUT", "invalid_type:Snapshot", { field = "Snapshot" })
+  end
+
+  ensure_policy_state()
+  local snapshot_id = tostring(msg["Snapshot-Id"])
+  local now = now_iso()
+  local payload = shallow_copy_table(msg.Snapshot) or {
+    mode = state.policy.mode,
+    nodeCount = (function()
+      local count = 0
+      for _ in pairs(state.policy.hb_nodes) do
+        count = count + 1
+      end
+      return count
+    end)(),
+  }
+  local snapshot_doc = {
+    snapshotId = snapshot_id,
+    status = "active",
+    note = msg.Note,
+    mode = state.policy.mode,
+    payload = payload,
+    publishedAt = now,
+    publishedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or "",
+    revokedAt = nil,
+    revokedBy = nil,
+    revokeReason = nil,
+  }
+  state.policy.snapshots[snapshot_id] = snapshot_doc
+  state.policy.activeSnapshotId = snapshot_id
+
+  audit.record("registry", "PublishPolicySnapshot", msg, nil, {
+    snapshotId = snapshot_id,
+    mode = state.policy.mode,
+  })
+
+  return codec.ok {
+    snapshotId = snapshot_id,
+    activeSnapshotId = state.policy.activeSnapshotId,
+    policyMode = state.policy.mode,
+    snapshot = shallow_copy_table(snapshot_doc),
+  }
+end
+
+function handlers.RevokePolicySnapshot(msg)
+  local ok, missing = validation.require_fields(msg, { "Snapshot-Id" })
+  if not ok then
+    return codec.error("INVALID_INPUT", "Snapshot-Id is required", { missing = missing })
+  end
+  local ok_extra, extras = validation.require_no_extras(msg, {
+    "Action",
+    "Request-Id",
+    "Nonce",
+    "ts",
+    "Timestamp",
+    "Snapshot-Id",
+    "Reason",
+    "Actor-Role",
+    "Schema-Version",
+    "Signature",
+  })
+  if not ok_extra then
+    return codec.error("UNSUPPORTED_FIELD", "Unexpected fields", { unexpected = extras })
+  end
+  local ok_snapshot_id, err_snapshot_id = validate_policy_token(
+    msg["Snapshot-Id"],
+    "Snapshot-Id",
+    128,
+    "^[%w%-%._:@/]+$"
+  )
+  if not ok_snapshot_id then
+    return codec.error("INVALID_INPUT", err_snapshot_id, { field = "Snapshot-Id" })
+  end
+
+  ensure_policy_state()
+  local snapshot_id = tostring(msg["Snapshot-Id"])
+  local snapshot_doc = state.policy.snapshots[snapshot_id]
+  if type(snapshot_doc) ~= "table" then
+    return codec.error("NOT_FOUND", "Policy snapshot not found", { snapshotId = snapshot_id })
+  end
+  snapshot_doc.status = "revoked"
+  snapshot_doc.revokedAt = now_iso()
+  snapshot_doc.revokedBy = msg.From or msg["Actor-Id"] or msg["Actor-Role"] or ""
+  snapshot_doc.revokeReason = msg.Reason
+  state.policy.snapshots[snapshot_id] = snapshot_doc
+  if state.policy.activeSnapshotId == snapshot_id then
+    state.policy.activeSnapshotId = nil
+  end
+
+  audit.record("registry", "RevokePolicySnapshot", msg, nil, {
+    snapshotId = snapshot_id,
+    reason = msg.Reason,
+  })
+
+  return codec.ok {
+    snapshotId = snapshot_id,
+    status = snapshot_doc.status,
+    activeSnapshotId = state.policy.activeSnapshotId,
+    revokedAt = snapshot_doc.revokedAt,
+    revokedBy = snapshot_doc.revokedBy,
+    reason = snapshot_doc.revokeReason,
   }
 end
 
@@ -1655,6 +4915,16 @@ function handlers.BindDomain(msg)
     return codec.error("NOT_FOUND", "Site not registered", { siteId = site_id })
   end
   state.domains[normalized_host] = site_id
+  ensure_policy_state()
+  local lifecycle = state.policy.domain_lifecycle[normalized_host] or {}
+  lifecycle.host = normalized_host
+  lifecycle.siteId = site_id
+  lifecycle.state = lifecycle.state or "active"
+  lifecycle.updatedAt = lifecycle.updatedAt or now_iso()
+  lifecycle.updatedBy = lifecycle.updatedBy or (msg.From or msg["Actor-Id"] or msg["Actor-Role"] or "")
+  lifecycle.reason = lifecycle.reason
+  lifecycle.source = lifecycle.source or "bind"
+  state.policy.domain_lifecycle[normalized_host] = lifecycle
   audit.record("registry", "BindDomain", msg, nil, { host = normalized_host })
   return codec.ok {
     host = normalized_host,

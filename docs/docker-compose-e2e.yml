@@ -26,7 +26,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      # use the top-level gateway repo (sibling of -ao), not the empty stub in this repo
+      # use the top-level gateway repo (sibling of -ao); gateway/worker runtime is not owned here
       - ../../blackcat-darkmesh-gateway:/app
     environment:
       METRICS_BASIC_USER: prom
@@ -49,8 +49,8 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      # worker sources live one level up from docs/
-      - ../worker:/app
+      # canonical worker sources live in the sibling gateway repo
+      - ../../blackcat-darkmesh-gateway/workers/secrets-worker:/app
     environment:
       TEST_IN_MEMORY_KV: '1'
       INBOX_HMAC_SECRET: change-me

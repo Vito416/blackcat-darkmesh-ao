@@ -1,6 +1,7 @@
 # Docker Compose E2E (optional)
 
-Minimal compose to smoke write→gateway→worker→ao flow locally (no persistence):
+Minimal compose to smoke Write, Gateway, and the canonical Gateway-owned Worker locally (no persistence).
+The compose file lives under `docs/`, so sibling repo mounts use `../../...` paths.
 
 ```yaml
 version: '3.9'
@@ -9,7 +10,7 @@ services:
     image: lua:5.4
     working_dir: /app
     volumes:
-      - ../blackcat-darkmesh-write:/app:ro
+      - ../../blackcat-darkmesh-write:/app:ro
     environment:
       OUTBOX_HMAC_SECRET: ${OUTBOX_HMAC_SECRET:?set}
       WRITE_REQUIRE_SIGNATURE: '0'
@@ -18,7 +19,7 @@ services:
     command: ["lua", "scripts/verify/publish_outbox_mock_ao.lua"]
 
   gateway:
-    build: ../blackcat-darkmesh-gateway
+    build: ../../blackcat-darkmesh-gateway
     environment:
       METRICS_BASIC_USER: prom
       METRICS_BASIC_PASS: prompass
@@ -27,7 +28,7 @@ services:
     command: ["npm", "test", "--", "--run", "tests/metrics-auth.test.ts"]
 
   worker:
-    build: ../blackcat-darkmesh-ao/worker
+    build: ../../blackcat-darkmesh-gateway/workers/secrets-worker
     environment:
       TEST_IN_MEMORY_KV: '1'
       INBOX_HMAC_SECRET: change-me

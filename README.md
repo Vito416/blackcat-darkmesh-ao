@@ -8,7 +8,7 @@ AO-first backend layer for Blackcat Darkmesh. This repository hosts AO processes
 ## Scope
 - In scope: AO processes for public state (site registry, routing, public read model, audit metadata, permission registry), schemas, Arweave manifests/snapshots, deploy/verify/export scripts, fixtures, CI workflows.
 - Out of scope: command validation/idempotency, builder/admin UI, template/rendering layer, SMTP/OTP/payments business logic, mailbox payload persistence, full resolver/gateway runtime, or any storage of sensitive plaintext. Mutations are owned by `blackcat-darkmesh-write`.
-- Exception: this repo keeps a thin Node HTTP compatibility adapter (`scripts/http/public_api_server.mjs`) with a limited route subset (see "Gateway Adapter Surface"). Cloudflare worker runtime ownership moved to `blackcat-darkmesh-gateway/workers/` (legacy mirror remains temporarily in `worker/` during migration).
+- Exception: this repo keeps a thin Node HTTP compatibility adapter (`scripts/http/public_api_server.mjs`) with a limited route subset (see "Gateway Adapter Surface"). Cloudflare worker runtime ownership is in `blackcat-darkmesh-gateway/workers/`.
 
 ## Architecture Snapshot
 - Process split: `router`/`registry` (domains, sites, keys), `public_state` (routes, pages, navigation, SEO/public config), `catalog` (public product + category payloads/refs), `permissions` (publish keys/roles), and `audit` (receipts + references only).
@@ -39,16 +39,24 @@ tests/             # integration, message-contracts, snapshots, security
 - Gateway directory writes (admin/registry-admin only): `RegisterGateway`, `UpdateGatewayStatus`.
 - Standard tags for read responses: `Action`, `Site-Id`, `Version`, `Locale`, `Request-Id`, `Schema-Version`, `Nonce` (optional for cache-busting).
 
-## Gateway Adapter Surface (implemented now)
+## Gateway Adapter Surface
+
+AO-local compatibility adapter routes in this repo:
+
 - Read routes:
   - `POST /api/public/resolve-route` -> `ResolveRoute`
   - `POST /api/public/page` -> `GetPage`
-- Write routes (worker adapter, now canonical in `blackcat-darkmesh-gateway/workers/site-inbox-worker`):
-  - `POST /api/checkout/order` -> `CreateOrder`
-  - `POST /api/checkout/payment-intent` -> `CreatePaymentIntent`
 - Health endpoints:
   - `GET /healthz` (node adapter in `scripts/http/public_api_server.mjs`)
-  - `GET /health` and `GET /api/health` (worker adapter in `blackcat-darkmesh-gateway/workers/site-inbox-worker/src/index.ts`; temporary mirror in `worker/src/index.ts`)
+
+External gateway/worker adapter routes live in `blackcat-darkmesh-gateway`:
+
+- Worker checkout/write routes:
+  - `POST /api/checkout/order` -> `CreateOrder`
+  - `POST /api/checkout/payment-intent` -> `CreatePaymentIntent`
+- Worker health endpoints:
+  - `GET /health` and `GET /api/health` (worker adapter in `blackcat-darkmesh-gateway/workers/secrets-worker/src/index.ts`)
+
 - Not yet implemented as adapter routes: additional registry/catalog/access reads (for example `GetSiteConfig`, `GetCategory`, `ListCategories`, `SearchCatalog`, `FacetSearch`, `GetTrustedResolvers`, `GetResolverFlags`) and write routes for payment webhook/status updates, passwordless session actions, and gateway-flag submissions.
 
 ## Publish Model (apply-only)
@@ -158,7 +166,7 @@ Handy CLI helpers:
 See `docs/RUNBOOK.md` for start/stop, health checks, key rotation, outbox HMAC, Arweave deploy verification, and incident response procedures.
 
 ### Deployment notes
-Active deployment planning/tracking lives in `AO_DEPLOY_NOTES.md` (work scope, spawn order, finalization policy, and rollout checklist).
+Current deployment planning/tracking lives in `AO_DEPLOY_NOTES.md` (process ownership, spawn order, finalization policy, and rollout checklist).
 
 ### Write-bridge observability (from `blackcat-darkmesh-write`)
 When you deploy the write bridge alongside this repo, enable its logging so AO ops can audit downstream delivery:

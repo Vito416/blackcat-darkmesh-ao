@@ -1,13 +1,13 @@
-# Ops Quick Guide (AO + Write + Worker)
+# Ops Quick Guide (AO + external Write/Gateway/Worker)
 
 ## Local test commands
 - AO preflight: `scripts/verify/preflight.sh`
   - Runs schema checks, luacheck, and AO verification scripts.
 - AO smoke (minimal): `lua5.4 scripts/verify/ingest_smoke.lua`
-- Worker tests (in-memory, canonical runtime now in `blackcat-darkmesh-gateway/workers/site-inbox-worker`): `cd worker && npm ci --ignore-scripts && TEST_IN_MEMORY_KV=1 MINIFLARE_KV_PERSIST=false MINIFLARE_D1_PERSIST=:memory: npm test -- --testTimeout=30000 --reporter=basic --pool=forks --maxConcurrency=1 --run test/metrics-auth.test.ts test/security-pen.test.ts test/notify.test.ts`
+- Worker tests (in-memory, canonical runtime now in `blackcat-darkmesh-gateway/workers/secrets-worker`): `cd ../blackcat-darkmesh-gateway/workers/secrets-worker && npm ci --ignore-scripts && TEST_IN_MEMORY_KV=1 MINIFLARE_KV_PERSIST=false MINIFLARE_D1_PERSIST=:memory: npm test -- --testTimeout=30000 --reporter=basic --pool=forks --maxConcurrency=1 --run test/metrics-auth.test.ts test/security-pen.test.ts test/notify.test.ts`
 - End-to-end compose smoke (Write → Gateway → Worker):
   - `DOCKER_CONFIG=/tmp docker compose -f docs/docker-compose-e2e.yml up --build`
-  - Uses sibling repos (`blackcat-darkmesh-write`, `blackcat-darkmesh-gateway`, `worker`) and runs outbox HMAC smoke, gateway auth/webhook checks, and worker auth/notify checks.
+  - Uses sibling repos (`blackcat-darkmesh-write`, `blackcat-darkmesh-gateway`) and runs outbox HMAC smoke, gateway auth/webhook checks, and worker auth/notify checks.
   - Logs stay in compose output; the run stops on the first failing service.
 - End-to-end notify smoke (optional):
   - Extend `docs/docker-compose-e2e.yml` with an explicit Write `/notify` emit and Gateway→Worker forward flow using a test webhook URL or stub fetch.
@@ -15,8 +15,8 @@
 
 ## CI
 - `.github/workflows/ci.yml` — main AO workflow (lint/verify flow).
-- `.github/workflows/darkmesh-worker-tests.yml` — dedicated worker Vitest suite (legacy mirror path in this repo; migrate to gateway repo CI as next step).
-- `.github/workflows/darkmesh-ao-write.yml` — optional AO/Write embedded test flow; this job now auto-skips when the embedded write test layout is not present in this repo.
+- `.github/workflows/e2e-compose.yml` — manual cross-repo smoke using sibling `blackcat-darkmesh-write` and `blackcat-darkmesh-gateway` checkouts.
+- `.github/workflows/secrets-lint.yml` — AO env lint plus optional canonical gateway worker env-template check when the sibling repo is present.
 
 ## Bundler/export
 - Set env paths before running exports:
@@ -36,4 +36,4 @@
 - Remove test images after runs (optional): `docker rmi node:20-bookworm-slim` and `docker image prune -f`.
 
 ## Troubleshooting
-- `SQLITE_BUSY` during worker tests: ensure `TEST_IN_MEMORY_KV=1` is set (default in `worker/wrangler.toml`), or run tests with in-memory D1/KV env overrides.
+- `SQLITE_BUSY` during worker tests: ensure `TEST_IN_MEMORY_KV=1` is set (default in `blackcat-darkmesh-gateway/workers/secrets-worker/wrangler.toml`), or run tests with in-memory D1/KV env overrides.

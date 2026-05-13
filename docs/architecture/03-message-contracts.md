@@ -33,6 +33,35 @@ Tags on responses: `Action`, `Site-Id`, `Version`, `Locale`, `Request-Id`,
 - `ResolveGatewayForHost` (read-only, deterministic best online candidate for host)
 - `ListGateways` (read-only, optional `Status`/`Host` filters)
 
+## Draft: HB policy actions (contract-first, non-disruptive)
+- Proposed read actions:
+  - `GetPolicySnapshot`
+  - `GetSiteServingPolicy`
+  - `GetHBNodeProfile`
+  - `GetDecisionForHostNode`
+  - `GetSiteAuthMetadata`
+  - `GetDomainLifecycleState`
+  - `GetSessionLifecycle`
+  - `ReadSessionLifecycle`
+  - `ListSessionsBySubject`
+  - `GetPaymentWebhookIdempotencyState`
+- Proposed write actions (role-gated: `admin`/`registry-admin`):
+  - `RegisterHBNode`
+  - `UpdateHBNodeStatus`
+  - `SetSiteServingPolicy`
+  - `SetSiteFundingState`
+  - `SetSiteAuthMetadata`
+  - `SetDomainLifecycleState`
+  - `CreateSessionLifecycle`
+  - `RotateSessionLifecycle`
+  - `RevokeSessionLifecycle`
+  - `CheckPaymentWebhookIdempotency`
+  - `ResetPaymentWebhookIdempotencyState`
+  - `SetPolicyMode`
+  - `PublishPolicySnapshot`
+  - `RevokePolicySnapshot`
+- Full draft contract and semantics: `docs/architecture/07-hb-policy-contract-draft.md`.
+
 ## Gateway HTTP adapter surface (implemented now)
 - `POST /api/public/resolve-route` -> `ResolveRoute`
 - `POST /api/public/page` -> `GetPage`

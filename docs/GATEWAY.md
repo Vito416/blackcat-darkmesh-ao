@@ -4,29 +4,34 @@ AO remains the public, secretless read state. The gateway layer is replaceable.
 This document describes the route/action surface that is currently implemented in
 this repository, and what is still planned.
 
-## Implemented now (adapter surface)
+## Implemented now (AO-local adapter surface)
 
 Current HTTP routes exposed by adapters in this repo:
 
 - `POST /api/public/resolve-route` -> AO action `ResolveRoute`
 - `POST /api/public/page` -> AO action `GetPage`
-- `POST /api/checkout/order` -> write command `CreateOrder` (worker adapter only)
-- `POST /api/checkout/payment-intent` -> write command `CreatePaymentIntent` (worker adapter only)
 
 Health/check endpoints:
 
 - `GET /healthz` in `scripts/http/public_api_server.mjs`
-- `GET /health` and `GET /api/health` in `blackcat-darkmesh-gateway/workers/site-inbox-worker/src/index.ts` (legacy mirror in `worker/src/index.ts` during migration)
 
 Adapter implementations:
 
 - `scripts/http/public_api_server.mjs`: read-only adapter (`resolve-route`, `page`)
-- `blackcat-darkmesh-gateway/workers/site-inbox-worker/src/index.ts`: read adapter + checkout write adapter
+
+## External gateway/worker adapter surface
+
+The Cloudflare Worker and full gateway runtime live in `blackcat-darkmesh-gateway`, not this repo.
+
+- `blackcat-darkmesh-gateway/workers/secrets-worker/src/index.ts`: read adapter + checkout write adapter
+- `GET /health` and `GET /api/health`: worker health/check endpoints
+- `POST /api/checkout/order` -> write command `CreateOrder`
+- `POST /api/checkout/payment-intent` -> write command `CreatePaymentIntent`
 
 ## Currently supported request semantics
 
 - `GetPage` supports `Page-Id` or `Slug`/`Path` fallback (slug/path maps to route then page).
-- Checkout write routes are fixed per path:
+- External checkout write routes are fixed per path:
   - `/api/checkout/order` accepts only `CreateOrder` (or alias `checkout.create-order`).
   - `/api/checkout/payment-intent` accepts only `CreatePaymentIntent` (or alias `checkout.create-payment-intent`).
 - Site scope is strict: top-level `siteId`, `payload.siteId`, and `x-bridge-site-id` must match when provided.

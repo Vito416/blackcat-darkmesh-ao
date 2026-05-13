@@ -5,6 +5,15 @@ TARGET="${1:-registry}"
 DIST_DIR="dist/${TARGET}"
 RUNTIME_SOURCE="dist/registry/process.lua"
 
+docker_bind_path() {
+  local path="$1"
+  if [[ -n "${WSL_DISTRO_NAME:-}" ]] && command -v wslpath >/dev/null 2>&1 && command -v docker.exe >/dev/null 2>&1; then
+    wslpath -w "${path}"
+  else
+    printf '%s' "${path}"
+  fi
+}
+
 if [[ ! -d "${DIST_DIR}" ]]; then
   echo "dist target not found: ${DIST_DIR}" >&2
   exit 1
@@ -45,10 +54,12 @@ print(f'synthesized runtime process.lua for {target}: {dest}')
 PY
 fi
 
+DIST_ABS="$(cd "${DIST_DIR}" && pwd)"
+
 echo "Rebuilding WASM from ${DIST_DIR}/process.lua ..."
 docker run \
   --platform linux/amd64 \
-  -v "$(pwd)/${DIST_DIR}:/src" \
+  -v "$(docker_bind_path "${DIST_ABS}"):/src" \
   p3rmaw3b/ao:0.1.5 \
   ao-build-module
 

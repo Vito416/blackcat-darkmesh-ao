@@ -16,8 +16,8 @@ jobs:
 
       - name: Clone gateway + write repos
         run: |
-          git clone https://github.com/Vito416/blackcat-darkmesh-write.git write
-          git clone https://github.com/Vito416/blackcat-darkmesh-gateway.git gateway
+          git clone https://github.com/Vito416/blackcat-darkmesh-write.git ../blackcat-darkmesh-write
+          git clone https://github.com/Vito416/blackcat-darkmesh-gateway.git ../blackcat-darkmesh-gateway
 
       - name: Run compose smoke
         env:
