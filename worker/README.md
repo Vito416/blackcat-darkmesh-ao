@@ -1,5 +1,9 @@
 # Cloudflare Worker (Inbox + Thin Trusted Layer)
 
+> Migration note (2026-04): canonical worker runtime ownership moved to
+> `blackcat-darkmesh-gateway/workers/site-inbox-worker`.
+> This folder is a temporary compatibility mirror to avoid breaking existing AO-side CI and runbooks during migration.
+
 Purpose
 - Thin, low-cost trusted layer (Cloudflare Free) for small/medium sites.
 - Short-lived storage of encrypted envelopes (PII) with TTL + delete-on-download.
@@ -10,7 +14,7 @@ Purpose
 What it should do (scope)
 - Inbox with TTL + delete-on-download.
 - Forget endpoint (auth-protected) to purge by subject prefix.
-- Secret-backed operations: OTP issuance/verification, PSP webhook verification (shared secrets), signing/HMAC helpers.
+- Secret-backed operations: signing/HMAC helpers and PSP webhook verification (shared secrets).
 - Notification relay: send email/WebPush/Webhook using stored secrets; never store plaintext payload.
 - Rate limiting and replay protection for incoming hooks.
 - Scheduled janitor to delete expired envelopes and stray items.
@@ -19,6 +23,14 @@ What it should NOT do
 - No long-term database of PII; only short-lived encrypted blobs.
 - No business logic for catalog/orders; that stays in write/AO.
 - No heavy compute or large file handling (Cloudflare free limits).
+- No persistent auth-account PIP state in worker KV (OTP account DB, long-lived sessions, profile store).
+- Any full PIP database belongs offline under site admin custody, not in the shared worker runtime.
+
+PIP retention scope lock
+- Worker inbox is intentionally an ephemeral transport/cache layer.
+- Hard retention ceiling is enforced in code: `INBOX_TTL_HARD_MAX_SECONDS=86400` (24h max).
+- `INBOX_TTL_DEFAULT` / `INBOX_TTL_MAX` can only tighten retention, not extend beyond 24h.
+- Operational policy and checklist: `ops/runbooks/pip-retention-scope-lock.md`.
 
 Data model
 - KV namespace `INBOX_KV`.
@@ -42,7 +54,7 @@ API (baseline)
 
 Secrets to keep here (examples)
 - PSP webhook secrets (Stripe/PayPal/GoPay), HMAC salts.
-- OTP/TOTP secret for passwordless login.
+- OTP/TOTP secret material only when used for short-lived challenge signing/verification flows.
 - SMTP/Sendgrid/WebPush keys.
 - Admin public key is used client-side to encrypt; private keys stay offline, **never** here.
 
@@ -136,6 +148,7 @@ Runbook snippets
 - Secrets rotation: `wrangler secret put <NAME> --env production` for WORKER_AUTH_TOKEN / INBOX_HMAC_SECRET / NOTIFY_HMAC_SECRET / METRICS_BEARER_TOKEN; then `wrangler deploy --env production`.
 - Scoped-token rotation (P1-01): see `ops/runbooks/token-scope-rotation.md`.
 - Replay contention drill (P1-02): `npm run ops:drill:replay` or see `ops/runbooks/replay-contention-drill.md`.
+- PIP retention scope lock: see `ops/runbooks/pip-retention-scope-lock.md`.
 - Cron/janitor verification: `wrangler tail --env production` and watch scheduled runs (*/5). Optionally `wrangler deployments` to confirm latest version live.
 - Backup stance: KV is a short-lived cache of encrypted envelopes; data loss is acceptable by design. If you need retention, mirror writes to R2/D1 outside the worker path.
 - Monitoring hook (Prom/Grafana): scrape `/metrics` with bearer auth. Example Prom job:

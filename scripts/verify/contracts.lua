@@ -194,6 +194,10 @@ do
       workerUrl = "https://worker.example.net/site-1",
       moduleId = "module-site-1",
       scheduler = "scheduler-site-1",
+      templateTxId = "template-site-1-v1",
+      manifestTxId = "manifest-site-1-v1",
+      templateSha256 = "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      templateVariant = "search_v1",
     },
     ["Actor-Role"] = "admin",
   })
@@ -213,6 +217,16 @@ do
     register_site_1.payload.runtime.workerUrl,
     "https://worker.example.net/site-1",
     "register runtime worker url"
+  )
+  assert_eq(
+    register_site_1.payload.runtime.templateTxId,
+    "template-site-1-v1",
+    "register runtime template tx"
+  )
+  assert_eq(
+    register_site_1.payload.runtime.templateSha256,
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "register runtime template sha"
   )
   local bind = registry.route(with_req {
     Action = "BindDomain",
@@ -261,6 +275,10 @@ do
       worker_url = "https://worker.example.net/site-2",
       moduleId = "module-site-2",
       scheduler = "scheduler-site-2",
+      template_tx_id = "template-site-2-v1",
+      manifest_tx_id = "manifest-site-2-v1",
+      template_sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      template_variant = "search_v2",
     },
     ["Actor-Role"] = "registry-admin",
   })
@@ -274,6 +292,11 @@ do
     set_runtime.payload.runtime.writeProcessId,
     "proc-write-2",
     "set site runtime write pid"
+  )
+  assert_eq(
+    set_runtime.payload.runtime.templateTxId,
+    "template-site-2-v1",
+    "set site runtime template tx"
   )
 
   local get_runtime = registry.route(with_req {
@@ -298,6 +321,11 @@ do
     get_cfg_runtime.payload.runtime.scheduler,
     "scheduler-site-2",
     "site config runtime scheduler"
+  )
+  assert_eq(
+    get_cfg_runtime.payload.runtime.templateVariant,
+    "search_v2",
+    "site config runtime template variant"
   )
 
   local upsert_runtime = registry.route(with_req {
@@ -327,6 +355,26 @@ do
     upsert_runtime.payload.runtime.writeProcessId,
     "proc-write-2b",
     "upsert site runtime write pid"
+  )
+
+  local merge_runtime = registry.route(with_req {
+    Action = "SetSiteRuntime",
+    ["Site-Id"] = "site-2",
+    Runtime = {
+      templateVariant = "search_v2_hotfix",
+    },
+    ["Actor-Role"] = "registry-admin",
+  })
+  assert_status(merge_runtime, "OK", "merge runtime status")
+  assert_eq(
+    merge_runtime.payload.runtime.templateVariant,
+    "search_v2_hotfix",
+    "merge runtime template variant"
+  )
+  assert_eq(
+    merge_runtime.payload.runtime.processId,
+    "proc-site-2b-router",
+    "merge runtime preserves process"
   )
 
   local bad_runtime = registry.route(with_req {

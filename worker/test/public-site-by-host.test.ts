@@ -192,6 +192,47 @@ describe('/api/public/site-by-host', () => {
     })
   })
 
+  it('maps empty output to 404 not_found_or_empty_result', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-empty')
+    aoClient.result.mockResolvedValueOnce({
+      raw: {
+        Output: '',
+        Error: {},
+      },
+    })
+
+    const res = await callSiteByHost({ host: 'unknown.example.com' })
+    expect(res.status).toBe(404)
+    const json = await res.json()
+    expect(json).toMatchObject({
+      status: 'ERROR',
+      code: 'NOT_FOUND',
+      message: 'not_found_or_empty_result',
+    })
+  })
+
+  it('maps ao-types empty output atom to 404 not_found_or_empty_result', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-empty-atom')
+    aoClient.result.mockResolvedValueOnce({
+      raw: {
+        Output: {
+          'ao-types': 'print=\"atom\"',
+          data: '',
+          prompt: '',
+        },
+      },
+    })
+
+    const res = await callSiteByHost({ host: 'unknown.example.com' })
+    expect(res.status).toBe(404)
+    const json = await res.json()
+    expect(json).toMatchObject({
+      status: 'ERROR',
+      code: 'NOT_FOUND',
+      message: 'not_found_or_empty_result',
+    })
+  })
+
   it('rejects invalid input with 400', async () => {
     const res = await callSiteByHost({ host: 'https://bad.example.com' })
     expect(res.status).toBe(400)
@@ -316,6 +357,43 @@ describe('/api/public/site-by-host', () => {
     expect((aoClient as any).dryrun).toHaveBeenCalledTimes(2)
     expect(aoClient.message).toHaveBeenCalledTimes(2)
     expect(aoClient.result).toHaveBeenCalledTimes(2)
+  })
+
+  it('maps read timeout failures to 504 for resolve-route', async () => {
+    aoClient.message.mockResolvedValueOnce('msg-site-runtime').mockRejectedValueOnce(new Error('timeout_ao_read_signed_message_30000ms'))
+    aoClient.result.mockResolvedValueOnce({
+      raw: {
+        Output: JSON.stringify({
+          status: 'OK',
+          data: {
+            siteId: 'site-alpha',
+            runtime: {
+              siteProcessId: 'SITE_PID_DYNAMIC',
+            },
+          },
+        }),
+      },
+    })
+
+    const res = await callPath(
+      '/api/public/resolve-route',
+      {
+        siteId: 'site-alpha',
+        payload: { siteId: 'site-alpha', path: '/' },
+      },
+      {
+        GATEWAY_TEMPLATE_TOKEN_MAP: JSON.stringify({ 'site-alpha': 'tok-alpha' }),
+      },
+      {
+        authorization: 'Bearer tok-alpha',
+      },
+    )
+
+    expect(res.status).toBe(504)
+    await expect(res.json()).resolves.toMatchObject({
+      ok: false,
+      error: 'ao_read_timeout',
+    })
   })
 
   it('rejects conflicting runtime process aliases in registry runtime payload', async () => {

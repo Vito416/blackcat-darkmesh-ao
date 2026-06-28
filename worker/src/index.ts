@@ -44,7 +44,7 @@ const encoder = new TextEncoder()
 // noble/ed25519 requires a SHA-512 implementation to be wired explicitly.
 ed25519.etc.sha512Sync = (msg) => sha512(msg)
 
-const DEFAULT_AO_HB_URL = 'https://push.forward.computer'
+const DEFAULT_AO_HB_URL = 'https://push-1.forward.computer'
 const DEFAULT_AO_SCHEDULER = 'n_XZJhUnmldNFo4dhajoPZWhBXuJk-OcQr5JQ49c4Zo'
 const DEFAULT_AO_MODE = 'mainnet'
 const DEFAULT_READ_TIMEOUT_MS = 30000
@@ -133,6 +133,15 @@ app.onError((err, c) => {
   logEvent('unhandled_error', { message, stack }, 'error')
   return c.json({ ok: false, error: 'internal_error' }, 500)
 })
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function isAoReadTimeoutErrorMessage(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return normalized.startsWith('timeout_') || normalized.includes('operation was aborted')
+}
 
 // Simple in-memory KV shim for tests to avoid SQLite locks in Miniflare
 type KvEntry = { value: string; exp?: number }
@@ -301,9 +310,17 @@ function logEvent(name: string, extra?: Record<string, any>, level: LogLevel = '
   }
 }
 
+// Scope lock: worker inbox is intentionally short-lived PIP buffer, never a long-term PIP DB.
+// Even if env is misconfigured, keep an absolute upper bound to avoid persistence drift.
+const INBOX_TTL_HARD_MAX_SECONDS = 86400
+
 function ttlSeconds(env: Env, reqTtl?: number) {
   const defTtl = parseInt(env.INBOX_TTL_DEFAULT || '3600', 10)
-  const maxTtl = parseInt(env.INBOX_TTL_MAX || '86400', 10)
+  const configuredMaxTtl = parseInt(env.INBOX_TTL_MAX || '86400', 10)
+  const maxTtl = Math.min(
+    INBOX_TTL_HARD_MAX_SECONDS,
+    Number.isFinite(configuredMaxTtl) && configuredMaxTtl > 0 ? configuredMaxTtl : INBOX_TTL_HARD_MAX_SECONDS,
+  )
   let ttl = reqTtl || defTtl
   if (ttl < 60) ttl = 60
   if (ttl > maxTtl) ttl = maxTtl
@@ -1151,6 +1168,34 @@ function roleAllowed(allowedRoles: string[], role: string) {
   return allowedRoles.includes('*') || allowedRoles.includes(role)
 }
 
+const CONTROL_PLANE_SIGN_ACTIONS = new Set(
+  [
+    'RegisterSite',
+    'BindDomain',
+    'SetSiteRuntime',
+    'UpsertSiteRuntime',
+    'SetActiveVersion',
+    'GrantRole',
+    'RegisterGateway',
+    'UpdateGatewayStatus',
+    'SetPolicyMode',
+    'PublishPolicySnapshot',
+    'RevokePolicySnapshot',
+    'SetSiteServingPolicy',
+    'SetSiteFundingState',
+    'RegisterHBNode',
+    'UpdateHBNodeStatus',
+  ].map((action) => action.toLowerCase()),
+)
+
+function allowControlPlaneSign(env: Env) {
+  return cleanEnv((env as any).ALLOW_CONTROL_PLANE_SIGN) === '1'
+}
+
+function isControlPlaneSignAction(action: string) {
+  return CONTROL_PLANE_SIGN_ACTIONS.has(action.trim().toLowerCase())
+}
+
 function resolveSignRequestContext(body: Record<string, unknown>, env: Env) {
   const payload = asRecord(body.payload) || asRecord(body.Payload)
   const siteId = resolveCanonicalSiteId(topLevelSiteId(body), payloadSiteId(payload), '', false)
@@ -1161,12 +1206,17 @@ function resolveSignRequestContext(body: Record<string, unknown>, env: Env) {
 }
 
 function enforceSignPolicy(env: Env, body: Record<string, unknown>) {
+  const context = resolveSignRequestContext(body, env)
+  if (context.action && isControlPlaneSignAction(context.action) && !allowControlPlaneSign(env)) {
+    throw new HTTPException(403, { message: 'sign_control_plane_action_blocked' })
+  }
+
   const rawPolicy = resolveSignPolicyRaw(env)
   if (!rawPolicy) {
     if (signPolicyRequired(env)) {
       throw new HTTPException(500, { message: 'missing_sign_policy' })
     }
-    return resolveSignRequestContext(body, env)
+    return context
   }
 
   const policy = parseSignPolicy(rawPolicy)
@@ -1174,7 +1224,6 @@ function enforceSignPolicy(env: Env, body: Record<string, unknown>) {
     throw new HTTPException(500, { message: 'invalid_sign_policy' })
   }
 
-  const context = resolveSignRequestContext(body, env)
   if (!context.action) {
     throw new HTTPException(400, { message: 'sign_policy_action_required' })
   }
@@ -1968,6 +2017,21 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
   }
 
   if (!envelope) {
+    const runtimeError = normalized?.Error
+    const hasRuntimeError =
+      runtimeError &&
+      typeof runtimeError === 'object' &&
+      Object.keys(runtimeError).length > 0
+    if (!hasRuntimeError) {
+      return {
+        status: 404,
+        body: {
+          status: 'ERROR',
+          code: 'NOT_FOUND',
+          message: 'not_found_or_empty_result',
+        },
+      }
+    }
     return {
       status: 502,
       body: {
@@ -1991,6 +2055,19 @@ function normalizeSiteByHostEnvelope(raw: any): { status: number; body: Record<s
 
   const envelopeStatus = trimString((envelope as Record<string, unknown>).status).toUpperCase()
   if (!envelopeStatus) {
+    const maybeAoTypes = trimString((envelope as Record<string, unknown>)['ao-types'])
+    const maybeData = trimString((envelope as Record<string, unknown>).data)
+    const maybePrompt = trimString((envelope as Record<string, unknown>).prompt)
+    if (maybeAoTypes && !maybeData && !maybePrompt) {
+      return {
+        status: 404,
+        body: {
+          status: 'ERROR',
+          code: 'NOT_FOUND',
+          message: 'not_found_or_empty_result',
+        },
+      }
+    }
     return {
       status: 502,
       body: {
@@ -2764,34 +2841,63 @@ app.post('/api/public/site-by-host', async (c) => {
     return c.json(out.body, out.status)
   } catch (error) {
     if (error instanceof HTTPException) throw error
-    const message = error instanceof Error ? error.message : String(error)
+    const message = errorMessage(error)
+    const timeout = isAoReadTimeoutErrorMessage(message)
     return c.json(
       {
         status: 'ERROR',
-        code: 'UPSTREAM_FAILURE',
+        code: timeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_FAILURE',
         message,
       },
-      502,
+      timeout ? 504 : 502,
     )
   }
 })
 
 app.post('/api/public/resolve-route', async (c) => {
-  const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
-  if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
-  const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
-  requireTemplateApiToken(c, canonical.siteId)
-  const out = await executeReadAction(c, 'ResolveRoute', canonical.input, canonical.siteId)
-  return c.json(out.body, out.status)
+  try {
+    const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
+    const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
+    requireTemplateApiToken(c, canonical.siteId)
+    const out = await executeReadAction(c, 'ResolveRoute', canonical.input, canonical.siteId)
+    return c.json(out.body, out.status)
+  } catch (error) {
+    if (error instanceof HTTPException) throw error
+    const message = errorMessage(error)
+    const timeout = isAoReadTimeoutErrorMessage(message)
+    return c.json(
+      {
+        ok: false,
+        error: timeout ? 'ao_read_timeout' : 'ao_read_failed',
+        message,
+      },
+      timeout ? 504 : 502,
+    )
+  }
 })
 
 app.post('/api/public/page', async (c) => {
-  const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
-  if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
-  const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
-  requireTemplateApiToken(c, canonical.siteId)
-  const out = await executeReadAction(c, 'GetPage', canonical.input, canonical.siteId)
-  return c.json(out.body, out.status)
+  try {
+    const body = await c.req.json<GatewayTemplateCallInput>().catch(() => null)
+    if (!body || typeof body !== 'object') throw new HTTPException(400, { message: 'invalid_body' })
+    const canonical = canonicalizeGatewayTemplateInput(body, c.req.header('x-bridge-site-id'))
+    requireTemplateApiToken(c, canonical.siteId)
+    const out = await executeReadAction(c, 'GetPage', canonical.input, canonical.siteId)
+    return c.json(out.body, out.status)
+  } catch (error) {
+    if (error instanceof HTTPException) throw error
+    const message = errorMessage(error)
+    const timeout = isAoReadTimeoutErrorMessage(message)
+    return c.json(
+      {
+        ok: false,
+        error: timeout ? 'ao_read_timeout' : 'ao_read_failed',
+        message,
+      },
+      timeout ? 504 : 502,
+    )
+  }
 })
 
 app.post('/api/checkout/order', async (c) => {
