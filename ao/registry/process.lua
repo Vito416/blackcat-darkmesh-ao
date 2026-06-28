@@ -471,8 +471,10 @@ local function normalize_runtime_pointer(raw, opts)
     first_present(raw, { "manifestTxId", "ManifestTxId", "Manifest-Tx-Id", "manifest_tx_id" })
   local template_sha256 =
     first_present(raw, { "templateSha256", "TemplateSha256", "Template-Sha256", "template_sha256" })
-  local template_variant =
-    first_present(raw, { "templateVariant", "TemplateVariant", "Template-Variant", "template_variant" })
+  local template_variant = first_present(
+    raw,
+    { "templateVariant", "TemplateVariant", "Template-Variant", "template_variant" }
+  )
   local updated_at = first_present(raw, { "updatedAt", "UpdatedAt", "Updated-At", "updated_at" })
 
   local has_any_process = process_id ~= nil
@@ -596,10 +598,8 @@ local function normalize_runtime_pointer(raw, opts)
     runtime.manifestTxId = tostring(manifest_tx_id)
   end
   if template_sha256 ~= nil then
-    local normalized_sha, err_sha = validate_runtime_pointer_sha256(
-      template_sha256,
-      field_name .. ".templateSha256"
-    )
+    local normalized_sha, err_sha =
+      validate_runtime_pointer_sha256(template_sha256, field_name .. ".templateSha256")
     if not normalized_sha then
       return nil, err_sha, field_name .. ".templateSha256"
     end
